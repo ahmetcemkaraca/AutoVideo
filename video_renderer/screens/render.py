@@ -1,0 +1,373 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Render Screen - Shows render progress with live updates.
+"""
+
+from pathlib import Path
+from typing import Optional
+import asyncio
+import time
+import json
+import threading
+
+from textual.app import ComposeResult
+from textual.screen import Screen
+from textual.widgets import Static, Button, Footer, ProgressBar, Log
+from textual.containers import Container, Vertical, Horizontal
+from textual.worker import Worker, get_current_worker
+
+from ..ffmpeg import FFmpegRunner, FFmpegProgress, get_duration
+from ..audio import AudioProcessor, mux_video_audio
+from ..video import VideoEncoder
+
+
+class RenderStep:
+    """Represents a render step."""
+    def __init__(self, name: str, description: str):
+        self.name = name
+        self.description = description
+        self.progress = 0.0
+        self.status = "pending"  # pending, active, complete, error
+
+
+class RenderScreen(Screen):
+    """Screen showing render progress."""
+    
+    BINDINGS = [
+        ("escape", "cancel", "Iptal"),
+    ]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.steps = [
+            RenderStep("intro", "Intro Encode"),
+            RenderStep("loop", "Loop Encode"),
+            RenderStep("concat", "Video Concat"),
+            RenderStep("audio", "Audio Isleme"),
+            RenderStep("mux", "Final Mux"),
+        ]
+        self.current_step = 0
+        self.is_running = False
+        self.error_message: Optional[str] = None
+        self.render_worker: Optional[Worker] = None
+    
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("🎬 Render Islemi", classes="title"),
+            Static("", id="status_text", classes="subtitle"),
+            classes="container",
+        )
+        
+        # Progress steps
+        with Container(classes="panel"):
+            for i, step in enumerate(self.steps, 1):
+                yield Static(f"○ [{i}/5] {step.description}", id=f"step_{step.name}", classes="progress-pending")
+                yield ProgressBar(total=100, show_eta=True, id=f"progress_{step.name}")
+        
+        # Log panel
+        with Container(classes="panel"):
+            yield Static("📋 Log", classes="panel-title")
+            yield Log(id="render_log", classes="log-panel")
+        
+        with Horizontal(classes="action-bar"):
+            yield Button("❌ Iptal", id="cancel", classes="-error")
+        
+        yield Footer()
+    
+    def on_mount(self) -> None:
+        """Start render when mounted."""
+        self.is_running = True
+        self._update_status("Render baslatiliyor...")
+        
+        # Start render in worker thread
+        self.render_worker = self.run_worker(self._run_render, thread=True)
+    
+    def _update_status(self, text: str) -> None:
+        """Update status text."""
+        try:
+            self.query_one("#status_text", Static).update(text)
+        except:
+            pass
+    
+    def _update_step_status(self, step_name: str, status: str, progress: float = 0) -> None:
+        """Update step status."""
+        try:
+            step_widget = self.query_one(f"#step_{step_name}", Static)
+            idx = next(i for i, s in enumerate(self.steps) if s.name == step_name) + 1
+            
+            if status == "active":
+                step_widget.update(f"● [{idx}/5] {self.steps[idx-1].description}")
+                step_widget.set_classes("progress-active")
+            elif status == "complete":
+                step_widget.update(f"✓ [{idx}/5] {self.steps[idx-1].description}")
+                step_widget.set_classes("progress-complete")
+            elif status == "error":
+                step_widget.update(f"✗ [{idx}/5] {self.steps[idx-1].description}")
+                step_widget.set_classes("error-text")
+            
+            progress_bar = self.query_one(f"#progress_{step_name}", ProgressBar)
+            progress_bar.progress = progress
+        except:
+            pass
+    
+    def _log(self, message: str) -> None:
+        """Add message to log."""
+        try:
+            log = self.query_one("#render_log", Log)
+            log.write_line(message)
+        except:
+            pass
+    
+    async def _run_render(self) -> None:
+        """Run the render pipeline."""
+        worker = get_current_worker()
+        app = self.app
+        
+        base = Path.cwd()
+        tmp_dir = base / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        
+        run_log = tmp_dir / "run_log.txt"
+        
+        try:
+            # Get data from app
+            intro_path = getattr(app, 'intro_path', None)
+            loop_path = getattr(app, 'loop_path', None)
+            chosen_tracks = getattr(app, 'chosen_tracks', [])
+            chosen_bgs = getattr(app, 'chosen_bgs', [])
+            codec_family = getattr(app, 'codec_family', 'av1')
+            codec_config = getattr(app, 'codec_config', None)
+            total_seconds = getattr(app, 'total_seconds', 32400)
+            out_path = getattr(app, 'out_path', base / "output.mp4")
+            
+            # Check for resume from session
+            session = getattr(app, 'session', None)
+            if session:
+                intro_path = Path(session["intro"])
+                loop_path = Path(session["loop"])
+                chosen_tracks = [Path(p) for p in session["tracks"]]
+                chosen_bgs = [(Path(b["path"]), b["db"]) for b in session.get("bgs", [])]
+                codec_family = session["codec"]
+                codec_config = codec_config or app.codec_config
+                total_seconds = session["duration_sec"]
+                out_path = Path(session["out"])
+            
+            if not codec_config:
+                from ..config import get_best_encoder
+                codec_config = get_best_encoder(codec_family)
+            
+            runner = FFmpegRunner(run_log)
+            
+            # Define output paths
+            intro_norm = tmp_dir / f"intro_norm_{codec_family}.mp4"
+            loop_norm = tmp_dir / f"loop_norm_{codec_family}.mp4"
+            
+            # Create encoder
+            encoder = VideoEncoder(
+                runner, codec_config,
+                width=1920, height=1080, fps=30
+            )
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 1: Intro Encode
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if worker.is_cancelled:
+                return
+            
+            self.call_from_thread(self._update_step_status, "intro", "active")
+            self.call_from_thread(self._log, f"Intro encode: {intro_path.name}")
+            
+            if intro_norm.exists():
+                self.call_from_thread(self._log, "Intro zaten var, atlaniyor...")
+            else:
+                def intro_progress(p: FFmpegProgress):
+                    self.call_from_thread(self._update_step_status, "intro", "active", p.percent)
+                
+                encoder.normalize_video(intro_path, intro_norm, intro_progress)
+            
+            self.call_from_thread(self._update_step_status, "intro", "complete", 100)
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 2: Loop Encode
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if worker.is_cancelled:
+                return
+            
+            self.call_from_thread(self._update_step_status, "loop", "active")
+            self.call_from_thread(self._log, f"Loop encode: {loop_path.name}")
+            
+            if loop_norm.exists():
+                self.call_from_thread(self._log, "Loop zaten var, atlaniyor...")
+            else:
+                def loop_progress(p: FFmpegProgress):
+                    self.call_from_thread(self._update_step_status, "loop", "active", p.percent)
+                
+                encoder.normalize_video(loop_path, loop_norm, loop_progress)
+            
+            self.call_from_thread(self._update_step_status, "loop", "complete", 100)
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 3: Concat
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if worker.is_cancelled:
+                return
+            
+            self.call_from_thread(self._update_step_status, "concat", "active")
+            self.call_from_thread(self._log, "Video birlestiriliyor...")
+            
+            video_only_files = list(tmp_dir.glob("video_only_*.mp4"))
+            if video_only_files:
+                video_only = video_only_files[0]
+                self.call_from_thread(self._log, "Concat zaten var, atlaniyor...")
+            else:
+                def concat_progress(p: FFmpegProgress):
+                    self.call_from_thread(self._update_step_status, "concat", "active", p.percent)
+                
+                video_only = encoder.concat_videos(
+                    intro_norm, loop_norm,
+                    total_seconds, tmp_dir,
+                    concat_progress
+                )
+            
+            self.call_from_thread(self._update_step_status, "concat", "complete", 100)
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 4: Audio
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if worker.is_cancelled:
+                return
+            
+            self.call_from_thread(self._update_step_status, "audio", "active")
+            self.call_from_thread(self._log, "Audio isleniyor...")
+            
+            audio_processor = AudioProcessor(runner, tmp_dir)
+            
+            music_loop_path = tmp_dir / "music_loop.w64"
+            audio_mixed_path = tmp_dir / "audio_mixed.w64"
+            
+            if chosen_bgs and audio_mixed_path.exists():
+                audio_full = audio_mixed_path
+                self.call_from_thread(self._log, "Audio zaten var, atlaniyor...")
+            elif not chosen_bgs and music_loop_path.exists():
+                audio_full = music_loop_path
+                self.call_from_thread(self._log, "Audio zaten var, atlaniyor...")
+            else:
+                # Validate and process tracks
+                self.call_from_thread(self._log, "Track'ler dogrulaniyor...")
+                
+                valid_tracks, invalid = audio_processor.validate_tracks(chosen_tracks)
+                if invalid:
+                    self.call_from_thread(self._log, f"Uyari: {len(invalid)} bozuk track atlandi")
+                
+                if not valid_tracks:
+                    raise ValueError("Hic gecerli track yok!")
+                
+                self.call_from_thread(self._log, f"{len(valid_tracks)} track ile loop olusturuluyor...")
+                
+                music_loop = audio_processor.create_music_loop(
+                    valid_tracks, total_seconds, pre_validated=True
+                )
+                
+                if chosen_bgs:
+                    self.call_from_thread(self._log, "Background sesler ekleniyor...")
+                    bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                    audio_full = audio_processor.mix_tracks(
+                        music_loop, bg_processed, total_seconds
+                    )
+                else:
+                    audio_full = music_loop
+            
+            self.call_from_thread(self._update_step_status, "audio", "complete", 100)
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 5: Final Mux
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if worker.is_cancelled:
+                return
+            
+            self.call_from_thread(self._update_step_status, "mux", "active")
+            self.call_from_thread(self._log, f"Final mux: {out_path.name}")
+            
+            if out_path.exists():
+                self.call_from_thread(self._log, "Cikti zaten var, atlaniyor...")
+            else:
+                def mux_progress(p: FFmpegProgress):
+                    self.call_from_thread(self._update_step_status, "mux", "active", p.percent)
+                
+                mux_video_audio(runner, video_only, audio_full, out_path, mux_progress)
+            
+            self.call_from_thread(self._update_step_status, "mux", "complete", 100)
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # COMPLETE
+            # ═══════════════════════════════════════════════════════════════════
+            
+            self.call_from_thread(self._log, "✓ Render tamamlandi!")
+            self.call_from_thread(self._update_status, "Tamamlandi!")
+            
+            # Store result
+            app.render_result = {
+                "success": True,
+                "output": out_path,
+                "duration": get_duration(out_path) if out_path.exists() else 0,
+            }
+            
+            # Go to complete screen
+            self.call_from_thread(self._go_to_complete)
+            
+        except Exception as e:
+            import traceback
+            self.error_message = str(e)
+            self.call_from_thread(self._log, f"✗ Hata: {e}")
+            self.call_from_thread(self._update_status, f"Hata: {e}")
+            
+            # Mark current step as error
+            step_name = self.steps[self.current_step].name if self.current_step < len(self.steps) else "mux"
+            self.call_from_thread(self._update_step_status, step_name, "error")
+            
+            # Show error buttons
+            self.call_from_thread(self._show_error_options)
+    
+    def _go_to_complete(self) -> None:
+        """Navigate to complete screen."""
+        self.app.push_screen("complete")
+    
+    def _show_error_options(self) -> None:
+        """Show error recovery options."""
+        try:
+            action_bar = self.query_one(".action-bar", Horizontal)
+            action_bar.remove_children()
+            action_bar.mount(Button("🔄 Tekrar Dene", id="retry", classes="-primary"))
+            action_bar.mount(Button("🆕 Yeni Render", id="new", classes="-secondary"))
+            action_bar.mount(Button("🚪 Cikis", id="quit", classes="-error"))
+        except:
+            pass
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "cancel":
+            self._cancel_render()
+        elif event.button.id == "retry":
+            self.app.pop_screen()
+            self.app.push_screen("render")
+        elif event.button.id == "new":
+            self.app.pop_screen()
+            self.app.push_screen("video_select")
+        elif event.button.id == "quit":
+            self.app.exit()
+    
+    def _cancel_render(self) -> None:
+        """Cancel the render."""
+        if self.render_worker:
+            self.render_worker.cancel()
+        self.app.pop_screen()
+    
+    def action_cancel(self) -> None:
+        """Cancel action."""
+        self._cancel_render()

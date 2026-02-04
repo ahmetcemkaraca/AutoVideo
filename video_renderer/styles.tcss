@@ -1,0 +1,384 @@
+/* Video Renderer TUI Styles */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Color Palette
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+$primary: #00d4ff;
+$secondary: #ff00ff;
+$success: #00ff88;
+$warning: #ffaa00;
+$error: #ff4444;
+$surface: #1a1a2e;
+$surface-dark: #0f0f1a;
+$surface-light: #252540;
+$text: #e0e0e0;
+$muted: #888888;
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   App Container
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+Screen {
+    background: $surface-dark;
+}
+
+Header {
+    background: $surface;
+    color: $primary;
+    text-style: bold;
+}
+
+Footer {
+    background: $surface;
+    color: $muted;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Containers
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.container {
+    width: 100%;
+    height: auto;
+    padding: 1 2;
+}
+
+.center-container {
+    align: center middle;
+    width: 100%;
+    height: 100%;
+}
+
+.panel {
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+    margin: 1 2;
+}
+
+.panel-title {
+    color: $primary;
+    text-style: bold;
+    text-align: center;
+    padding: 0 0 1 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Buttons
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+Button {
+    margin: 1 2;
+    min-width: 20;
+}
+
+Button.hidden {
+    display: none;
+}
+
+Button.-primary {
+    background: $primary;
+    color: $surface-dark;
+    text-style: bold;
+}
+
+Button.-primary:hover {
+    background: #33ddff;
+}
+
+Button.-primary:focus {
+    background: #66eeff;
+}
+
+Button.-secondary {
+    background: $surface-light;
+    color: $text;
+    border: solid $muted;
+}
+
+Button.-secondary:hover {
+    background: $surface;
+    border: solid $primary;
+}
+
+Button.-success {
+    background: $success;
+    color: $surface-dark;
+}
+
+Button.-error {
+    background: $error;
+    color: white;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   DataTable
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+DataTable {
+    background: $surface;
+    scrollbar-background: $surface-dark;
+    scrollbar-color: $primary;
+}
+
+DataTable > .datatable--header {
+    background: $surface-light;
+    color: $primary;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary 20%;
+    color: $text;
+}
+
+DataTable > .datatable--hover {
+    background: $surface-light;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Progress Bar
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+ProgressBar {
+    padding: 0 1;
+}
+
+ProgressBar > .bar--bar {
+    color: $primary;
+    background: $surface-light;
+}
+
+ProgressBar > .bar--complete {
+    color: $success;
+}
+
+.progress-container {
+    margin: 1 0;
+    padding: 1;
+    background: $surface;
+    border: round $muted;
+}
+
+.progress-label {
+    color: $text;
+    padding: 0 1;
+}
+
+.progress-complete {
+    color: $success;
+}
+
+.progress-pending {
+    color: $muted;
+}
+
+.progress-active {
+    color: $primary;
+    text-style: bold;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Input
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+Input {
+    background: $surface-light;
+    border: tall $muted;
+    padding: 0 1;
+}
+
+Input:focus {
+    border: tall $primary;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Labels & Text
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.title {
+    color: $primary;
+    text-style: bold;
+    text-align: center;
+    width: 100%;
+    padding: 1 0;
+}
+
+.subtitle {
+    color: $muted;
+    text-align: center;
+    width: 100%;
+}
+
+.upload-row {
+    height: auto;
+    align: center middle;
+    margin-bottom: 1;
+}
+
+.status-label {
+    margin-left: 2;
+    color: $muted;
+    text-style: bold;
+    content-align: center middle;
+    padding: 1 2;
+    background: $surface-light;
+    border: none;
+}
+
+.status-label.-active {
+    color: $surface-dark;
+    background: $success;
+}
+
+.hidden {
+    display: none;
+}
+
+.success-text {
+    color: $success;
+}
+
+.error-text {
+    color: $error;
+}
+
+.warning-text {
+    color: $warning;
+}
+
+.info-text {
+    color: $primary;
+}
+
+.codec-av1 {
+    color: $success;
+    text-style: bold;
+}
+
+.codec-h265 {
+    color: $primary;
+    text-style: bold;
+}
+
+.codec-h264 {
+    color: $warning;
+    text-style: bold;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   RadioSet & Select
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+RadioSet {
+    background: transparent;
+    border: none;
+    padding: 0 1;
+}
+
+RadioButton {
+    background: transparent;
+    padding: 0 1;
+}
+
+RadioButton:focus {
+    background: $surface-light;
+}
+
+Select {
+    background: $surface-light;
+    border: tall $muted;
+}
+
+Select:focus {
+    border: tall $primary;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Log Panel
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.log-panel {
+    background: $surface-dark;
+    border: round $muted;
+    height: auto;
+    max-height: 10;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+.log-line {
+    color: $muted;
+}
+
+.log-line-error {
+    color: $error;
+}
+
+.log-line-success {
+    color: $success;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Home Screen Banner
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.banner {
+    width: 100%;
+    content-align: center middle;
+    padding: 2 0;
+}
+
+.banner-text {
+    color: $secondary;
+    text-style: bold;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Summary Panel
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.summary-row {
+    layout: horizontal;
+    height: 1;
+    padding: 0 1;
+}
+
+.summary-label {
+    color: $muted;
+    width: 15;
+}
+
+.summary-value {
+    color: $text;
+    text-style: bold;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Status Bar
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.status-bar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    padding: 0 1;
+}
+
+.status-text {
+    color: $muted;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Action Bar
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.action-bar {
+    dock: bottom;
+    height: 3;
+    layout: horizontal;
+    align: center middle;
+    padding: 0 2;
+    background: $surface;
+}
