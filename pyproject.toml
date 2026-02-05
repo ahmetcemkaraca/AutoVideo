@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-renderer"
+version = "1.0.0"
+description = "Automated video rendering with intro/loop composition"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.40.0",
+    "google-api-python-client",
+    "google-auth-httplib2",
+    "google-auth-oauthlib",
+]
+
+[project.scripts]
+video-renderer = "video_renderer.main:main"
+
+[tool.setuptools.packages.find]
+include = ["video_renderer*"]

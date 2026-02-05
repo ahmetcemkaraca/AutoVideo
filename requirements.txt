@@ -3,4 +3,4 @@ google-auth-httplib2
 google-auth-oauthlib
 rich
 textual
-ffmpeg-python
+

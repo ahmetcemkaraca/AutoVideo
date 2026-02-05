@@ -92,10 +92,10 @@ CODEC_H264_NVENC = CodecConfig(
     extra_args=[
         "-rc", "vbr", "-cq", "23", "-b:v", "0",
         "-spatial_aq", "1",
-        "-b_ref_mode", "0",        # Disable B-frame ref for faster encode
-        "-rc-lookahead", "32",     # Lookahead frames for better quality
-        "-surfaces", "64",         # Async depth for GPU utilization
-        "-extra_hw_frames", "8"    # Extra frames for pipeline
+        "-b_ref_mode", "0",
+        "-rc-lookahead", "48",     # Increased for 20GB VRAM
+        "-surfaces", "128",        # Increased for async depth
+        "-extra_hw_frames", "16"   # Increased for pipeline
     ]
 )
 
@@ -109,9 +109,9 @@ CODEC_H265_NVENC = CodecConfig(
         "-rc", "vbr", "-cq", "26", "-b:v", "0",
         "-tag:v", "hvc1", "-spatial_aq", "1",
         "-b_ref_mode", "0",
-        "-rc-lookahead", "32",
-        "-surfaces", "64",
-        "-extra_hw_frames", "8"
+        "-rc-lookahead", "48",
+        "-surfaces", "128",
+        "-extra_hw_frames", "16"
     ]
 )
 
@@ -124,9 +124,9 @@ CODEC_AV1_NVENC = CodecConfig(
         "-rc", "vbr", "-cq", "30", "-b:v", "0",
         "-spatial_aq", "1",
         "-b_ref_mode", "0",
-        "-rc-lookahead", "32",
-        "-surfaces", "64",
-        "-extra_hw_frames", "8"
+        "-rc-lookahead", "48",
+        "-surfaces", "128",
+        "-extra_hw_frames", "16"
     ]
 )
 
