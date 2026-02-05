@@ -384,10 +384,11 @@ Select:focus {
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 .action-bar {
-    dock: bottom;
-    height: 3;
+    height: auto;
+    min-height: 3;
     layout: horizontal;
     align: center middle;
-    padding: 0 2;
+    padding: 1 2;
     background: $surface;
+    margin-top: 1;
 }
