@@ -85,7 +85,7 @@ class FFmpegRunner:
             'size': r'size=\s*(\d+)kB',
             'time': r'time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})',
             'bitrate': r'bitrate=\s*([\d.]+)kbits/s',
-            'speed': r'speed=\s*([\d.]+)x',
+            'speed': r'speed=\s*([0-9\.eE\+\-]+)x',
         }
         
         if match := re.search(patterns['frame'], line):

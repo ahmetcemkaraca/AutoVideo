@@ -982,7 +982,7 @@ def run_interactive() -> int:
             
             def make_progress_callback(step_idx: int):
                 def callback(p):
-                    progress.update(step_idx, p.percent)
+                    progress.update(step_idx, p.percent, speed=p.speed)
                 return callback
             
             if mode == "single" and single_video_path:
