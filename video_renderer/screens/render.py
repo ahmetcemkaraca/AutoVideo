@@ -239,34 +239,7 @@ class RenderScreen(Screen):
                     def loop_progress(p: FFmpegProgress):
                         self.call_from_thread(self._update_step_status, "loop", "active", p.percent)
 
-                encoder.normalize_video(loop_path, loop_norm, loop_progress)
-        except Exception as e:
-            # Fallback to software encoding if NVENC fails
-            if "nvenc" in str(self.codec_config).lower():
-                self.call_from_thread(self._log, f"⚠️ NVENC hatasi: {e}. Yazilimsal encode (libx264) deneniyor...")
-                from ..config import get_best_encoder
-                
-                # Switch to software encoder (libx264)
-                app.codec_config = get_best_encoder("h264")  # Standard h264
-                if hasattr(app, 'session') and app.session:
-                    app.session["codec"] = "h264"
-                
-                # Re-initialize encoder with new config
-                encoder = VideoEncoder(
-                     runner, app.codec_config,
-                     width=1920, height=1080, fps=30
-                )
-                
-                # Retry current step (recursive-like restart of this block would be complex, 
-                # so we just let the user retry or we could restart the worker, 
-                # but simplistic approach: just fail legibly and let user retry with new settings.
-                # BETTER: Auto-retry logic here is hard without restructuring. 
-                # For now, just logging the hint is better than crashing silently.)
-                
-                self.call_from_thread(self._update_status, "NVENC hatasi! Lutfen ayarlardan H264 secip tekrar deneyin.")
-                raise e 
-            else:
-                raise e
+                    encoder.normalize_video(loop_path, loop_norm, loop_progress)
 
                 self.call_from_thread(self._update_step_status, "loop", "complete", 100)
 
