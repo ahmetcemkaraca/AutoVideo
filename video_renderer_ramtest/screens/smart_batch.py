@@ -47,68 +47,71 @@ class SmartBatchScreen(Screen):
         self.project_settings = {} 
 
     def compose(self) -> ComposeResult:
-        yield Container(
-            Static("✨ Smart Batch Sihirbazi", classes="title"),
-            Static("Otomatik tespit edilen ciftleri siraya ekle", classes="subtitle"),
-            classes="container",
-        )
+        # Top Shortcuts
+        yield Static("⎋ [ESC] Geri  |  ^C [CTRL+C] Cikis", classes="top-shortcuts")
         
-        # STEP 1: Global Settings & Selection
-        with Container(id="step1_container"):
-            with Horizontal():
-                # Left: Pairs List
-                with Container(classes="panel"):
-                    yield Static("📂 Tespit Edilen Projeler", classes="panel-title")
-                    yield DataTable(id="pairs_table")
+        # Main Scrollable Content
+        with Container(classes="main-content"):
+            yield Container(
+                Static("✨ Smart Batch Sihirbazi", classes="title"),
+                Static("Otomatik tespit edilen ciftleri siraya ekle", classes="subtitle"),
+                classes="container",
+            )
+            
+            # STEP 1: Global Settings & Selection
+            with Container(id="step1_container"):
+                with Horizontal():
+                    # Left: Pairs List
+                    with Container(classes="panel"):
+                        yield Static("📂 Tespit Edilen Projeler", classes="panel-title")
+                        yield DataTable(id="pairs_table")
+                    
+                    # Right: Settings
+                    with Container(classes="panel"):
+                        yield Static("⚙️ Genel Ayarlar", classes="panel-title")
+                        
+                        yield Label("Hedef Sure:")
+                        yield Input(value="9:00:00", id="duration_input")
+                        
+                        yield Label("Codec:")
+                        yield Select.from_values(["av1", "h264", "h265"], value="av1", id="codec_select")
+                        
+                        yield Label("Muzik Secimi:")
+                        yield Select(
+                            [
+                                ("🔀 Rastgele (Muzik klasorunden)", "random"),
+                                ("🎵 Sabit Liste (Tum projeler ayni)", "fixed"),
+                                ("🔇 Sessiz", "none")
+                            ],
+                            value="random",
+                            id="music_mode_select"
+                        )
+                        
+                        yield Checkbox("Her projeyi ayri ayri ozellestir", value=False, id="customize_check")
+
+            # STEP 2: Customization (Hidden initially)
+            with Container(id="step2_container", classes="hidden"):
+                yield Static("🔧 Proje Ozellestirme", classes="panel-title")
+                yield Static("...", id="current_project_label", classes="subtitle")
                 
-                # Right: Settings
                 with Container(classes="panel"):
-                    yield Static("⚙️ Genel Ayarlar", classes="panel-title")
-                    
-                    yield Label("Hedef Sure:")
-                    yield Input(value="9:00:00", id="duration_input")
-                    
-                    yield Label("Codec:")
-                    yield Select.from_values(["av1", "h264", "h265"], value="av1", id="codec_select")
-                    
-                    yield Label("Muzik Secimi:")
+                    yield Label("Muzik Modu (Bu proje icin):")
                     yield Select(
                         [
-                            ("🔀 Rastgele (Muzik klasorunden)", "random"),
-                            ("🎵 Sabit Liste (Tum projeler ayni)", "fixed"),
-                            ("🔇 Sessiz", "none")
+                            ("Global Ayarlari Kullan", "global"),
+                            ("🔀 Yeni Rastgele Liste", "random"),
+                            ("🎵 Ozel Liste Sec", "specific")
                         ],
-                        value="random",
-                        id="music_mode_select"
+                        value="global",
+                        id="local_music_mode"
                     )
-                    
-                    yield Checkbox("Her projeyi ayri ayri ozellestir", value=False, id="customize_check")
+                    yield Static("Mevcut: Global Ayarlar", id="local_summary", classes="info-text")
 
-        # STEP 2: Customization (Hidden initially)
-        with Container(id="step2_container", classes="hidden"):
-            yield Static("🔧 Proje Ozellestirme", classes="panel-title")
-            yield Static("...", id="current_project_label", classes="subtitle")
-            
-            with Container(classes="panel"):
-                yield Label("Muzik Modu (Bu proje icin):")
-                yield Select(
-                    [
-                        ("Global Ayarlari Kullan", "global"),
-                        ("🔀 Yeni Rastgele Liste", "random"),
-                        ("🎵 Ozel Liste Sec", "specific")
-                    ],
-                    value="global",
-                    id="local_music_mode"
-                )
-                yield Static("Mevcut: Global Ayarlar", id="local_summary", classes="info-text")
-
-        # Actions
+        # Actions (Docked at bottom via flex layout)
         with Horizontal(classes="action-bar"):
             yield Button("← Geri", id="back", classes="-secondary")
             yield Button("Devam →", id="next", classes="-primary")
             yield Button("Atla (Global Kullan)", id="skip", classes="-secondary hidden")
-        
-        yield Footer()
 
     def on_mount(self) -> None:
         """Called when screen is mounted."""

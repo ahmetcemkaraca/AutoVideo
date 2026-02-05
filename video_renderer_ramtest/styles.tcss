@@ -21,6 +21,8 @@ $muted: #888888;
 
 Screen {
     background: $surface-dark;
+    layout: vertical;
+    align: center middle;
 }
 
 Header {
@@ -375,10 +377,33 @@ Select:focus {
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 .action-bar {
-    dock: bottom;
     height: 3;
+    width: 100%;
     layout: horizontal;
     align: center middle;
     padding: 0 2;
     background: $surface;
+    border-top: solid $muted;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Main Layout & Scroll
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.main-content {
+    width: 100%;
+    height: 1fr;
+    align: center middle;
+    overflow-y: auto;
+    scrollbar-color: $primary;
+}
+
+.top-shortcuts {
+    width: 100%;
+    height: 1;
+    background: $surface;
+    color: $primary;
+    text-align: center;
+    text-style: bold;
+    border-bottom: solid $muted;
 }
