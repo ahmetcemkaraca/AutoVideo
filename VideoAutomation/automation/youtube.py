@@ -165,21 +165,18 @@ class YouTubeUploader:
         video_id = None
         response = None
         
-        while response is None:
-            try:
+        # Execute
+        try:
+            status, response = None, None
+            while response is None:
                 status, response = request.next_chunk()
-                
                 if progress_callback and status:
-                    progress_callback(
-                        status.resumable_progress,
-                        status.total_size
-                    )
-                    
-            except HttpError as e:
-                if e.resp.status in RETRIABLE_STATUS_CODES:
-                    time.sleep(5)
-                    continue
-                raise
+                    progress_callback(status.resumable_progress, status.total_size)
+        except HttpError as e:
+            if e.resp.status in RETRIABLE_STATUS_CODES:
+                 # Let the caller (upload_with_exponential_backoff) handle retries
+                 raise
+            raise
         
         if response:
             video_id = response.get("id")

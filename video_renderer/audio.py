@@ -415,6 +415,8 @@ def mux_video_audio(
         "-threads", "0",  # Auto-detect optimal thread count
         "-i", str(video),
         "-i", str(audio),
+        "-map", "0:v:0",  # Use video from first input
+        "-map", "1:a:0",  # Use audio from second input
         "-c:v", "copy",
         "-c:a", "aac",
         "-b:a", audio_bitrate,

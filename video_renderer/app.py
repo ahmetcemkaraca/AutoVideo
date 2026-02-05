@@ -74,7 +74,6 @@ class VideoRendererApp(App):
         self.session: Optional[Dict[str, Any]] = None
         self.render_result: Optional[Dict[str, Any]] = None
         
-        self.render_result: Optional[Dict[str, Any]] = None
         
         # Batch mode
         from .batch import BatchQueue

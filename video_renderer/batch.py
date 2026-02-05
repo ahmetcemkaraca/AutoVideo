@@ -333,11 +333,12 @@ class SmartBatchDetector:
         
     def scan(self) -> List[BatchPair]:
         """
-        Scan directory for matching pairs using flexible patterns.
+        Scan directory for matching pairs using regex.
         Matches:
         - {name}_intro.mp4 / {name}_loop.mp4
         - {name}intro.mp4 / {name}loop.mp4
-        - *intro*.mp4 / *loop*.mp4 (fuzzy match on name)
+        - Intro variants: _intro, -intro, intro (case insensitive)
+        - Loop variants: _loop, -loop, loop (case insensitive)
         """
         pairs: List[BatchPair] = []
         import re
@@ -347,70 +348,36 @@ class SmartBatchDetector:
         from .config import VIDEO_EXTENSIONS
         for ext in VIDEO_EXTENSIONS:
             videos.extend(list(self.directory.glob(f"*{ext}")))
-            
-        # Normalize names for easier matching (stem only)
-        # We look for "intro" in the name
-        intros = [p for p in videos if "intro" in p.stem.lower()]
         
-        for intro in intros:
-            intro_stem = intro.stem.lower()
-            
-            # Determine the "base name" by removing "intro"
-            # Strategies:
-            # 1. Replace "_intro" -> ""
-            # 2. Replace "intro" -> ""
-            
-            base_name = ""
-            if "_intro" in intro_stem:
-                base_name = intro_stem.replace("_intro", "")
-            else:
-                base_name = intro_stem.replace("intro", "")
-                
-            base_name = base_name.strip(" _-")
-            
-            # Now look for a corresponding loop
-            # The loop should have the same base name and contain "loop"
-            
-            best_loop = None
-            
-            for video in videos:
-                if video == intro:
-                    continue
-                    
-                vid_stem = video.stem.lower()
-                if "loop" not in vid_stem:
-                    continue
-                    
-                # Check base name match
-                # If we detected a base_name, check if this video matches it
-                if base_name:
-                    if base_name in vid_stem:
-                        # Found a candidate. 
-                        # To be strict: removing "loop" should yield similar base name
-                        if "_loop" in vid_stem:
-                             vid_base = vid_stem.replace("_loop", "")
-                        else:
-                             vid_base = vid_stem.replace("loop", "")
-                        
-                        vid_base = vid_base.strip(" _-")
-                        
-                        if vid_base == base_name:
-                            best_loop = video
-                            break
-                else:
-                    # If base name was empty (e.g. "intro.mp4"), look for "loop.mp4"
-                    if vid_stem == "loop" or vid_stem == "_loop":
-                        best_loop = video
-                        break
-            
-            if best_loop:
-                # Use the original case name for display
-                # We can construct a display name from the common prefix
-                display_name = base_name if base_name else "Video"
-                
-                # Avoid duplicates?
-                # For now simple logic.
-                pair = BatchPair(display_name, intro, best_loop)
-                pairs.append(pair)
-                
+        # Helper to find base name
+        def extract_base(name: str, type_key: str) -> Optional[str]:
+            """Extract base name by removing type suffix."""
+            # Patterns: _intro, -intro, intro
+            match = re.search(f"([_-]?{type_key})$", name, re.IGNORECASE)
+            if match:
+                return name[:match.start()]
+            return None
+
+        # Find all intros
+        intro_candidates = {}  # base_name -> path
+        for v in videos:
+            base = extract_base(v.stem, "intro")
+            if base is not None:
+                intro_candidates[base] = v
+        
+        # Find matching loops
+        processed_loops = set()
+        
+        for v in videos:
+            base = extract_base(v.stem, "loop")
+            if base is not None:
+                # Direct match
+                if base in intro_candidates:
+                    intro = intro_candidates[base]
+                    # Create pair
+                    display_name = base.strip(" _-") or "Video"
+                    pairs.append(BatchPair(display_name, intro, v))
+                    processed_loops.add(v)
+        
+        # Sort by name
         return sorted(pairs, key=lambda x: x.name)

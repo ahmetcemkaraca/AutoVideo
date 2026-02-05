@@ -150,6 +150,10 @@ Examples:
     if not config.stream.stream_key or config.stream.stream_key == "YOUR_YOUTUBE_STREAM_KEY":
         console.print("[red]YouTube stream key not set in config.json[/]")
         return 1
+        
+    if len(config.stream.stream_key) < 10:
+        console.print("[red]Invalid YouTube stream key (too short)[/]")
+        return 1
     
     sets = config.discover_video_sets()
     if not sets:
