@@ -409,6 +409,21 @@ def run_interactive() -> int:
     tmp_dir = base / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # CRITICAL: Clean stale tmp files before starting a new render
+    # This prevents bugs where old encoded files are reused, causing:
+    # - Wrong video duration (3min instead of 8h)
+    # - Double video size
+    # ═══════════════════════════════════════════════════════════════════════════════
+    for f in tmp_dir.glob("*.mp4"):
+        f.unlink(missing_ok=True)
+    for f in tmp_dir.glob("*.w64"):
+        f.unlink(missing_ok=True)
+    for f in tmp_dir.glob("*.txt"):
+        # Keep session json but remove concat lists
+        if f.name != "last_session.json":
+            f.unlink(missing_ok=True)
+    
     run_log = tmp_dir / "run_log.txt"
     err_log = tmp_dir / "error_log.txt"
     session_json = tmp_dir / "last_session.json"

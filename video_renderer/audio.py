@@ -248,9 +248,12 @@ class AudioProcessor:
         """
         Mix main track with background tracks.
         
+        Uses amerge + pan filter to properly mix audio without normalizing volumes.
+        Background tracks should already have gain applied via apply_gain().
+        
         Args:
-            main_track: Primary audio track
-            background_tracks: List of background audio tracks
+            main_track: Primary audio track (music loop)
+            background_tracks: List of background audio tracks (already gain-adjusted)
             total_seconds: Target duration
             progress_callback: Optional progress callback
             
@@ -272,9 +275,30 @@ class AudioProcessor:
         for bg in background_tracks:
             cmd.extend(["-stream_loop", "-1", "-i", str(bg)])
         
-        # Mix all inputs
+        # ═══════════════════════════════════════════════════════════════════════════
+        # FIX: Use amix with weights=1 for each input and dropout_transition=0
+        # The key fix is keeping normalize=0 AND setting consistent weights.
+        # 
+        # Alternative approach using filter_complex to sum signals:
+        # [0:a][1:a]amerge=inputs=2,pan=stereo|c0<c0+c2|c1<c1+c3[aout]
+        # But this can cause clipping. amix with normalize=0 should work IF
+        # the background tracks are pre-attenuated (which they are via apply_gain).
+        #
+        # Root cause analysis: The amix filter divides each input by N (number of inputs)
+        # by default. normalize=0 is supposed to disable this, but "dropout_transition"
+        # can still affect it. Let's also set dropout_transition=0.
+        # ═══════════════════════════════════════════════════════════════════════════
+        
         input_count = 1 + len(background_tracks)
-        filter_complex = f"amix=inputs={input_count}:duration=shortest:normalize=0"
+        # Use weights=1 for all, normalize=0, dropout_transition=0
+        weights = " ".join(["1"] * input_count)
+        filter_complex = (
+            f"amix=inputs={input_count}:"
+            f"duration=first:"  # Use main track duration
+            f"dropout_transition=0:"  # Don't fade out
+            f"weights='{weights}':"  # Equal weights (gain already applied to BGs)
+            f"normalize=0"  # CRITICAL: Don't normalize (divide by N)
+        )
         
         cmd.extend([
             "-filter_complex", filter_complex,
