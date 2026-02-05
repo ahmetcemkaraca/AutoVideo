@@ -8,6 +8,7 @@ import json
 import sys
 import time
 import traceback
+import random
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -620,7 +621,10 @@ def run_interactive() -> int:
         # We assume 1920x1080 @ 60fps as target for now, or we could ask BEFORE.
         # But generally we want to standardize.
         temp_runner = FFmpegRunner()
-        temp_encoder = VideoEncoder(temp_runner, codec_config)
+        temp_encoder = VideoEncoder(
+            temp_runner, codec_config,
+            width=target_width, height=target_height, fps=target_fps
+        )
 
         if mode == "single":
             ok, reason = temp_encoder.check_compatibility(single_video_path)
@@ -674,6 +678,10 @@ def run_interactive() -> int:
         else:
             indices = ask_multiple_choice("Track sec", [p.name for p in tracks])
             chosen_tracks = [tracks[i - 1] for i in indices]
+        
+        # Shuffle tracks for variety
+        random.shuffle(chosen_tracks)
+        print_info("Muzik listesi ve siralamasi karistirildi.")
         
         # Background selection
         chosen_bgs: List[Tuple[Path, float]] = []
@@ -825,6 +833,19 @@ def run_interactive() -> int:
         else:
             default_out = f"final_{codec_family}_{dur_str.replace(':', 'h', 1).replace(':', 'm')}s.mp4"
         out_name = ask_text("Cikti dosyasi adi", default_out)
+        
+        # Sanitize filename (Fix for user copy-paste errors)
+        import re
+        safe_name = re.sub(r'[^\w\-. ]', '', out_name).strip()
+        if not safe_name:
+            safe_name = "output.mp4"
+        if not safe_name.lower().endswith(".mp4"):
+            safe_name += ".mp4"
+            
+        if safe_name != out_name:
+            print_warning(f"Dosya adi duzeltildi: '{out_name}' -> '{safe_name}'")
+            out_name = safe_name
+            
         out_path = (base / out_name).resolve()
         
         # Post action
