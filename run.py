@@ -76,6 +76,8 @@ def check_dependencies():
         import textual
         import rich
         from googleapiclient.discovery import build
+        import google_auth_oauthlib
+        import google.auth.transport.requests
         return True
     except ImportError as e:
         return e.name

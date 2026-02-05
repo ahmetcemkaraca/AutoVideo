@@ -119,9 +119,9 @@ CODEC_AV1_NVENC = CodecConfig(
     name="AV1 (NVENC)",
     encoder="av1_nvenc",
     preset="p6",
-    crf=30,
+    crf=40,
     extra_args=[
-        "-rc", "vbr", "-cq", "30", "-b:v", "0",
+        "-rc", "vbr", "-cq", "40", "-b:v", "0",
         "-spatial_aq", "1",
         "-b_ref_mode", "0",
         "-rc-lookahead", "32",
