@@ -31,25 +31,26 @@ class VideoSelectScreen(Screen):
         self.selection_phase = "intro"  # intro or loop
     
     def compose(self) -> ComposeResult:
-        yield Container(
-            Static("🎬 Video Secimi", classes="title"),
-            Static("Once INTRO, sonra LOOP video secin (veya tek video modu)", classes="subtitle"),
-            classes="container",
-        )
-        
-        with Container(classes="panel"):
-            yield Static("", id="selection_label", classes="info-text")
-            yield DataTable(id="video_table")
-        
-        with Container(classes="panel"):
-            yield Static("Secilen Videolar", classes="panel-title")
-            yield Static("Intro: -", id="intro_label")
-            yield Static("Loop: -", id="loop_label")
-        
-        with Horizontal(classes="action-bar"):
-            yield Button("← Geri", id="back", classes="-secondary")
-            yield Button("Tek Video →", id="single", classes="-secondary")
-            yield Button("Devam →", id="next", classes="-primary", disabled=True)
+        with Container(classes="main-wrapper"):
+            yield Container(
+                Static("🎬 Video Secimi", classes="title"),
+                Static("Once INTRO, sonra LOOP video secin (veya tek video modu)", classes="subtitle"),
+                classes="container",
+            )
+            
+            with Container(classes="panel"):
+                yield Static("", id="selection_label", classes="info-text")
+                yield DataTable(id="video_table")
+            
+            with Container(classes="panel"):
+                yield Static("Secilen Videolar", classes="panel-title")
+                yield Static("Intro: -", id="intro_label")
+                yield Static("Loop: -", id="loop_label")
+            
+            with Horizontal(classes="action-bar"):
+                yield Button("← Geri", id="back", classes="-secondary")
+                yield Button("Tek Video →", id="single", classes="-secondary")
+                yield Button("Devam →", id="next", classes="-primary", disabled=True)
         
         yield Footer()
     

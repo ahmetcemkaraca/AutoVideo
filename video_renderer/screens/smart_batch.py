@@ -106,7 +106,7 @@ class SmartBatchScreen(Screen):
         with Horizontal(classes="action-bar"):
             yield Button("← Geri", id="back", classes="-secondary")
             yield Button("Devam →", id="next", classes="-primary")
-            yield Button("Atla (Global Kullan)", id="skip", classes="-secondary", classes="hidden")
+            yield Button("Atla (Global Kullan)", id="skip", classes="-secondary hidden")
         
         yield Footer()
 

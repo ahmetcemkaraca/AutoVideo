@@ -46,34 +46,35 @@ class HomeScreen(Screen):
                 self.session_data = None
     
     def compose(self) -> ComposeResult:
-        yield Container(
-            Static(BANNER, classes="banner-text"),
-            Static(f"📁 {Path.cwd().as_posix()}", classes="subtitle"),
-            classes="banner",
-        )
-        
-        with Vertical(classes="center-container"):
-            with Container(classes="panel"):
-                if self.session_data:
-                    yield Static("Session Bulundu", classes="panel-title success-text")
-                    yield Static(f"📅 {self.session_data.get('ts', 'Bilinmiyor')}", classes="info-text")
-                    yield Static(f"🎬 {Path(self.session_data.get('out', '')).name}", classes="subtitle")
-                    yield Static("")
-                    
-                    with Horizontal(classes="action-bar"):
-                        yield Button("▶ Devam Et", id="resume", classes="-primary")
-                        yield Button("🆕 Yeni Render", id="new", classes="-secondary")
-                        yield Button("📦 Batch", id="batch", classes="-secondary")
-                        yield Button("🚪 Cikis", id="quit", classes="-error")
-                else:
-                    yield Static("Video Renderer'a Hos Geldiniz", classes="panel-title")
-                    yield Static("Intro + Loop video birlestirme ve ses miksaji", classes="subtitle")
-                    yield Static("")
-                    
-                    with Horizontal(classes="action-bar"):
-                        yield Button("🆕 Yeni Render", id="new", classes="-primary")
-                        yield Button("📦 Batch Modu", id="batch", classes="-secondary")
-                        yield Button("🚪 Cikis", id="quit", classes="-secondary")
+        with Container(classes="main-wrapper"):
+            yield Container(
+                Static(BANNER, classes="banner-text"),
+                Static(f"📁 {Path.cwd().as_posix()}", classes="subtitle"),
+                classes="banner",
+            )
+            
+            with Vertical(classes="center-container"):
+                with Container(classes="panel"):
+                    if self.session_data:
+                        yield Static("Session Bulundu", classes="panel-title success-text")
+                        yield Static(f"📅 {self.session_data.get('ts', 'Bilinmiyor')}", classes="info-text")
+                        yield Static(f"🎬 {Path(self.session_data.get('out', '')).name}", classes="subtitle")
+                        yield Static("")
+                        
+                        with Horizontal(classes="action-bar"):
+                            yield Button("▶ Devam Et", id="resume", classes="-primary")
+                            yield Button("🆕 Yeni Render", id="new", classes="-secondary")
+                            yield Button("📦 Batch", id="batch", classes="-secondary")
+                            yield Button("🚪 Cikis", id="quit", classes="-error")
+                    else:
+                        yield Static("Video Renderer'a Hos Geldiniz", classes="panel-title")
+                        yield Static("Intro + Loop video birlestirme ve ses miksaji", classes="subtitle")
+                        yield Static("")
+                        
+                        with Horizontal(classes="action-bar"):
+                            yield Button("🆕 Yeni Render", id="new", classes="-primary")
+                            yield Button("📦 Batch Modu", id="batch", classes="-secondary")
+                            yield Button("🚪 Cikis", id="quit", classes="-secondary")
         
         yield Footer()
     

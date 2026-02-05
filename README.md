@@ -15,7 +15,7 @@ Advanced video rendering and automation system with Batch processing, TUI (Termi
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/USERNAME/AutoVideo.git
+    git clone https://github.com/ahmetcemkaraca/AutoVideo
     cd AutoVideo
     ```
 

@@ -21,6 +21,16 @@ $muted: #888888;
 
 Screen {
     background: $surface-dark;
+    align: center middle;
+}
+
+/* Main wrapper for centered content */
+.main-wrapper {
+    width: 100%;
+    max-width: 120;
+    height: 100%;
+    align: center top;
+    margin: 0 auto;
 }
 
 Header {
