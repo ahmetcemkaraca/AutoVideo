@@ -34,42 +34,41 @@ echo -e "${BLUE}🎮 NVIDIA GPU kontrolü yapılıyor...${NC}"
 if lspci | grep -i nvidia > /dev/null 2>&1; then
     echo -e "${GREEN}✓ NVIDIA GPU bulundu. Driver yükleniyor...${NC}"
     
-    # Ubuntu driver auto-install (recommended way)
+    # Ubuntu driver auto-install
     DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-drivers-common
-    ubuntu-drivers autoinstall
     
-    # NVIDIA CUDA toolkit ve FFmpeg NVENC desteği
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        nvidia-cuda-toolkit \
-        nvidia-utils-535 \
-        libnvidia-encode-535 \
-        libnvidia-decode-535 || {
-        echo -e "${YELLOW}⚠ Bazı NVIDIA paketleri yüklenemedi, alternatif deneniyor...${NC}"
-        apt-get install -y nvidia-driver-535 2>/dev/null || true
-    }
+    # Try 'install' command (newer), fallback to 'autoinstall'
+    ubuntu-drivers install || ubuntu-drivers autoinstall || echo -e "${YELLOW}⚠ Otomatik driver kurulumu basarisiz. Manuel kurulum gerekebilir.${NC}"
     
-    echo -e "${YELLOW}⚠ GPU driver kurulumu tamamlandı. Sunucuyu yeniden başlatmanız gerekebilir.${NC}"
-    echo -e "${YELLOW}  Yeniden başlatmak için: reboot${NC}"
+    # NVIDIA CUDA toolkit
+    echo -e "${BLUE}📦 CUDA Toolkit yükleniyor...${NC}"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y nvidia-cuda-toolkit || echo -e "${YELLOW}⚠ CUDA Toolkit yüklenemedi.${NC}"
+    
+    echo -e "${YELLOW}⚠ GPU driver kurulum adimlari tamamlandi. Eger hata aldiysaniz 'nvidia-smi' komutunu kontrol edin.${NC}"
+    echo -e "${YELLOW}  Sunucuyu yeniden başlatmanız gerekebilir: reboot${NC}"
 else
     echo -e "${YELLOW}⚠ NVIDIA GPU bulunamadı. CPU encoding kullanılacak.${NC}"
 fi
 
 # 4. Klasör yapısı
 echo -e "${BLUE}📂 Klasörler oluşturuluyor...${NC}"
-RENDER_DIR="/root/render"
-mkdir -p "$RENDER_DIR"
-mkdir -p "$RENDER_DIR/music"
-mkdir -p "$RENDER_DIR/archive"
-mkdir -p "$RENDER_DIR/tmp"
+APP_DIR=$(pwd)
+echo "Calisma dizini: $APP_DIR"
+
+mkdir -p "$APP_DIR/music"
+mkdir -p "$APP_DIR/archive"
+mkdir -p "$APP_DIR/tmp"
 
 # 5. Python Virtual Environment
 echo -e "${BLUE}🐍 Python virtual environment oluşturuluyor...${NC}"
-cd "$RENDER_DIR"
-python3 -m venv venv
+cd "$APP_DIR"
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+fi
 source venv/bin/activate
 
 # 6. Python Dependencies
-echo -e "${BLUE}� Python paketleri yükleniyor...${NC}"
+echo -e "${BLUE}📦 Python paketleri yükleniyor...${NC}"
 pip install --upgrade pip
 pip install -r requirements.txt
 
@@ -80,26 +79,30 @@ if [ -f "pyproject.toml" ]; then
 fi
 
 # 8. Permission fix
-chmod +x render.py 2>/dev/null || true
+chmod +x run.py 2>/dev/null || true
 chmod +x setup_ubuntu.sh 2>/dev/null || true
 
 # 9. Create run script
-cat > "$RENDER_DIR/run.sh" << 'EOF'
+cat > "$APP_DIR/run.sh" << 'EOF'
 #!/bin/bash
-cd /root/render
-source venv/bin/activate
-python render.py
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$DIR"
+
+if [ -d "venv" ]; then
+    source venv/bin/activate
+fi
+
+python3 run.py
 EOF
-chmod +x "$RENDER_DIR/run.sh"
+chmod +x "$APP_DIR/run.sh"
 
 echo "----------------------------------------"
 echo -e "${GREEN}✅ Kurulum Tamamlandı!${NC}"
 echo ""
 echo -e "${BLUE}Kullanım:${NC}"
-echo "1. Videolarınızı '/root/render' klasörüne atın."
-echo "2. Müziklerinizi '/root/render/music' klasörüne atın."
-echo "3. Programı başlatın:"
-echo -e "${GREEN}    cd /root/render && ./run.sh${NC}"
+echo "1. Videolarınızı '$APP_DIR' klasörüne atın."
+echo "2. Programı başlatın:"
+echo -e "${GREEN}    ./run.sh${NC}"
 echo ""
 if lspci | grep -i nvidia > /dev/null 2>&1; then
     echo -e "${YELLOW}⚠ GPU kullanmak için sunucuyu yeniden başlatın: reboot${NC}"
