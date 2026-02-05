@@ -16,17 +16,23 @@ from .ffmpeg import FFmpegRunner, FFmpegProgress, get_duration, write_concat_lis
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def is_background_file(path: Path) -> bool:
-    """Check if file is a background audio (starts with 'bg')."""
-    return path.stem.lower().startswith("bg")
+    """
+    Check if file is a background audio.
+    Matches if filename starts with 'bg' or contains '_bg_'.
+    """
+    name = path.stem.lower()
+    return name.startswith("bg") or "_bg_" in name
 
 
 def parse_background_gain_db(path: Path) -> float:
     """
     Parse gain in dB from background filename.
-    Examples: bg_-8.5.mp3 -> -8.5, bg_+2.wav -> +2, bg-1.flac -> -1
+    Examples: bg_-8.5.mp3 -> -8.5, ates_bg_-1.mp3 -> -1
     """
     name = path.stem
-    match = re.search(r"bg[_-]([+-]?\d+(?:\.\d+)?)", name, re.IGNORECASE)
+    # Match bg followed by volume. Handles:
+    # bg_-8.5, bg-8.5, _bg_-8.5, _bg-8.5
+    match = re.search(r"(?:^|[_-])bg[_-]?([+-]?\d+(?:\.\d+)?)", name, re.IGNORECASE)
     if match:
         return float(match.group(1))
     return 0.0

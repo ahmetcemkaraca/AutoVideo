@@ -13,6 +13,7 @@ from textual.widgets import Static, Button, Footer, DataTable, Input, Label
 from textual.containers import Container, Vertical, Horizontal
 
 from ..ffmpeg import get_duration
+from ..audio import is_background_file, parse_background_gain_db
 
 
 class AudioSelectScreen(Screen):
@@ -69,10 +70,20 @@ class AudioSelectScreen(Screen):
         
         audio_extensions = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac"}
         
+        self.tracks.clear()
+        self.backgrounds.clear()
+        self.bg_gains.clear()
+        
         for f in sorted(music_dir.iterdir()):
             if f.is_file() and f.suffix.lower() in audio_extensions:
-                if f.stem.lower().startswith("bg"):
+                if is_background_file(f):
                     self.backgrounds.append(f)
+                    # Parse gain from filename immediately
+                    gain = parse_background_gain_db(f)
+                    if gain != 0:
+                        self.bg_gains[len(self.backgrounds)-1] = gain
+                    else:
+                         self.bg_gains[len(self.backgrounds)-1] = -15 # default
                 else:
                     self.tracks.append(f)
     
@@ -101,18 +112,9 @@ class AudioSelectScreen(Screen):
         for i, bg in enumerate(self.backgrounds, 1):
             selected = "✓" if i-1 in self.selected_bgs else " "
             gain = self.bg_gains.get(i-1, -15)
-            bgs_table.add_row(selected, str(i), bg.name, str(gain))
-    
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Handle row selection to toggle."""
-        table_id = event.data_table.id
-        index = event.cursor_row
-        
-        if table_id == "tracks_table":
-            self._toggle_track(index)
-        elif table_id == "bgs_table":
-            self._toggle_bg(index)
-    
+            # Use full filename for clearer identification
+            bgs_table.add_row(selected, str(i), bg.name, f"{gain:.1f}")
+            
     def _toggle_track(self, index: int) -> None:
         """Toggle track selection."""
         if index in self.selected_tracks:
@@ -120,22 +122,28 @@ class AudioSelectScreen(Screen):
         else:
             self.selected_tracks.add(index)
         
-        self._update_tables()
+        self._update_selection_visuals("tracks_table", index)
         self._update_counts()
         self._check_can_proceed()
-    
+        
     def _toggle_bg(self, index: int) -> None:
         """Toggle background selection."""
         if index in self.selected_bgs:
             self.selected_bgs.remove(index)
         else:
             self.selected_bgs.add(index)
-            if index not in self.bg_gains:
-                self.bg_gains[index] = -15  # Default gain
+            # Gain is already set during scanning
         
-        self._update_tables()
+        self._update_selection_visuals("bgs_table", index)
         self._update_counts()
-    
+
+    def _update_selection_visuals(self, table_id: str, row_index: int):
+        """Optimized visual update for single row toggle."""
+        table = self.query_one(f"#{table_id}", DataTable)
+        # Re-render everything slightly cheaper than re-calculating whole table is fine for now
+        # But actually let's just re-call update tables to be safe corresponding to logic
+        self._update_tables()
+
     def _update_counts(self) -> None:
         """Update selection counts."""
         self.query_one("#tracks_count", Static).update(
