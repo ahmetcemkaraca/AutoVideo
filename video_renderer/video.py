@@ -226,11 +226,6 @@ class VideoEncoder:
         remaining = max(0.0, total_seconds - intro_duration)
         loop_count = int(math.ceil(remaining / loop_duration)) if loop_duration > 0 else 0
         
-        # DEBUG: Log concat calculation
-        print(f"[DEBUG CONCAT] total_seconds={total_seconds}, intro_dur={intro_duration:.1f}s, loop_dur={loop_duration:.1f}s")
-        print(f"[DEBUG CONCAT] remaining={remaining:.1f}s, loop_count={loop_count}")
-        print(f"[DEBUG CONCAT] Expected output: intro + {loop_count} loops = ~{intro_duration + loop_count * loop_duration:.1f}s (trimmed to {total_seconds}s)")
-        
         # Write concat list
         concat_list = tmp_dir / "video_list.txt"
         files = [intro] + [loop] * loop_count

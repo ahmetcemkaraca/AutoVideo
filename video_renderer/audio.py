@@ -462,15 +462,18 @@ def mux_video_audio(
     Returns:
         Output path
     """
+    # Get video duration to use as explicit trim
+    video_duration = get_duration(video)
+    
     if progress_callback:
-        duration = get_duration(video)
-        runner.set_total_duration(duration)
+        runner.set_total_duration(video_duration)
         runner.set_progress_callback(progress_callback)
     
     cmd = [
         "ffmpeg", "-y",
         "-threads", "0",  # Auto-detect optimal thread count
         "-i", str(video),
+        "-stream_loop", "-1",  # Loop audio if shorter than video
         "-i", str(audio),
         "-map", "0:v:0",  # Use video from first input
         "-map", "1:a:0",  # Use audio from second input
@@ -479,7 +482,7 @@ def mux_video_audio(
         "-b:a", audio_bitrate,
         "-profile:a", "aac_low",  # AAC-LC for compatibility
         "-ac", "2",  # Stereo
-        "-shortest",
+        "-t", str(video_duration),  # Use video duration, not -shortest
         "-movflags", "+faststart",
         "-max_muxing_queue_size", "4096",  # Large queue for 48hr+ videos
         str(output)
