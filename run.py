@@ -101,12 +101,13 @@ def main():
     print("   AutoVideo Baslatici (Launcher)      ")
     print("========================================")
     print(f"Mod: {'VENV' if is_venv() else 'SYSTEM'}")
-    print("1. Normal Mod (Uretim, Video Render)")
-    print("2. Ramtest Modu (Gelistirici/Test)")
+    print("1. CLI Mod (Interaktif Render Wizard)")
+    print("2. TUI Mod (Textual Arayuz)")
+    print("3. Smart Batch (Otomatik Intro/Loop Tespiti)")
     print("q. Cikis")
     print("========================================")
     
-    choice = input("Seciminiz (1/2/q) [1]: ").strip().lower()
+    choice = input("Seciminiz (1/2/3/q) [1]: ").strip().lower()
     
     if choice == 'q':
         sys.exit(0)
@@ -117,12 +118,19 @@ def main():
     cmd = []
     
     if choice == '1':
-        print("\n>> Normal Mod baslatiliyor...")
-        cmd = [sys.executable, "-m", "video_renderer", "--tui"]
+        # CLI Interactive Mode (DEFAULT)
+        print("\n>> CLI Interaktif Mod baslatiliyor...")
+        cmd = [sys.executable, "-m", "video_renderer"]  # No --tui flag = CLI mode
         
     elif choice == '2':
-        print("\n>> Ramtest Modu baslatiliyor...")
-        cmd = [sys.executable, "-m", "video_renderer_ramtest", "--tui"]
+        # TUI Mode (Textual)
+        print("\n>> TUI Mod baslatiliyor...")
+        cmd = [sys.executable, "-m", "video_renderer", "--tui"]
+        
+    elif choice == '3':
+        # Smart Batch Mode
+        print("\n>> Smart Batch Mod baslatiliyor...")
+        cmd = [sys.executable, "-m", "video_renderer", "--batch"]
         
     else:
         print("Gecersiz secim!")

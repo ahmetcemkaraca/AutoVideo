@@ -396,6 +396,234 @@ def run_resume() -> int:
         print_info(f"Detaylar: {err_log.as_posix()}")
         print_info("Hatayi duzelttikten sonra --resume ile devam edebilirsiniz.")
         return 4
+# ═══════════════════════════════════════════════════════════════════════════════
+# Smart Batch Mode
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def run_batch() -> int:
+    """
+    Smart Batch mode - Otomatik intro/loop çiftlerini tespit et ve sıralı render yap.
+    """
+    from .batch import SmartBatchDetector, BatchPair
+    
+    base = Path.cwd()
+    music_dir = base / "music"
+    tmp_dir = base / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        print_header()
+        console.print("\n[bold cyan]═══════════════════════════════════════════════════════════[/]")
+        console.print("[bold cyan]                  SMART BATCH MODE                         [/]")
+        console.print("[bold cyan]═══════════════════════════════════════════════════════════[/]\n")
+        
+        # Scan for intro/loop pairs
+        detector = SmartBatchDetector(base)
+        pairs = detector.scan()
+        
+        if not pairs:
+            print_error("Bu klasörde intro/loop çifti bulunamadı!")
+            print_info("Dosya adları şu formatta olmalı: *_intro.mp4 ve *_loop.mp4")
+            return 1
+        
+        # Display detected pairs
+        console.print(f"\n[success]✓ {len(pairs)} adet intro/loop çifti bulundu:[/]\n")
+        
+        for i, pair in enumerate(pairs, 1):
+            console.print(f"  [number]{i}.[/] [bold]{pair.name}[/]")
+            console.print(f"     Intro: [muted]{pair.intro.name}[/]")
+            console.print(f"     Loop:  [muted]{pair.loop.name}[/]")
+            console.print()
+        
+        # Confirm
+        if not ask_confirm(f"Bu {len(pairs)} çifti render etmek ister misiniz?", True):
+            print_warning("Batch iptal edildi.")
+            return 0
+        
+        # Check music directory
+        music_candidates = [base / "music", base / "Music"]
+        for candidate in music_candidates:
+            if candidate.exists() and candidate.is_dir():
+                music_dir = candidate
+                break
+        
+        if not music_dir.exists():
+            print_error("music/ klasörü bulunamadı!")
+            return 2
+        
+        # Get shared settings for all batches
+        console.print("\n[header]Tüm renderlar için ortak ayarlar:[/]\n")
+        
+        # Codec selection
+        from .config import CODEC_CONFIGS
+        codec_names = list(CODEC_CONFIGS.keys())
+        codec_display = [f"{name} ({CODEC_CONFIGS[name].description})" for name in codec_names]
+        codec_idx = ask_choice("Codec seçin", codec_display, 1)
+        codec_family = codec_names[codec_idx - 1]
+        codec_config = CODEC_CONFIGS[codec_family]
+        
+        # Duration
+        console.print()
+        dur_options = ["8:00:00", "9:00:00", "10:00:00", "Rastgele (8-10 saat)", "Özel"]
+        dur_idx = ask_choice("Video süresi", dur_options, 2)
+        
+        if dur_idx == 4:
+            import random
+            total_seconds = random.randint(28800, 36000)
+            dur_str = f"{total_seconds // 3600}:{(total_seconds % 3600) // 60:02d}:{total_seconds % 60:02d}"
+        elif dur_idx == 5:
+            dur_str = ask_text("Süre (H:MM:SS)", "9:00:00")
+            total_seconds = parse_time(dur_str)
+        else:
+            dur_str = dur_options[dur_idx - 1]
+            total_seconds = parse_time(dur_str)
+        
+        # Get music tracks
+        console.print()
+        track_exts = (".mp3", ".wav", ".flac", ".ogg", ".m4a")
+        tracks = sorted([f for f in music_dir.iterdir() if f.suffix.lower() in track_exts])
+        
+        if not tracks:
+            print_error("music/ klasöründe müzik dosyası bulunamadı!")
+            return 2
+        
+        console.print(f"[info]Müzik klasöründe {len(tracks)} track bulundu.[/]")
+        chosen_tracks = tracks  # Use all tracks for batch
+        
+        # Background audio (optional)
+        console.print()
+        chosen_bgs = []
+        if ask_confirm("Arka plan sesi eklemek ister misiniz?", False):
+            bg_audio = base / "background"
+            if bg_audio.exists():
+                bg_files = sorted([f for f in bg_audio.iterdir() if f.suffix.lower() in track_exts])
+                if bg_files:
+                    for bg in bg_files:
+                        console.print(f"  [muted]- {bg.name}[/]")
+                    bg_gain = ask_text("Arka plan gain (dB, örn: -13)", "-13")
+                    try:
+                        bg_gain_db = float(bg_gain)
+                    except ValueError:
+                        bg_gain_db = -13.0
+                    chosen_bgs = [(bg, bg_gain_db) for bg in bg_files]
+        
+        # Summary
+        console.print("\n[header]Batch Özeti:[/]")
+        console.print(f"  [bold]Çift sayısı:[/] {len(pairs)}")
+        console.print(f"  [bold]Codec:[/] {codec_family}")
+        console.print(f"  [bold]Süre:[/] {dur_str} ({total_seconds} saniye)")
+        console.print(f"  [bold]Müzik:[/] {len(chosen_tracks)} track")
+        console.print(f"  [bold]Arka plan:[/] {len(chosen_bgs)} dosya")
+        console.print()
+        
+        if not ask_confirm("Batch render başlatılsın mı?", True):
+            print_warning("Batch iptal edildi.")
+            return 0
+        
+        # ═══════════════════════════════════════════════════════════════
+        # Execute batch renders sequentially
+        # ═══════════════════════════════════════════════════════════════
+        
+        results = []
+        total_start = time.perf_counter()
+        
+        for i, pair in enumerate(pairs, 1):
+            console.print()
+            console.print("=" * 60)
+            console.print(f"[bold cyan]BATCH [{i}/{len(pairs)}] - {pair.name}[/]")
+            console.print("=" * 60)
+            
+            # Clean tmp for each render
+            for f in tmp_dir.glob("*.mp4"):
+                f.unlink(missing_ok=True)
+            for f in tmp_dir.glob("*.w64"):
+                f.unlink(missing_ok=True)
+            
+            # Create output name
+            out_name = f"final_{pair.name}_{codec_family}.mp4"
+            out_path = base / out_name
+            
+            try:
+                # Setup encoder
+                runner = FFmpegRunner(tmp_dir / "run_log.txt")
+                audio_processor = AudioProcessor(runner, tmp_dir)
+                encoder = VideoEncoder(
+                    runner=runner,
+                    codec_config=codec_config,
+                    width=1920,
+                    height=1080,
+                    fps=60
+                )
+                
+                intro_norm = tmp_dir / f"intro_norm_{codec_family}.mp4"
+                loop_norm = tmp_dir / f"loop_norm_{codec_family}.mp4"
+                
+                # Parallel encode + audio
+                from concurrent.futures import ThreadPoolExecutor
+                
+                video_only = None
+                audio_full = None
+                
+                def encode_video():
+                    nonlocal video_only
+                    encoder.normalize_video(pair.intro, intro_norm, None)
+                    encoder.normalize_video(pair.loop, loop_norm, None)
+                    video_only = encoder.concat_videos(intro_norm, loop_norm, total_seconds, tmp_dir, None)
+                    return video_only
+                
+                def process_audio():
+                    nonlocal audio_full
+                    music_loop = audio_processor.create_music_loop(chosen_tracks, total_seconds)
+                    if chosen_bgs:
+                        bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                        audio_full = audio_processor.mix_tracks(music_loop, bg_processed, total_seconds)
+                    else:
+                        audio_full = music_loop
+                    return audio_full
+                
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    video_future = executor.submit(encode_video)
+                    audio_future = executor.submit(process_audio)
+                    video_only = video_future.result()
+                    audio_full = audio_future.result()
+                
+                # Final mux
+                mux_video_audio(runner, video_only, audio_full, out_path)
+                
+                print_success(f"[{i}/{len(pairs)}] {pair.name} tamamlandı: {out_path.name}")
+                results.append((pair.name, True, out_path))
+                
+            except Exception as e:
+                print_error(f"[{i}/{len(pairs)}] {pair.name} HATA: {e}")
+                results.append((pair.name, False, str(e)))
+        
+        # Summary
+        total_time = time.perf_counter() - total_start
+        console.print()
+        console.print("=" * 60)
+        console.print("[bold green]BATCH TAMAMLANDI[/]")
+        console.print("=" * 60)
+        
+        success_count = sum(1 for _, ok, _ in results if ok)
+        console.print(f"[bold]Başarılı:[/] {success_count}/{len(pairs)}")
+        console.print(f"[bold]Toplam süre:[/] {int(total_time // 60)}m {int(total_time % 60)}s")
+        
+        for name, ok, path in results:
+            if ok:
+                console.print(f"  [success]✓[/] {name}: {path.name}")
+            else:
+                console.print(f"  [error]✗[/] {name}: {path}")
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        print_warning("\nBatch kullanıcı tarafından iptal edildi.")
+        return 130
+    except Exception as e:
+        import traceback
+        print_error(f"Batch hatası: {e}")
+        traceback.print_exc()
+        return 4
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1263,6 +1491,12 @@ Ornekler:
         help="Yeni Textual TUI arayuzunu kullan"
     )
     
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Smart Batch modu - Otomatik intro/loop ciftlerini tespit et ve sirali render yap"
+    )
+    
     args = parser.parse_args()
     
     if args.list_hw:
@@ -1280,6 +1514,10 @@ Ornekler:
     if args.tui:
         from .app import run_tui
         return run_tui()
+    
+    # Smart Batch mode
+    if args.batch:
+        return run_batch()
     
     # Direct resume mode
     if args.resume:
