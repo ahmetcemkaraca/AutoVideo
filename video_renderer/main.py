@@ -1014,45 +1014,95 @@ def run_interactive() -> int:
                 progress.complete_step(1)
                 step_times["Video concat"] = 0
                 progress.complete_step(2)
-            else:
-                # Encode intro
-                t0 = time.perf_counter()
-                encoder.normalize_video(intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo)
-                step_times["Intro encode"] = time.perf_counter() - t0
-                progress.complete_step(0)
                 
-                # Encode loop
+                # Audio (sequential for single mode)
                 t0 = time.perf_counter()
-                encoder.normalize_video(loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo)
-                step_times["Loop encode"] = time.perf_counter() - t0
-                progress.complete_step(1)
+                music_loop = audio_processor.create_music_loop(
+                    chosen_tracks, total_seconds, pre_validated=True
+                )
                 
-                # Step 3: Concat
-                t0 = time.perf_counter()
-                video_only = encoder.concat_videos(
-                    intro_norm, loop_norm,
-                    total_seconds, tmp_dir,
-                    make_progress_callback(2)
-                )
-                step_times["Video concat"] = time.perf_counter() - t0
-                progress.complete_step(2)
-            
-            # Step 4: Audio (tracks already validated above)
-            t0 = time.perf_counter()
-            music_loop = audio_processor.create_music_loop(
-                chosen_tracks, total_seconds, pre_validated=True
-            )
-            
-            if chosen_bgs:
-                bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                audio_full = audio_processor.mix_tracks(
-                    music_loop, bg_processed, total_seconds
-                )
+                if chosen_bgs:
+                    bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                    audio_full = audio_processor.mix_tracks(
+                        music_loop, bg_processed, total_seconds
+                    )
+                else:
+                    audio_full = music_loop
+                
+                step_times["Audio isleme"] = time.perf_counter() - t0
+                progress.complete_step(3)
             else:
-                audio_full = music_loop
-            
-            step_times["Audio isleme"] = time.perf_counter() - t0
-            progress.complete_step(3)
+                # ═══════════════════════════════════════════════════════════════
+                # PARALLEL EXECUTION: Video (Intro+Loop) and Audio run concurrently
+                # This maximizes CPU/GPU/Disk utilization
+                # ═══════════════════════════════════════════════════════════════
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                
+                video_only = None
+                audio_full = None
+                
+                def encode_video_branch():
+                    """Encode intro, loop, then concat."""
+                    nonlocal video_only
+                    
+                    # Encode intro
+                    t0 = time.perf_counter()
+                    encoder.normalize_video(intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo)
+                    intro_time = time.perf_counter() - t0
+                    progress.complete_step(0)
+                    
+                    # Encode loop
+                    t0 = time.perf_counter()
+                    encoder.normalize_video(loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo)
+                    loop_time = time.perf_counter() - t0
+                    progress.complete_step(1)
+                    
+                    # Concat
+                    t0 = time.perf_counter()
+                    video_only = encoder.concat_videos(
+                        intro_norm, loop_norm,
+                        total_seconds, tmp_dir,
+                        make_progress_callback(2)
+                    )
+                    concat_time = time.perf_counter() - t0
+                    progress.complete_step(2)
+                    
+                    return intro_time, loop_time, concat_time
+                
+                def process_audio_branch():
+                    """Create music loop and mix with backgrounds."""
+                    nonlocal audio_full
+                    
+                    t0 = time.perf_counter()
+                    music_loop = audio_processor.create_music_loop(
+                        chosen_tracks, total_seconds, pre_validated=True
+                    )
+                    
+                    if chosen_bgs:
+                        bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                        audio_full = audio_processor.mix_tracks(
+                            music_loop, bg_processed, total_seconds
+                        )
+                    else:
+                        audio_full = music_loop
+                    
+                    audio_time = time.perf_counter() - t0
+                    return audio_time
+                
+                # Run both branches in parallel
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    video_future = executor.submit(encode_video_branch)
+                    audio_future = executor.submit(process_audio_branch)
+                    
+                    # Wait for both to complete
+                    intro_time, loop_time, concat_time = video_future.result()
+                    audio_time = audio_future.result()
+                
+                step_times["Intro encode"] = intro_time
+                step_times["Loop encode"] = loop_time
+                step_times["Video concat"] = concat_time
+                step_times["Audio isleme"] = audio_time
+                progress.complete_step(3)
             
             # Step 5: Final mux
             t0 = time.perf_counter()

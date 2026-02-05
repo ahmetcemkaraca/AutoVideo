@@ -345,6 +345,8 @@ class AudioProcessor:
         """
         Convert tracks to standard HQ format (MP3 320k 48kHz) and archive originals.
         
+        Skips files that are already in the correct format to prevent re-processing.
+        
         Args:
             tracks: List of track paths
             archive_dir: Directory to move original files
@@ -363,10 +365,41 @@ class AudioProcessor:
             if progress_callback:
                 progress_callback(track.name, i + 1, len(tracks))
             
-            # Check if likely already standard (mp3, >10MB check rough, but better to force re-encode to ensure specs)
-            # We will force re-encode to 320k MP3 48kHz Stereo for uniformity
+            # ═══════════════════════════════════════════════════════════════════
+            # FIX: Check if file is ALREADY a valid standardized MP3
+            # This prevents re-processing and the "mp31" double-extension bug
+            # ═══════════════════════════════════════════════════════════════════
+            is_already_valid = False
+            if track.suffix.lower() == ".mp3":
+                try:
+                    # Probe the file to check its specs
+                    probe_cmd = [
+                        "ffprobe", "-v", "quiet", "-print_format", "json",
+                        "-show_streams", str(track)
+                    ]
+                    probe_result = subprocess.run(
+                        probe_cmd, capture_output=True, text=True, timeout=10
+                    )
+                    if probe_result.returncode == 0:
+                        import json
+                        probe_data = json.loads(probe_result.stdout)
+                        for stream in probe_data.get("streams", []):
+                            if stream.get("codec_name") == "mp3":
+                                sample_rate = int(stream.get("sample_rate", 0))
+                                bit_rate = int(stream.get("bit_rate", 0))
+                                # Check if already 48kHz and >= 300kbps (close to 320k)
+                                if sample_rate >= 44100 and bit_rate >= 300000:
+                                    is_already_valid = True
+                                    break
+                except Exception:
+                    pass  # If probe fails, we'll re-encode
             
-            # Temp input
+            if is_already_valid:
+                # Skip conversion, use original file
+                results.append(track)
+                continue
+            
+            # Temp output - use unique temp name to avoid conflicts
             tmp_std = self.tmp_dir / f"std_{track.stem}.mp3"
             
             cmd = [
@@ -383,20 +416,14 @@ class AudioProcessor:
                 subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
                 # Archive original
-                # If original is in music dir, move it. If it's elsewhere, copy/delete?
-                # Assumption: tracks are in music/ directory
-                
-                # Construct archive path
-                # Handle name collisions in archive
                 archive_path = archive_dir / track.name
                 if archive_path.exists():
-                     timestamp = "_" + str(int(self.tmp_dir.stat().st_mtime)) # simple hack or just random
+                     timestamp = "_" + str(int(self.tmp_dir.stat().st_mtime))
                      archive_path = archive_dir / f"{track.stem}_archived{track.suffix}"
                 
                 shutil.move(str(track), str(archive_path))
                 
-                # Move new file to original location
-                # Ensure extension is .mp3
+                # Move new file to original location (always .mp3)
                 new_track_path = track.with_suffix(".mp3")
                 shutil.move(str(tmp_std), str(new_track_path))
                 results.append(new_track_path)
