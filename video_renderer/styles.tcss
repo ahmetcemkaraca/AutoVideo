@@ -30,7 +30,6 @@ Screen {
     max-width: 120;
     height: 100%;
     align: center top;
-    margin: 0 auto;
 }
 
 Header {
