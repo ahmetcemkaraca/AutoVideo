@@ -50,10 +50,13 @@ class DriveUploader:
             
             if not self.creds:
                 if not self.credentials_path.exists():
-                    # No credentials, cannot login
+                    print(f"HATA: '{self.credentials_path}' dosyasi bulunamadi!")
+                    print("Google Cloud Console'dan indirdiginiz OAuth client secret dosyasini bu isimle kaydedin.")
                     return False
                 
                 try:
+                    print("Google Drive yetkilendirmesi baslatiliyor...")
+                    print("Lutfen asagidaki linke tiklayin ve onay kodunu yapistirin:")
                     flow = InstalledAppFlow.from_client_secrets_file(
                         str(self.credentials_path), SCOPES)
                     # Use run_console to handle VPS scenario cleanly

@@ -36,11 +36,15 @@ class BatchScreen(Screen):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.queue = BatchQueue()
+        # self.queue = BatchQueue()  <-- Removed, using app.queue
         self.is_processing = False
         self.process_worker: Optional[Worker] = None
         self.uploader = DriveUploader()
         self.upload_threads: list[threading.Thread] = []
+    
+    @property
+    def queue(self):
+        return self.app.queue
     
     def compose(self) -> ComposeResult:
         yield Container(
@@ -91,8 +95,13 @@ class BatchScreen(Screen):
         }
         
         for job in self.queue.jobs:
-            intro_name = job.intro_path.name if job.intro_path else "-"
-            loop_name = job.loop_path.name if job.loop_path else "-"
+            if job.mode == "single":
+                intro_name = job.single_video_path.name if job.single_video_path else "-"
+                loop_name = "(Single)"
+            else:
+                intro_name = job.intro_path.name if job.intro_path else "-"
+                loop_name = job.loop_path.name if job.loop_path else "-"
+            
             status_icon = status_icons.get(job.status, "?")
             progress = f"{job.progress:.0f}%" if job.status == JobStatus.RUNNING else ""
             
@@ -198,33 +207,56 @@ class BatchScreen(Screen):
         # Create encoder
         encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=30)
         
-        # Step 1: Encode intro
-        intro_norm = tmp_dir / f"batch_{job.id}_intro_{job.codec_family}.mp4"
-        if not intro_norm.exists():
-            encoder.normalize_video(job.intro_path, intro_norm)
-        self.queue.update_progress(job.id, 20)
-        self.call_from_thread(self._update_table)
+        video_only = None
+        
+        if job.mode == "single" and job.single_video_path:
+             # Single Video Mode
+             video_only = tmp_dir / f"batch_{job.id}_video_{job.codec_family}.mp4"
+             if not video_only.exists():
+                 if job.total_seconds <= 0:
+                     # Calculate total seconds if not set
+                     job.total_seconds = int(get_duration(job.single_video_path))
+                 
+                 # Normalize/Encode video (simple copy/convert)
+                 # We reuse normalize_video for this
+                 encoder.normalize_video(job.single_video_path, video_only)
+             
+             self.queue.update_progress(job.id, 60) # Jump to 60 directly
+             self.call_from_thread(self._update_table)
+             
+        else:
+            # Intro + Loop Mode
+            
+            # Step 1: Encode intro
+            intro_norm = tmp_dir / f"batch_{job.id}_intro_{job.codec_family}.mp4"
+            if not intro_norm.exists():
+                encoder.normalize_video(job.intro_path, intro_norm)
+            self.queue.update_progress(job.id, 20)
+            self.call_from_thread(self._update_table)
+            
+            if worker.is_cancelled:
+                return
+            
+            # Step 2: Encode loop
+            loop_norm = tmp_dir / f"batch_{job.id}_loop_{job.codec_family}.mp4"
+            if not loop_norm.exists():
+                encoder.normalize_video(job.loop_path, loop_norm)
+            self.queue.update_progress(job.id, 40)
+            self.call_from_thread(self._update_table)
+            
+            if worker.is_cancelled:
+                return
+            
+            # Step 3: Concat
+            video_only = encoder.concat_videos(
+                intro_norm, loop_norm,
+                job.total_seconds, tmp_dir
+            )
+            self.queue.update_progress(job.id, 60)
+            self.call_from_thread(self._update_table)
         
         if worker.is_cancelled:
             return
-        
-        # Step 2: Encode loop
-        loop_norm = tmp_dir / f"batch_{job.id}_loop_{job.codec_family}.mp4"
-        if not loop_norm.exists():
-            encoder.normalize_video(job.loop_path, loop_norm)
-        self.queue.update_progress(job.id, 40)
-        self.call_from_thread(self._update_table)
-        
-        if worker.is_cancelled:
-            return
-        
-        # Step 3: Concat
-        video_only = encoder.concat_videos(
-            intro_norm, loop_norm,
-            job.total_seconds, tmp_dir
-        )
-        self.queue.update_progress(job.id, 60)
-        self.call_from_thread(self._update_table)
         
         if worker.is_cancelled:
             return

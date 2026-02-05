@@ -496,7 +496,43 @@ def run_interactive() -> int:
         
         if config_mode_idx == 1: # Basit
             # Force Defaults: 1080p, 60fps, AV1, Lanczos
-            print_info("Basit Mod: Otomatik ayarlar uygulaniyor (1080p60, AV1, Lanczos)...")
+            print_info("Basit Mod: Otomatik analiz yapiliyor...")
+            
+            # Check source resolution to avoid unnecessary re-encode/resize
+            smart_res_found = False
+            
+            if mode == "single" and single_video_path:
+                try:
+                    ref_info = probe_video(single_video_path)
+                    target_width, target_height = ref_info.width, ref_info.height
+                    target_fps = float(ref_info.fps.split('/')[0]) / float(ref_info.fps.split('/')[1]) if '/' in ref_info.fps else float(ref_info.fps)
+                    smart_res_found = True
+                    print_success(f"Kaynak cozunurlugu kullanilacak: {target_width}x{target_height} @ {target_fps:.2f}fps")
+                except Exception as e:
+                    print_warning(f"Video analiz hatasi: {e}. Varsayilan 1080p60 kullaniliyor.")
+            
+            elif mode == "intro_loop" and intro_path and loop_path:
+                try:
+                    i_info = probe_video(intro_path)
+                    l_info = probe_video(loop_path)
+                    
+                    if i_info.width == l_info.width and i_info.height == l_info.height:
+                        target_width, target_height = i_info.width, i_info.height
+                        # Use highest FPS or intro FPS? Let's stick to 60 for smoothness or intro FPS?
+                        # User asked to keep resolution mainly.
+                        # Let's keep 60fps default for smoothness unless they want source FPS too.
+                        # "Otomatik 1080p @ 60fps" was the label.
+                        # Let's keep 60fps but adapt resolution.
+                        smart_res_found = True
+                        print_success(f"Intro/Loop cozunurlugu eslesiyor: {target_width}x{target_height}. Resize yapilmadi.")
+                    else:
+                        print_info("Intro ve Loop cozunurlukleri farkli. 1080p standardi uygulaniyor.")
+                except Exception as e:
+                    print_warning(f"Analiz hatasi: {e}")
+
+            if not smart_res_found:
+                 print_info("Varsayilan 1080p60 ayarlari uygulaniyor.")
+
             codec_family = "av1"
             # Fallback if AV1 HW invalid? get_best_encoder handles it.
             codec_config = get_best_encoder(codec_family)

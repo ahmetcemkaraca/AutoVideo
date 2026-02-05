@@ -120,17 +120,64 @@ class RenderScreen(Screen):
             pass
     
     async def _run_render(self) -> None:
-        """Run the render pipeline."""
-        worker = get_current_worker()
-        app = self.app
+        """Run the render process."""
+        self.log_widget = self.query_one("#render_log", Log)
+        self.log_widget.write_line("Baslatiliyor...")
+        
+        # Select renderer implementation
+        use_main = getattr(self.app, "use_main_renderer", False)
+        
+        if use_main:
+            self.log_widget.write_line("⚠️  MOD: ANA Renderer mantigi kullaniliyor (Main Renderer)")
+            try:
+                # Add parent dir to path if needed or assume installed/accessible
+                import sys
+                project_root = Path.cwd()
+                if str(project_root) not in sys.path:
+                    sys.path.insert(0, str(project_root))
+                
+                from video_renderer.ffmpeg import FFmpegRunner as RunnerCls, AudioProcessor as AudioCls
+                from video_renderer.video import VideoEncoder as EncoderCls
+            except ImportError as e:
+                self.log_widget.write_line(f"❌ Failed to import main renderer: {e}")
+                self.log_widget.write_line("⚠️  Falling back to local ramtest logic")
+                from ..ffmpeg import FFmpegRunner as RunnerCls, AudioProcessor as AudioCls
+                from ..video import VideoEncoder as EncoderCls
+        else:
+            self.log_widget.write_line("ℹ️  MOD: Ramtest yerel mantigi")
+            from ..ffmpeg import FFmpegRunner as RunnerCls, AudioProcessor as AudioCls
+            from ..video import VideoEncoder as EncoderCls
         
         base = Path.cwd()
         tmp_dir = base / "tmp"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir.mkdir(exist_ok=True)
         
         run_log = tmp_dir / "run_log.txt"
         
+        runner = RunnerCls(run_log)
+        codec_config = self.app.codec_config
+        
+        # Steps setup
+        self.steps = [
+            RenderStep("init", "Hazirlik"),
+            RenderStep("intro", "Intro Encode"),
+            RenderStep("loop", "Loop Encode"),
+            RenderStep("concat", "Birlestirme"),
+            RenderStep("audio", "Ses Isleme"),
+            RenderStep("merge", "Muxing"),
+            RenderStep("upload", "Upload", required=getattr(self.app, "enable_upload", False))
+        ]
+        self._init_steps()
+        
+        worker = get_current_worker()
+        app = self.app
+        
         try:
+            # Step 1: Init
+            self._update_step_status("init", "active")
+            runner.check_ffmpeg()
+            self._update_step_status("init", "complete", 100)
+            
             # Get data from app
             intro_path = getattr(app, 'intro_path', None)
             loop_path = getattr(app, 'loop_path', None)
@@ -138,7 +185,7 @@ class RenderScreen(Screen):
             chosen_tracks = getattr(app, 'chosen_tracks', [])
             chosen_bgs = getattr(app, 'chosen_bgs', [])
             codec_family = getattr(app, 'codec_family', 'av1')
-            codec_config = getattr(app, 'codec_config', None)
+            # codec_config = getattr(app, 'codec_config', None) # Already got it above
             total_seconds = getattr(app, 'total_seconds', 32400)
             out_path = getattr(app, 'out_path', base / "output.mp4")
             

@@ -82,6 +82,12 @@ class SettingsScreen(Screen):
             yield Input(placeholder="Drive Folder ID (Opsiyonel)", id="drive_folder_id", classes="hidden")
             yield Static("Varsayilan klasor ID'si. Bos birakilirsa root'a yuklenir.", id="drive_hint", classes="subtitle hidden")
 
+        # Ramtest Options
+        with Container(classes="panel"):
+            yield Static("🧪 Ramtest Secenekleri", classes="panel-title")
+            yield Checkbox("Video Renderer Paketini Kullan (Ana Surum)", id="use_main_renderer", value=False)
+            yield Static("Render islemi icin 'video_renderer' klasorundeki kodlari kullanir.", classes="subtitle")
+
         # Output filename
         with Container(classes="panel"):
             yield Static("💾 Cikti Dosyasi", classes="panel-title")
@@ -110,6 +116,10 @@ class SettingsScreen(Screen):
         self._detect_codecs()
         self._update_summary()
         self._generate_default_filename()
+        
+        # Restore checkbox if set
+        if getattr(self.app, "use_main_renderer", False):
+            self.query_one("#use_main_renderer", Checkbox).value = True
     
     def _detect_codecs(self) -> None:
         """Detect available codecs."""
@@ -301,6 +311,12 @@ class SettingsScreen(Screen):
         # Save upload settings
         self.app.enable_upload = self.enable_upload
         self.app.drive_folder_id = self.drive_folder_id
+        
+        # Save ramtest options
+        try:
+            self.app.use_main_renderer = self.query_one("#use_main_renderer", Checkbox).value
+        except:
+            self.app.use_main_renderer = False
         
         # Go to render screen
         self.app.push_screen("render")

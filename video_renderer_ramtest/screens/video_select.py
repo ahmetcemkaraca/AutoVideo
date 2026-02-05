@@ -21,6 +21,7 @@ class VideoSelectScreen(Screen):
     BINDINGS = [
         ("escape", "go_back", "Geri"),
         ("enter", "confirm", "Onayla"),
+        ("space", "toggle_selection", "Sec/Kaldir"),
     ]
     
     def __init__(self, *args, **kwargs):
@@ -29,27 +30,29 @@ class VideoSelectScreen(Screen):
         self.intro_index = -1
         self.loop_index = -1
         self.selection_phase = "intro"  # intro or loop
+        self.selected_indices = set()
     
     def compose(self) -> ComposeResult:
-        yield Container(
-            Static("🎬 Video Secimi", classes="title"),
-            Static("Once INTRO, sonra LOOP video secin (veya tek video modu)", classes="subtitle"),
-            classes="container",
-        )
-        
-        with Container(classes="panel"):
-            yield Static("", id="selection_label", classes="info-text")
-            yield DataTable(id="video_table")
-        
-        with Container(classes="panel"):
-            yield Static("Secilen Videolar", classes="panel-title")
-            yield Static("Intro: -", id="intro_label")
-            yield Static("Loop: -", id="loop_label")
-        
-        with Horizontal(classes="action-bar"):
-            yield Button("← Geri", id="back", classes="-secondary")
-            yield Button("Tek Video →", id="single", classes="-secondary")
-            yield Button("Devam →", id="next", classes="-primary", disabled=True)
+        with Container(classes="main-wrapper"):
+            yield Container(
+                Static("🎬 Video Secimi", classes="title"),
+                Static("Once INTRO, sonra LOOP video secin (veya tek video modu)", classes="subtitle"),
+                classes="container",
+            )
+            
+            with Container(classes="panel"):
+                yield Static("", id="selection_label", classes="info-text")
+                yield DataTable(id="video_table")
+            
+            with Container(classes="panel"):
+                yield Static("Secilen Videolar", classes="panel-title")
+                yield Static("Intro: -", id="intro_label")
+                yield Static("Loop: -", id="loop_label")
+            
+            with Horizontal(classes="action-bar"):
+                yield Button("← Geri", id="back", classes="-secondary")
+                yield Button("Tek Video / Batch Ekle →", id="single", classes="-secondary")
+                yield Button("Devam →", id="next", classes="-primary", disabled=True)
         
         yield Footer()
     
@@ -78,14 +81,16 @@ class VideoSelectScreen(Screen):
         table = self.query_one("#video_table", DataTable)
         table.clear(columns=True)
         
-        table.add_columns("#", "Dosya", "Codec", "Cozunurluk", "Sure")
+        table.add_columns("Sec", "Dosya", "Codec", "Cozunurluk", "Sure")
         
-        for i, (path, info) in enumerate(self.videos, 1):
+        for i, (path, info) in enumerate(self.videos):
             duration_str = self._format_duration(info.duration)
             res = f"{info.width}x{info.height}"
             codec = info.codec.upper()
             
-            table.add_row(str(i), path.name, codec, res, duration_str)
+            check = "[green]✓[/]" if i in self.selected_indices else f"[dim]{i+1}[/]"
+            
+            table.add_row(check, path.name, codec, res, duration_str)
     
     def _format_duration(self, seconds: float) -> str:
         """Format duration as MM:SS."""
@@ -95,11 +100,25 @@ class VideoSelectScreen(Screen):
             return f"{hours:02d}:{minutes:02d}:{secs:02d}"
         return f"{minutes:02d}:{secs:02d}"
     
+    def action_toggle_selection(self) -> None:
+        """Toggle selection of current row."""
+        table = self.query_one("#video_table", DataTable)
+        if table.cursor_row is not None:
+            idx = table.cursor_row
+            if idx in self.selected_indices:
+                self.selected_indices.remove(idx)
+            else:
+                self.selected_indices.add(idx)
+            self._update_table()
+            
+            # Restore cursor
+            table.cursor_coordinate = (idx, 0)
+    
     def _update_selection_label(self) -> None:
         """Update the current selection instruction."""
         label = self.query_one("#selection_label", Static)
         if self.selection_phase == "intro":
-            label.update("👆 INTRO video secin (Enter ile onayla) | Tek video icin alttan 'Tek Video' secin")
+            label.update("👆 INTRO video secin (Enter) veya Bosluk ile coklu secin")
         else:
             label.update("👆 LOOP video secin (Enter ile onayla)")
     
@@ -155,9 +174,33 @@ class VideoSelectScreen(Screen):
                 
                 self.app.push_screen("audio_select")
         elif event.button.id == "single":
+            if self.selected_indices:
+                if not hasattr(self.app, 'queue'):
+                     self.notify("Batch Queue bu versiyonda bulunamadi!", severity="error")
+                     return
+                
+                # Add multiple jobs
+                for idx in sorted(self.selected_indices):
+                    if idx < len(self.videos):
+                        # Create job
+                        job = self.app.queue.create_job()
+                        job.mode = "single"
+                        job.single_video_path = self.videos[idx][0]
+                        job.intro_path = None
+                        job.loop_path = None
+                        
+                        # Populate upload config if available
+                        if hasattr(self.app, 'enable_upload'):
+                            job.upload_enabled = self.app.enable_upload
+                            job.upload_folder_id = self.app.drive_folder_id
+                
+                self.notify(f"{len(self.selected_indices)} video kuyruga eklendi!")
+                self.app.push_screen("batch")
+                return
+
             table = self.query_one("#video_table", DataTable)
             if table.cursor_row is None:
-                self.notify("Tek video icin once bir satir secin!", severity="warning")
+                self.notify("Tek video icin once bir satir secin veya Space ile coklu secin!", severity="warning")
                 return
             idx = table.cursor_row
             if idx < 0 or idx >= len(self.videos):

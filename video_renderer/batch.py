@@ -33,6 +33,8 @@ class RenderJob:
     id: int
     intro_path: Optional[Path] = None
     loop_path: Optional[Path] = None
+    single_video_path: Optional[Path] = None
+    mode: str = "intro_loop"  # intro_loop or single
     codec_family: str = "av1"
     duration_str: str = "9:00:00"
     total_seconds: int = 32400
@@ -55,6 +57,8 @@ class RenderJob:
             "id": self.id,
             "intro": str(self.intro_path) if self.intro_path else None,
             "loop": str(self.loop_path) if self.loop_path else None,
+            "single_video": str(self.single_video_path) if self.single_video_path else None,
+            "mode": self.mode,
             "codec": self.codec_family,
             "duration": self.duration_str,
             "duration_sec": self.total_seconds,
@@ -78,6 +82,8 @@ class RenderJob:
         job = cls(id=data["id"])
         job.intro_path = Path(data["intro"]) if data.get("intro") else None
         job.loop_path = Path(data["loop"]) if data.get("loop") else None
+        job.single_video_path = Path(data["single_video"]) if data.get("single_video") else None
+        job.mode = data.get("mode", "intro_loop")
         job.codec_family = data.get("codec", "av1")
         job.duration_str = data.get("duration", "9:00:00")
         job.total_seconds = data.get("duration_sec", 32400)

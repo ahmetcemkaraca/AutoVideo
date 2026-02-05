@@ -74,7 +74,11 @@ class VideoRendererApp(App):
         self.session: Optional[Dict[str, Any]] = None
         self.render_result: Optional[Dict[str, Any]] = None
         
+        self.render_result: Optional[Dict[str, Any]] = None
+        
         # Batch mode
+        from .batch import BatchQueue
+        self.queue = BatchQueue()
         self.batch_job_id: Optional[int] = None
     
     def on_mount(self) -> None:

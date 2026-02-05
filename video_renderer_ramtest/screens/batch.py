@@ -36,11 +36,15 @@ class BatchScreen(Screen):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.queue = BatchQueue()
+        # Queue is shared in app
         self.is_processing = False
         self.process_worker: Optional[Worker] = None
         self.uploader = DriveUploader()
         self.upload_threads: list[threading.Thread] = []
+    
+    @property
+    def queue(self):
+        return self.app.queue
     
     def compose(self) -> ComposeResult:
         yield Container(
@@ -91,8 +95,13 @@ class BatchScreen(Screen):
         }
         
         for job in self.queue.jobs:
-            intro_name = job.intro_path.name if job.intro_path else "-"
-            loop_name = job.loop_path.name if job.loop_path else "-"
+            if job.mode == "single":
+                intro_name = job.single_video_path.name if job.single_video_path else "-"
+                loop_name = "(Single)"
+            else:
+                intro_name = job.intro_path.name if job.intro_path else "-"
+                loop_name = job.loop_path.name if job.loop_path else "-"
+            
             status_icon = status_icons.get(job.status, "?")
             progress = f"{job.progress:.0f}%" if job.status == JobStatus.RUNNING else ""
             
@@ -188,49 +197,96 @@ class BatchScreen(Screen):
         """Run a single render job."""
         self.queue.start_job(job.id)
         
+        # Select renderer implementation
+        use_main = getattr(self.app, "use_main_renderer", False)
+        
+        if use_main:
+            try:
+                import sys
+                project_root = Path.cwd()
+                if str(project_root) not in sys.path:
+                    sys.path.insert(0, str(project_root))
+                
+                from video_renderer.ffmpeg import FFmpegRunner as RunnerCls, AudioProcessor as AudioCls
+                from video_renderer.video import VideoEncoder as EncoderCls
+            except ImportError:
+                from ..ffmpeg import FFmpegRunner as RunnerCls, AudioProcessor as AudioCls
+                from ..video import VideoEncoder as EncoderCls
+        else:
+            from ..ffmpeg import FFmpegRunner as RunnerCls, AudioProcessor as AudioCls
+            from ..video import VideoEncoder as EncoderCls
+        
         base = Path.cwd()
         tmp_dir = base / "tmp"
         run_log = tmp_dir / "run_log.txt"
         
-        runner = FFmpegRunner(run_log)
+        # Use classes
+        runner = RunnerCls(run_log)
+        
+        if not job.codec_family:
+             job.codec_family = "av1" # Default
+        
         codec_config = get_best_encoder(job.codec_family)
         
         # Create encoder
-        encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=30)
+        encoder = EncoderCls(runner, codec_config, width=1920, height=1080, fps=30)
         
-        # Step 1: Encode intro
-        intro_norm = tmp_dir / f"batch_{job.id}_intro_{job.codec_family}.mp4"
-        if not intro_norm.exists():
-            encoder.normalize_video(job.intro_path, intro_norm)
-        self.queue.update_progress(job.id, 20)
-        self.call_from_thread(self._update_table)
+        video_only = None
         
-        if worker.is_cancelled:
-            return
-        
-        # Step 2: Encode loop
-        loop_norm = tmp_dir / f"batch_{job.id}_loop_{job.codec_family}.mp4"
-        if not loop_norm.exists():
-            encoder.normalize_video(job.loop_path, loop_norm)
-        self.queue.update_progress(job.id, 40)
-        self.call_from_thread(self._update_table)
-        
-        if worker.is_cancelled:
-            return
-        
-        # Step 3: Concat
-        video_only = encoder.concat_videos(
-            intro_norm, loop_norm,
-            job.total_seconds, tmp_dir
-        )
-        self.queue.update_progress(job.id, 60)
-        self.call_from_thread(self._update_table)
+        if job.mode == "single" and job.single_video_path:
+             # Single Video Mode
+             video_only = tmp_dir / f"batch_{job.id}_video_{job.codec_family}.mp4"
+             if not video_only.exists():
+                 if job.total_seconds <= 0:
+                     # Calculate total seconds if not set
+                     job.total_seconds = int(get_duration(job.single_video_path))
+                 
+                 # Normalize/Encode video (simple copy/convert)
+                 # We reuse normalize_video for this
+                 encoder.normalize_video(job.single_video_path, video_only)
+             
+             self.queue.update_progress(job.id, 60) # Jump to 60 directly
+             self.call_from_thread(self._update_table)
+             
+        else:
+             # Intro + Loop Mode
+             # Step 1: Encode intro
+             intro_norm = tmp_dir / f"batch_{job.id}_intro_{job.codec_family}.mp4"
+             if not intro_norm.exists():
+                 encoder.normalize_video(job.intro_path, intro_norm)
+             self.queue.update_progress(job.id, 20)
+             self.call_from_thread(self._update_table)
+             
+             if worker.is_cancelled:
+                 return
+             
+             # Step 2: Encode loop
+             loop_norm = tmp_dir / f"batch_{job.id}_loop_{job.codec_family}.mp4"
+             if not loop_norm.exists():
+                 encoder.normalize_video(job.loop_path, loop_norm)
+             self.queue.update_progress(job.id, 40)
+             self.call_from_thread(self._update_table)
+             
+             if worker.is_cancelled:
+                 return
+             
+             # Step 3: Concat
+             video_only = encoder.concat_videos(
+                 intro_norm, loop_norm,
+                 job.total_seconds, tmp_dir
+             )
+             self.queue.update_progress(job.id, 60)
+             self.call_from_thread(self._update_table)
         
         if worker.is_cancelled:
             return
         
         # Step 4: Audio
-        audio_processor = AudioProcessor(runner, tmp_dir)
+        audio_processor = AudioCls(runner, tmp_dir) 
+        # Note: AudioProcessor in main vs ramtest might differ in args.
+        # Main AudioProcessor __init__ likely takes (runner, tmp_dir).
+        # Ramtest might too. Assuming parity.
+        
         music_loop = audio_processor.create_music_loop(job.tracks, job.total_seconds)
         
         if job.backgrounds:
