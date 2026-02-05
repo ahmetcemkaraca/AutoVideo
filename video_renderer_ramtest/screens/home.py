@@ -46,13 +46,18 @@ class HomeScreen(Screen):
                 self.session_data = None
     
     def compose(self) -> ComposeResult:
-        yield Container(
-            Static(BANNER, classes="banner-text"),
-            Static(f"📁 {Path.cwd().as_posix()}", classes="subtitle"),
-            classes="banner",
-        )
+        # 1. Top Shortcuts (Custom "Header")
+        shortcuts = "🆕 [n] Yeni Render  |  📦 [b] Batch Modu  |  ▶ [r] Devam Et  |  🚪 [q] Cikis"
+        yield Static(shortcuts, classes="top-shortcuts")
         
-        with Vertical(classes="center-container"):
+        # 2. Main Content (Centered)
+        with Container(classes="main-content"):
+            yield Container(
+                Static(BANNER, classes="banner-text"),
+                Static(f"📁 {Path.cwd().as_posix()}", classes="subtitle"),
+                classes="banner",
+            )
+            
             with Container(classes="panel"):
                 if self.session_data:
                     yield Static("Session Bulundu", classes="panel-title success-text")
@@ -60,7 +65,10 @@ class HomeScreen(Screen):
                     yield Static(f"🎬 {Path(self.session_data.get('out', '')).name}", classes="subtitle")
                     yield Static("")
                     
-                    with Horizontal(classes="action-bar"):
+                    # Buttons stacked or grid? Horizontal is fine if they have space.
+                    # We reuse action-bar class but ensure it has height auto if needed.
+                    # Or just use a simple horizontal container for buttons.
+                    with Horizontal(classes="button-row"):
                         yield Button("▶ Devam Et", id="resume", classes="-primary")
                         yield Button("🆕 Yeni Render", id="new", classes="-secondary")
                         yield Button("📦 Batch", id="batch", classes="-secondary")
@@ -70,12 +78,10 @@ class HomeScreen(Screen):
                     yield Static("Intro + Loop video birlestirme ve ses miksaji", classes="subtitle")
                     yield Static("")
                     
-                    with Horizontal(classes="action-bar"):
+                    with Horizontal(classes="button-row"):
                         yield Button("🆕 Yeni Render", id="new", classes="-primary")
                         yield Button("📦 Batch Modu", id="batch", classes="-secondary")
                         yield Button("🚪 Cikis", id="quit", classes="-secondary")
-        
-        yield Footer()
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""

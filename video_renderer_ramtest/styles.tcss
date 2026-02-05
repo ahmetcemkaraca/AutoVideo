@@ -323,8 +323,15 @@ Select:focus {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   Home Screen Banner
+   Button Row (Home Screen)
    ═══════════════════════════════════════════════════════════════════════════════ */
+
+.button-row {
+     height: auto;
+     width: 100%;
+     align: center middle;
+     margin-top: 1;
+}
 
 .banner {
     width: 100%;
