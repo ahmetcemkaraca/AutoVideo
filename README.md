@@ -5,8 +5,10 @@ Advanced video rendering and automation system with Batch processing, TUI (Termi
 ## Features
 
 - **Batch Rendering**: Queue multiple render jobs with distinct configurations.
+- **Multi-Selection**: Select multiple videos in the TUI (Space key) to batch add them instantly.
 - **Smart Batch**: Automatically detect `*_intro.mp4` and `*_loop.mp4` pairs.
 - **Background Upload**: Automatically upload rendered videos to Google Drive while processing the next job.
+- **Smart Resolution**: Basic Mode automatically detects and preserves source resolution when possible.
 - **Duration Options**: Fixed presets, Custom HH:MM:SS, or Random (8-10 hours).
 - **Format Support**: AV1, H.264, H.265/HEVC encoding with hardware acceleration support.
 - **Live TUI**: Rich Terminal User Interface built with Textual.
