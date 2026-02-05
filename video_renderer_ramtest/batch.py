@@ -327,24 +327,89 @@ class SmartBatchDetector:
         
     def scan(self) -> List[BatchPair]:
         """
-        Scan directory for matching pairs.
-        Convention: {name}_intro.mp4 and {name}_loop.mp4
+        Scan directory for matching pairs using flexible patterns.
+        Matches:
+        - {name}_intro.mp4 / {name}_loop.mp4
+        - {name}intro.mp4 / {name}loop.mp4
+        - *intro*.mp4 / *loop*.mp4 (fuzzy match on name)
         """
         pairs: List[BatchPair] = []
+        import re
         
-        # Find all intros
-        intros = list(self.directory.glob("*_intro.mp4"))
+        # Get all video files
+        videos = []
+        try:
+            # Try to import VIDEO_EXTENSIONS, fallback if fails
+            from .config import VIDEO_EXTENSIONS
+        except ImportError:
+            VIDEO_EXTENSIONS = [".mp4", ".mov", ".mkv", ".avi", ".webm"]
+            
+        for ext in VIDEO_EXTENSIONS:
+            videos.extend(list(self.directory.glob(f"*{ext}")))
+            
+        # Normalize names for easier matching (stem only)
+        # We look for "intro" in the name
+        intros = [p for p in videos if "intro" in p.stem.lower()]
         
         for intro in intros:
-            # Extract common name
-            # pattern: name_intro.mp4 -> name
-            name = intro.stem.replace("_intro", "")
+            intro_stem = intro.stem.lower()
             
-            # Check for corresponding loop
-            loop_name = f"{name}_loop.mp4"
-            loop = intro.parent / loop_name
+            # Determine the "base name" by removing "intro"
+            # Strategies:
+            # 1. Replace "_intro" -> ""
+            # 2. Replace "intro" -> ""
             
-            if loop.exists():
-                pairs.append(BatchPair(name, intro, loop))
+            base_name = ""
+            if "_intro" in intro_stem:
+                base_name = intro_stem.replace("_intro", "")
+            else:
+                base_name = intro_stem.replace("intro", "")
+                
+            base_name = base_name.strip(" _-")
+            
+            # Now look for a corresponding loop
+            # The loop should have the same base name and contain "loop"
+            
+            best_loop = None
+            
+            for video in videos:
+                if video == intro:
+                    continue
+                    
+                vid_stem = video.stem.lower()
+                if "loop" not in vid_stem:
+                    continue
+                    
+                # Check base name match
+                # If we detected a base_name, check if this video matches it
+                if base_name:
+                    if base_name in vid_stem:
+                        # Found a candidate. 
+                        # To be strict: removing "loop" should yield similar base name
+                        if "_loop" in vid_stem:
+                             vid_base = vid_stem.replace("_loop", "")
+                        else:
+                             vid_base = vid_stem.replace("loop", "")
+                        
+                        vid_base = vid_base.strip(" _-")
+                        
+                        if vid_base == base_name:
+                            best_loop = video
+                            break
+                else:
+                    # If base name was empty (e.g. "intro.mp4"), look for "loop.mp4"
+                    if vid_stem == "loop" or vid_stem == "_loop":
+                        best_loop = video
+                        break
+            
+            if best_loop:
+                # Use the original case name for display
+                # We can construct a display name from the common prefix
+                display_name = base_name if base_name else "Video"
+                
+                # Avoid duplicates?
+                # For now simple logic.
+                pair = BatchPair(display_name, intro, best_loop)
+                pairs.append(pair)
                 
         return sorted(pairs, key=lambda x: x.name)
