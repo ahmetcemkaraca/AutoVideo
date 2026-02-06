@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 YouTube Data API v3 client for video uploads.
+
+Production-ready v1.0.0:
+- Metadata validation (title, description length)
+- Improved upload progress tracking
+- Better error handling with retry logic
+- Enhanced chunking for large files (5MB chunks)
 """
 
 import os
@@ -17,6 +23,37 @@ from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Constants
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+# YouTube category IDs
+CATEGORY_MUSIC = "10"
+CATEGORY_ENTERTAINMENT = "24"
+CATEGORY_PEOPLE_BLOGS = "22"
+
+# Retry settings
+MAX_RETRIES = 10
+RETRIABLE_STATUS_CODES = [500, 502, 503, 504]
+
+# Validation limits
+MAX_TITLE_LENGTH = 100
+MAX_DESCRIPTION_LENGTH = 5000
+MAX_TAGS_COUNT = 500
+
+
+class YouTubeUploadError(Exception):
+    """Exception raised when YouTube upload fails."""
+    pass
+
+
+class ValidationError(YouTubeUploadError):
+    """Exception raised for validation errors."""
+    pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -101,6 +138,37 @@ class YouTubeUploader:
         self.youtube = build("youtube", "v3", credentials=creds)
         return True
     
+    def _validate_metadata(self, title: str, description: str, tags: List[str]) -> None:
+        """
+        Validate video metadata before upload.
+
+        Args:
+            title: Video title
+            description: Video description
+            tags: List of tags
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        if len(title) > MAX_TITLE_LENGTH:
+            raise ValidationError(
+                f"Title too long: {len(title)} characters (max: {MAX_TITLE_LENGTH})"
+            )
+
+        if len(description) > MAX_DESCRIPTION_LENGTH:
+            raise ValidationError(
+                f"Description too long: {len(description)} characters (max: {MAX_DESCRIPTION_LENGTH})"
+            )
+
+        if len(tags) > MAX_TAGS_COUNT:
+            raise ValidationError(
+                f"Too many tags: {len(tags)} tags (max: {MAX_TAGS_COUNT})"
+            )
+
+        # Check for empty required fields
+        if not title or not title.strip():
+            raise ValidationError("Title cannot be empty")
+
     def upload_video(
         self,
         video_path: Path,
@@ -112,32 +180,44 @@ class YouTubeUploader:
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> Optional[str]:
         """
-        Upload a video to YouTube.
-        
+        Upload a video to YouTube with improved validation and progress tracking.
+
         Args:
             video_path: Path to video file
             title: Video title (max 100 chars)
             description: Video description (max 5000 chars)
-            tags: List of tags
+            tags: List of tags (max 500)
             category_id: YouTube category ID
             privacy_status: public, private, or unlisted
             progress_callback: Optional callback(bytes_uploaded, total_bytes)
-            
+
         Returns:
             Video ID if successful, None otherwise
+
+        Raises:
+            RuntimeError: If not authenticated
+            FileNotFoundError: If video file not found
+            ValidationError: If metadata validation fails
+            YouTubeUploadError: If upload fails
         """
         if not self.youtube:
             raise RuntimeError("Not authenticated. Call authenticate() first.")
-        
+
         if not video_path.exists():
             raise FileNotFoundError(f"Video file not found: {video_path}")
-        
-        # Prepare metadata
+
+        # Validate metadata
+        try:
+            self._validate_metadata(title, description, tags)
+        except ValidationError as e:
+            raise YouTubeUploadError(f"Metadata validation failed: {e}") from e
+
+        # Prepare metadata (truncate to limits)
         body = {
             "snippet": {
-                "title": title[:100],
-                "description": description[:5000],
-                "tags": tags[:500],  # Max 500 tags
+                "title": title[:MAX_TITLE_LENGTH].strip(),
+                "description": description[:MAX_DESCRIPTION_LENGTH],
+                "tags": tags[:MAX_TAGS_COUNT],
                 "categoryId": category_id,
             },
             "status": {
@@ -145,27 +225,26 @@ class YouTubeUploader:
                 "selfDeclaredMadeForKids": False,
             }
         }
-        
-        # Create media upload
+
+        # Create media upload with 5MB chunks for better reliability
         media = MediaFileUpload(
             str(video_path),
             mimetype="video/*",
             resumable=True,
-            chunksize=1024 * 1024  # 1MB chunks
+            chunksize=1024 * 1024 * 5  # 5MB chunks (increased from 1MB)
         )
-        
+
         # Create request
         request = self.youtube.videos().insert(
             part="snippet,status",
             body=body,
             media_body=media
         )
-        
+
         # Execute with retry
         video_id = None
         response = None
-        
-        # Execute
+
         try:
             status, response = None, None
             while response is None:
@@ -174,13 +253,15 @@ class YouTubeUploader:
                     progress_callback(status.resumable_progress, status.total_size)
         except HttpError as e:
             if e.resp.status in RETRIABLE_STATUS_CODES:
-                 # Let the caller (upload_with_exponential_backoff) handle retries
-                 raise
-            raise
-        
+                # Let the caller (upload_with_exponential_backoff) handle retries
+                raise
+            raise YouTubeUploadError(f"YouTube API error: {e}") from e
+        except Exception as e:
+            raise YouTubeUploadError(f"Upload failed: {e}") from e
+
         if response:
             video_id = response.get("id")
-        
+
         return video_id
     
     def set_thumbnail(
