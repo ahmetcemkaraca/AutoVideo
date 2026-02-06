@@ -1,5 +1,6 @@
 google-api-python-client
 google-auth-httplib2
+httplib2>=0.22.0
 google-auth-oauthlib
 rich
 textual
@@ -12,6 +13,10 @@ colorlog>=6.7.0
 # DevOps integration
 psutil>=5.9.0
 pydantic>=2.0.0
+
+# Security
+cryptography>=41.0.0
+pywin32>=305; sys_platform == 'win32'  # Windows file permission support
 
 # Testing
 pytest>=7.4.0
