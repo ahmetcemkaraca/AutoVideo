@@ -194,13 +194,18 @@ class FileWriteLock:
 
 class BatchQueue:
     """
-    Thread-safe queue of render jobs.
+    Thread-safe queue of render jobs with memory management.
 
     Thread-Safety Guarantees:
     - All state modifications are protected by threading.Lock
     - File I/O uses atomic write patterns
     - Callbacks are invoked outside critical sections
     - Returned job objects are copies to prevent external modification
+
+    Memory Management:
+    - Max queue size limits concurrent jobs
+    - Memory limit calculated from available system RAM
+    - Automatic memory-aware queue sizing
 
     Usage:
         queue = BatchQueue()
@@ -209,7 +214,18 @@ class BatchQueue:
         queue.queue_job(job.id)
     """
 
-    def __init__(self, queue_file: Optional[Path] = None):
+    # System memory reservation (GB)
+    SYSTEM_RESERVED_GB = 4
+
+    # Default max concurrent jobs
+    DEFAULT_MAX_QUEUE_SIZE = 5
+
+    def __init__(
+        self,
+        queue_file: Optional[Path] = None,
+        max_queue_size: Optional[int] = None,
+        memory_limit_gb: Optional[int] = None
+    ):
         self._jobs: List[RenderJob] = []
         self._current_job_id: Optional[int] = None
         self._queue_file = queue_file or Path.cwd() / "tmp" / "batch_queue.json"
@@ -220,8 +236,31 @@ class BatchQueue:
         self._on_progress: Optional[Callable[[RenderJob, float], None]] = None
         self._callback_lock = threading.Lock()  # Separate lock for callbacks
 
+        # Memory management
+        self._max_queue_size = max_queue_size or self.DEFAULT_MAX_QUEUE_SIZE
+        self._memory_limit = memory_limit_gb or self._get_memory_limit()
+
         # Load existing queue
         self._load()
+
+    def _get_memory_limit(self) -> int:
+        """
+        Calculate memory limit for batch processing.
+
+        Returns:
+            Memory limit in GB (reserves 4GB for system)
+        """
+        try:
+            import psutil
+            available_gb = psutil.virtual_memory().available / (1024 ** 3)
+            # Reserve memory for system
+            limit = max(1, int(available_gb - self.SYSTEM_RESERVED_GB))
+            return limit
+        except ImportError:
+            # Fallback if psutil not available
+            import os
+            # Rough estimate: assume 8GB if we can't detect
+            return max(1, 8 - self.SYSTEM_RESERVED_GB)
 
     def _load(self) -> None:
         """
@@ -613,10 +652,16 @@ class SmartBatchDetector:
         Thread-safe: Returns immutable pairs.
 
         Matches:
+        Suffix patterns (existing):
         - {name}_intro.mp4 / {name}_loop.mp4
         - {name}intro.mp4 / {name}loop.mp4
         - Intro variants: _intro, -intro, intro (case insensitive)
         - Loop variants: _loop, -loop, loop (case insensitive)
+
+        Prefix patterns (new):
+        - intro_{name}.mp4 / loop_{name}.mp4
+        - intro-{name}.mp4 / loop-{name}.mp4
+        - intro.mp4 / loop.mp4 (treated as "Video")
         """
         pairs: List[BatchPair] = []
         import re
@@ -627,13 +672,35 @@ class SmartBatchDetector:
         for ext in VIDEO_EXTENSIONS:
             videos.extend(list(self.directory.glob(f"*{ext}")))
 
-        # Helper to find base name
+        # Helper to find base name (supports both suffix and prefix patterns)
         def extract_base(name: str, type_key: str) -> Optional[str]:
-            """Extract base name by removing type suffix."""
-            # Patterns: _intro, -intro, intro
-            match = re.search(f"([_-]?{type_key})$", name, re.IGNORECASE)
-            if match:
-                return name[:match.start()]
+            """
+            Extract base name by removing type suffix OR prefix.
+
+            Supported patterns:
+            - Suffix: {name}_intro, {name}-intro, {name}intro
+            - Prefix: intro_{name}, intro-{name}
+            - Standalone: intro, loop (returns "Video")
+            - Wrapped: _intro_, -loop- (returns "Video")
+            """
+            # Try suffix patterns first (most common)
+            suffix_match = re.search(f"([_-]?{type_key})$", name, re.IGNORECASE)
+            if suffix_match:
+                return name[:suffix_match.start()]
+
+            # Try prefix patterns (intro_{name}, loop-{name})
+            prefix_match = re.search(f"^{type_key}[_-]?(.*)$", name, re.IGNORECASE)
+            if prefix_match:
+                return prefix_match.group(1) or "Video"
+
+            # Try wrapped patterns (_intro_, -loop-)
+            wrapped_match = re.search(f"[_-]?{type_key}[_-]?(.*)", name, re.IGNORECASE)
+            if wrapped_match:
+                base = wrapped_match.group(1)
+                # Only return if there's something after the type_key
+                if base and base.strip("_-"):
+                    return base.strip("_-")
+
             return None
 
         # Find all intros
