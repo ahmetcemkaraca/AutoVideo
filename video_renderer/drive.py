@@ -15,13 +15,17 @@ import pickle
 import os.path
 import time
 import threading
+import secrets
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple, Callable
+import logging
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
+logger = logging.getLogger(__name__)
 
 # Scopes required for uploading
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -119,10 +123,13 @@ class DriveUploader:
                                 )
 
                             try:
+                                # Generate cryptographically secure state parameter
+                                state = secrets.token_urlsafe(16)
+
                                 print("Google Drive yetkilendirmesi baslatiliyor...")
                                 print("Lutfen asagidaki linke tiklayin ve onay kodunu yapistirin:")
                                 flow = InstalledAppFlow.from_client_secrets_file(
-                                    str(self.credentials_path), SCOPES)
+                                    str(self.credentials_path), SCOPES, state=state)
                                 # Use run_console to handle VPS scenario cleanly
                                 self.creds = flow.run_console()
                             except Exception as e:
