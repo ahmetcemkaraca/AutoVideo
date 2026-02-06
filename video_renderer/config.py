@@ -258,14 +258,19 @@ def detect_available_encoders(use_cache: bool = True, force_refresh: bool = Fals
     if not ffmpeg_path:
         return encoders
 
-    # First check if encoders are listed
+    # First check if encoders are listed (with word boundary matching to avoid false positives)
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True, text=True, timeout=10
         )
         output = result.stdout
-        listed_encoders = [enc for enc in encoders if enc in output]
+        # Use word boundary regex to avoid false positives (e.g., h264_nvenc vs h264_nvenc_old)
+        import re as _re
+        listed_encoders = [
+            enc for enc in encoders
+            if _re.search(rf'\b{re.escape(enc)}\b', output)
+        ]
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return encoders
 
@@ -569,3 +574,57 @@ class RamTestConfig:
     def get_hwaccel_args(self) -> list:
         """Get hardware acceleration args."""
         return get_hwaccel_input_args(self.high_vram)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Unified Render Mode Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class RenderModeConfig:
+    """Unified render mode configuration for TUI hybrid merge."""
+    mode: str = "standard"  # standard, ramtest, ramdisk, high_vram
+    use_ramdisk: bool = False
+    high_vram: bool = False
+    chunk_long_videos: bool = False
+    enable_memory_tracking: bool = False
+    enable_rate_limiting: bool = True
+
+    # GPU config
+    gpu_surfaces: int = 64
+    gpu_extra_frames: int = 8
+    gpu_lookahead: int = 32
+    gpu_decode_surfaces: int = 16
+
+
+def get_render_config(mode: str = "standard") -> RenderModeConfig:
+    """Factory function for render mode configs.
+
+    Args:
+        mode: Render mode - "standard", "ramtest", "ramdisk", "high_vram"
+
+    Returns:
+        RenderModeConfig instance with mode-specific settings
+    """
+    configs = {
+        "standard": RenderModeConfig(mode="standard"),
+        "ramtest": RenderModeConfig(
+            mode="ramtest",
+            use_ramdisk=True,
+            high_vram=True,
+            chunk_long_videos=True,
+            enable_memory_tracking=True
+        ),
+        "ramdisk": RenderModeConfig(
+            mode="ramdisk",
+            use_ramdisk=True
+        ),
+        "high_vram": RenderModeConfig(
+            mode="high_vram",
+            high_vram=True,
+            gpu_surfaces=128,
+            gpu_extra_frames=16,
+            gpu_lookahead=48
+        )
+    }
+    return configs.get(mode, configs["standard"])
