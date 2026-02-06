@@ -24,6 +24,7 @@ from textual.worker import Worker, get_current_worker
 from ..ffmpeg import FFmpegRunner, FFmpegProgress, get_duration
 from ..audio import AudioProcessor, mux_video_audio
 from ..video import VideoEncoder
+from ..config import get_render_config
 
 
 class RenderStep:
@@ -67,6 +68,10 @@ class RenderScreen(Screen):
         # Memory tracking
         self._memory_update_interval = 2.0  # Update every 2 seconds
         self._last_memory_update = 0
+
+        # Rate limiting (for all modes to prevent UI flooding)
+        self._update_interval = 0.1  # 100ms rate limiting
+        self._last_update_time = 0
 
     def compose(self) -> ComposeResult:
         # Mode indicator
@@ -207,17 +212,16 @@ class RenderScreen(Screen):
             pass  # Silently fail memory tracking
 
     def _update_step_status(self, step_name: str, status: str, progress: float = 0) -> None:
-        """Update step status (rate limited)."""
+        """Update step status with rate limiting to prevent UI flooding."""
         import time
 
         # Update memory info periodically
         self._update_memory_info()
 
-        # Simple rate limiting for "active" status updates
-        # Limit to 10 updates per second
+        # Rate limiting: check if enough time has passed since last update
         current_time = time.time()
         if status == "active" and hasattr(self, "_last_update_time"):
-            if current_time - self._last_update_time < 0.1:
+            if current_time - self._last_update_time < self._update_interval:
                 return
 
         self._last_update_time = current_time
