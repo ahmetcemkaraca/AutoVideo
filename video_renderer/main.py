@@ -627,6 +627,102 @@ def run_batch() -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Interactive Wizard - Helper Functions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def select_render_mode(videos: List[Tuple[Path, VideoInfo]]) -> str:
+    """
+    Let user select render mode.
+
+    Args:
+        videos: List of available video files with their info
+
+    Returns:
+        "intro_loop" for intro+loop mode, "single" for single video mode
+    """
+    mode_idx = ask_choice("Render modu", ["Intro + Loop", "Tek Video (sesi degistir)"], 1)
+    return "intro_loop" if mode_idx == 1 else "single"
+
+
+def select_videos_for_mode(mode: str, videos: List[Tuple[Path, VideoInfo]]) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
+    """
+    Select video files based on render mode.
+
+    Args:
+        mode: Render mode ("intro_loop" or "single")
+        videos: List of available video files with their info
+
+    Returns:
+        Tuple of (intro_path, loop_path, single_video_path)
+        Paths that are not relevant to the mode will be None
+    """
+    intro_path = None
+    loop_path = None
+    single_video_path = None
+
+    if mode == "single":
+        single_idx = ask_int("VIDEO hangisi?", 1, len(videos))
+        single_video_path, single_info = videos[single_idx - 1]
+        print_video_info_panel("VIDEO", single_video_path, single_info)
+    else:
+        # Select intro/loop
+        intro_idx = ask_int("INTRO hangisi?", 1, len(videos))
+        loop_idx = ask_int("LOOP hangisi?", 1, len(videos))
+
+        if intro_idx == loop_idx:
+            print_error("Intro ve loop ayni dosya olamaz!")
+            raise ValueError("Intro and loop cannot be the same file")
+
+        intro_path, intro_info = videos[intro_idx - 1]
+        loop_path, loop_info = videos[loop_idx - 1]
+
+        # Show detailed info
+        print_video_info_panel("INTRO", intro_path, intro_info)
+        print_video_info_panel("LOOP", loop_path, loop_info)
+
+    return intro_path, loop_path, single_video_path
+
+
+def get_output_filename(mode: str, single_video_path: Optional[Path], codec_family: str, dur_str: str) -> Path:
+    """
+    Get output filename from user or generate default.
+
+    Args:
+        mode: Render mode ("intro_loop" or "single")
+        single_video_path: Path to single video (if single mode)
+        codec_family: Codec family name
+        dur_str: Formatted duration string
+
+    Returns:
+        Resolved Path object for output file
+    """
+    console.print()
+    base = Path.cwd()
+
+    if mode == "single" and single_video_path:
+        base_name = single_video_path.stem
+        default_out = f"final_{base_name}_{codec_family}.mp4"
+    else:
+        default_out = f"final_{codec_family}_{dur_str.replace(':', 'h', 1).replace(':', 'm')}s.mp4"
+
+    out_name = ask_text("Cikti dosyasi adi", default_out)
+
+    # Sanitize filename (Fix for user copy-paste errors)
+    import re
+    safe_name = re.sub(r'[^\w\-. ]', '', out_name).strip()
+    if not safe_name:
+        safe_name = "output.mp4"
+    if not safe_name.lower().endswith(".mp4"):
+        safe_name += ".mp4"
+
+    if safe_name != out_name:
+        print_warning(f"Dosya adi duzeltildi: '{out_name}' -> '{safe_name}'")
+        out_name = safe_name
+
+    return (base / out_name).resolve()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Interactive Wizard
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -688,34 +784,12 @@ def run_interactive() -> int:
             return 2
         
         print_video_table(videos)
-        
+
         # Select render mode
-        mode_idx = ask_choice("Render modu", ["Intro + Loop", "Tek Video (sesi degistir)"], 1)
-        mode = "intro_loop" if mode_idx == 1 else "single"
+        mode = select_render_mode(videos)
 
-        intro_path = None
-        loop_path = None
-        single_video_path = None
-
-        if mode == "single":
-            single_idx = ask_int("VIDEO hangisi?", 1, len(videos))
-            single_video_path, single_info = videos[single_idx - 1]
-            print_video_info_panel("VIDEO", single_video_path, single_info)
-        else:
-            # Select intro/loop
-            intro_idx = ask_int("INTRO hangisi?", 1, len(videos))
-            loop_idx = ask_int("LOOP hangisi?", 1, len(videos))
-            
-            if intro_idx == loop_idx:
-                print_error("Intro ve loop ayni dosya olamaz!")
-                return 2
-            
-            intro_path, intro_info = videos[intro_idx - 1]
-            loop_path, loop_info = videos[loop_idx - 1]
-            
-            # Show detailed info
-            print_video_info_panel("INTRO", intro_path, intro_info)
-            print_video_info_panel("LOOP", loop_path, loop_info)
+        # Select videos based on mode
+        intro_path, loop_path, single_video_path = select_videos_for_mode(mode, videos)
         
         # ──────────────────────────────────────────────────────────────
         # Configuration Mode
@@ -1069,27 +1143,7 @@ def run_interactive() -> int:
                 drive_enabled = False
 
         # Output filename
-        console.print()
-        if mode == "single" and single_video_path:
-            base_name = single_video_path.stem
-            default_out = f"final_{base_name}_{codec_family}.mp4"
-        else:
-            default_out = f"final_{codec_family}_{dur_str.replace(':', 'h', 1).replace(':', 'm')}s.mp4"
-        out_name = ask_text("Cikti dosyasi adi", default_out)
-        
-        # Sanitize filename (Fix for user copy-paste errors)
-        import re
-        safe_name = re.sub(r'[^\w\-. ]', '', out_name).strip()
-        if not safe_name:
-            safe_name = "output.mp4"
-        if not safe_name.lower().endswith(".mp4"):
-            safe_name += ".mp4"
-            
-        if safe_name != out_name:
-            print_warning(f"Dosya adi duzeltildi: '{out_name}' -> '{safe_name}'")
-            out_name = safe_name
-            
-        out_path = (base / out_name).resolve()
+        out_path = get_output_filename(mode, single_video_path, codec_family, dur_str)
         
         # Post action
         console.print()
