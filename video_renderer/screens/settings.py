@@ -12,7 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Static, Button, Footer, Input, RadioSet, RadioButton, Label, Checkbox
 from textual.containers import Container, Vertical, Horizontal
 
-from ..config import detect_available_encoders, get_best_encoder
+from ..config import detect_available_encoders, get_best_encoder, get_render_config
 from ..ffmpeg import get_duration
 
 
@@ -186,7 +186,7 @@ class SettingsScreen(Screen):
         self._init_mode_options()
 
     def _init_mode_options(self) -> None:
-        """Initialize mode-specific options if available."""
+        """Initialize mode-specific options from mode_config."""
         if self.mode_config and self.app_mode in ["ramtest", "ramdisk"]:
             try:
                 # Set checkbox values from mode_config
