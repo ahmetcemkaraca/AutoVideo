@@ -1026,5 +1026,10 @@ def mux_video_audio(
         str(output),
     ]
 
-    runner.run(cmd, capture_progress=bool(progress_callback))
+    # Calculate timeout based on video duration
+    # For muxing with -c:v copy, use generous timeout (no progress updates during fast copy)
+    # Base: 10 min + 2 min per hour of video
+    mux_timeout = 600 + (video_duration / 3600) * 120  # seconds
+
+    runner.run(cmd, capture_progress=bool(progress_callback), timeout=mux_timeout)
     return output

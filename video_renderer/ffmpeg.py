@@ -231,7 +231,7 @@ class FFmpegRunner:
 
         return fallback_cmd if fallback_cmd != cmd else None
 
-    def run(self, cmd: List[str], capture_progress: bool = True) -> subprocess.CompletedProcess:
+    def run(self, cmd: List[str], capture_progress: bool = True, timeout: Optional[float] = None) -> subprocess.CompletedProcess:
         """
         OPTIMIZED: Run an FFmpeg command with retry and fallback support.
 
@@ -241,10 +241,12 @@ class FFmpegRunner:
         - Enhanced error reporting with both HW and SW error details
         - Memory-efficient streaming output handling
         - Thread-safe progress callbacks
+        - Dynamic timeout based on operation duration
 
         Args:
             cmd: Command and arguments
             capture_progress: If True, parse and report progress
+            timeout: Read timeout in seconds (None for auto-calculate based on duration)
 
         Returns:
             CompletedProcess result
@@ -260,7 +262,7 @@ class FFmpegRunner:
         # First attempt: Hardware encoding
         hw_stderr = None
         try:
-            return self._run_once(cmd, capture_progress)
+            return self._run_once(cmd, capture_progress, timeout)
         except subprocess.CalledProcessError as e:
             hw_stderr = e.stderr or "\n".join(self._stderr_buffer)
             # Check if this is a hardware failure that merits fallback
@@ -272,7 +274,7 @@ class FFmpegRunner:
                 if fallback_cmd:
                     print(f"[WARN] {reason}. Falling back to software encoding...")
                     try:
-                        return self._run_once(fallback_cmd, capture_progress)
+                        return self._run_once(fallback_cmd, capture_progress, timeout)
                     except subprocess.CalledProcessError as e2:
                         # Third attempt: Both failed, raise with detailed error
                         sw_stderr = e2.stderr or "\n".join(self._stderr_buffer)
@@ -288,11 +290,16 @@ class FFmpegRunner:
         # Shouldn't reach here
         raise subprocess.CalledProcessError(1, cmd)
 
-    def _run_once(self, cmd: List[str], capture_progress: bool) -> subprocess.CompletedProcess:
+    def _run_once(self, cmd: List[str], capture_progress: bool, timeout: Optional[float] = None) -> subprocess.CompletedProcess:
         """
         Single FFmpeg execution attempt.
 
         OPTIMIZED: Uses streaming readline to avoid loading entire stderr into memory.
+
+        Args:
+            cmd: FFmpeg command
+            capture_progress: Whether to parse progress
+            timeout: Read timeout in seconds (None for auto-calculate)
         """
         # Run with progress parsing
         process = subprocess.Popen(
@@ -307,10 +314,20 @@ class FFmpegRunner:
         self._stderr_buffer.clear()
 
         # FFmpeg writes progress to stderr
-        # Fixed: Add timeout mechanism to prevent indefinite hangs
+        # Fixed: Dynamic timeout mechanism based on operation duration
         import time as time_module
         start_time = time_module.time()
-        read_timeout = 300  # 5 minutes timeout for reads
+
+        # Auto-calculate timeout if not provided
+        if timeout is None:
+            # Use total duration if available, otherwise default to 5 minutes
+            if self._total_duration:
+                # For long videos, allow more time without progress
+                # Base: 5 min + 1 min per hour of video
+                timeout = 300 + (self._total_duration / 60) * 60
+            else:
+                timeout = 300  # 5 minutes default for unknown duration
+        read_timeout = timeout
 
         while True:
             # Check if process has terminated
