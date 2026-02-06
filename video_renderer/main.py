@@ -1499,7 +1499,15 @@ Ornekler:
         help="Smart Batch modu - Otomatik intro/loop ciftlerini tespit et ve sirali render yap"
     )
 
-    # Unified render mode flags
+    # Unified render mode selection
+    parser.add_argument(
+        "--mode",
+        choices=["standard", "ramtest", "ramdisk", "high_vram"],
+        default="standard",
+        help="Render mode (standard, ramtest, ramdisk, high_vram)"
+    )
+
+    # Unified render mode flags (aliases for --mode)
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
         "--rm", "--ramtest",
@@ -1520,10 +1528,11 @@ Ornekler:
 
     args = parser.parse_args()
 
-    # Determine unified mode
-    mode: str = "standard"
+    # Determine unified mode (--mode takes priority over legacy flags)
+    mode: str = args.mode
     mode_info = ""
 
+    # Legacy flag support (--rm, --ramdisk, --high-vram override --mode)
     if args.ramtest:
         mode = "ramtest"
         mode_info = "[RAMTEST] RAM-optimizasyon modu aktif"
@@ -1533,6 +1542,8 @@ Ornekler:
     elif args.high_vram:
         mode = "high_vram"
         mode_info = "[HIGHVRAM] Yüksek VRAM modu aktif"
+    elif mode != "standard":
+        mode_info = f"[{mode.upper()}] {mode} modu aktif"
 
     # Print mode info
     if mode != "standard":
