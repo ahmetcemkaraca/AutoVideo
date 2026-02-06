@@ -403,7 +403,25 @@ def get_duration(path: Path) -> float:
         return 0.0
 
 
-def write_concat_list(files: List[Path], output_path: Path) -> None:
-    """Write a concat demuxer file list."""
-    lines = [f"file '{p.resolve().as_posix()}'" for p in files]
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+def write_concat_list(files: List[Path], output_path: Path, repeat_count: int = 1) -> None:
+    """
+    Write a concat demuxer file list.
+
+    Memory-efficient version that writes directly to file without creating
+    large lists in memory when repeat_count is high.
+
+    Args:
+        files: List of file paths to include
+        output_path: Path to write the concat list
+        repeat_count: Number of times to repeat the file list (default: 1)
+    """
+    if repeat_count == 1:
+        # Simple case: just write the list once
+        lines = [f"file '{p.resolve().as_posix()}'" for p in files]
+        output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    else:
+        # Memory-efficient: write directly to file in chunks
+        with open(output_path, "w", encoding="utf-8") as f:
+            for _ in range(repeat_count):
+                for file_path in files:
+                    f.write(f"file '{file_path.resolve().as_posix()}'\n")

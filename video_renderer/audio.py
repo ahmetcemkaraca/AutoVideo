@@ -16,11 +16,39 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Callable, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .ffmpeg import FFmpegRunner, FFmpegProgress, get_duration, write_concat_list
+import json
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Audio Utilities
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# Custom exception for audio processing errors
+class AudioProcessingError(Exception):
+    """Raised when audio processing fails."""
+    pass
+
+
+def get_duration_safe(path: Path) -> Optional[float]:
+    """
+    Get duration with error handling for corrupted files.
+
+    Args:
+        path: Path to audio file
+
+    Returns:
+        Duration in seconds, or None if failed
+    """
+    import subprocess
+    try:
+        return get_duration(path)
+    except subprocess.TimeoutExpired:
+        print(f"[WARN] Timeout getting duration for {path.name}")
+        return None
+    except Exception as e:
+        print(f"[WARN] Failed to get duration for {path.name}: {e}")
+        return None
+
 
 def is_background_file(path: Path) -> bool:
     """
@@ -72,7 +100,168 @@ class AudioProcessor:
         # Cache for validated files to avoid re-processing
         self._validated_cache: Set[str] = set()
     
-    def validate_and_convert_track(self, track: Path, use_cache: bool = True) -> Tuple[Path, bool, str]:
+    def _get_audio_channels(self, file_path: Path) -> int:
+        """
+        Detect audio channel count from file.
+
+        Args:
+            file_path: Path to audio file
+
+        Returns:
+            Number of audio channels (1 for mono, 2 for stereo, etc.)
+        """
+        import subprocess
+        import json
+
+        try:
+            cmd = [
+                "ffprobe", "-v", "quiet", "-show_streams",
+                "-select_streams", "a", "-of", "json", str(file_path)
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            data = json.loads(result.stdout)
+
+            if data.get("streams"):
+                return int(data["streams"][0].get("channels", 2))
+
+        except Exception as e:
+            print(f"[DEBUG] Failed to detect channels for {file_path.name}: {e}")
+
+        return 2  # Default to stereo
+
+    def _extract_metadata(self, track: Path) -> dict:
+        """
+        Extract metadata from audio file.
+
+        Args:
+            track: Path to audio file
+
+        Returns:
+            Dictionary with title, artist, album, and cover art data
+        """
+        import subprocess
+        import json
+
+        metadata = {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover_data": None
+        }
+
+        try:
+            cmd = [
+                "ffprobe", "-v", "quiet",
+                "-show_format", "-show_streams",
+                "-of", "json", str(track)
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            data = json.loads(result.stdout)
+
+            # Extract text metadata
+            tags = data.get("format", {}).get("tags", {})
+            metadata["title"] = tags.get("title", "") or tags.get("TITLE", "")
+            metadata["artist"] = tags.get("artist", "") or tags.get("ARTIST", "")
+            metadata["album"] = tags.get("album", "") or tags.get("ALBUM", "")
+
+            # Check for embedded cover art (usually in stream 0 for audio files)
+            for stream in data.get("streams", []):
+                if stream.get("codec_name") == "mjpeg" or stream.get("codec_name") == "png":
+                    # Extract cover art
+                    try:
+                        cover_cmd = [
+                            "ffmpeg", "-y", "-i", str(track),
+                            "-map", f"0:{stream.get('index')}",
+                            "-c:v", "copy",
+                            "-frames:v", "1",
+                            str(self.tmp_dir / "cover.jpg")
+                        ]
+                        subprocess.run(cover_cmd, capture_output=True, check=True, timeout=30)
+
+                        cover_path = self.tmp_dir / "cover.jpg"
+                        if cover_path.exists():
+                            with open(cover_path, "rb") as f:
+                                metadata["cover_data"] = f.read()
+                            cover_path.unlink()  # Clean up temp file
+                    except Exception:
+                        pass
+                    break
+
+        except Exception as e:
+            print(f"[DEBUG] Failed to extract metadata from {track.name}: {e}")
+
+        return metadata
+
+    def _apply_metadata(self, audio_file: Path, metadata: dict) -> bool:
+        """
+        Apply metadata to audio file.
+
+        Args:
+            audio_file: Path to audio file
+            metadata: Dictionary with title, artist, album, cover_data
+
+        Returns:
+            True if metadata was applied successfully, False otherwise
+        """
+        import subprocess
+
+        if not any(metadata.values()):
+            return False
+
+        try:
+            # Create temp file for metadata application
+            temp_output = self.tmp_dir / f"meta_{audio_file.name}"
+
+            cmd = ["ffmpeg", "-y", "-i", str(audio_file)]
+
+            # Add metadata tags
+            for key, value in metadata.items():
+                if key == "cover_data":
+                    continue  # Handle cover art separately
+                if value:
+                    cmd.extend(["-metadata", f"{key}={value}"])
+
+            # Copy audio codec
+            cmd.extend(["-c:a", "copy", "-map", "0:a:0"])
+
+            # Add cover art if available
+            if metadata.get("cover_data"):
+                cover_path = self.tmp_dir / "temp_cover.jpg"
+                try:
+                    with open(cover_path, "wb") as f:
+                        f.write(metadata["cover_data"])
+
+                    cmd.extend([
+                        "-i", str(cover_path),
+                        "-map", "1:v:0",
+                        "-c:v", "copy",
+                        "-id3v2_version", "3",
+                        "-metadata:s:v", "title=Album cover",
+                        "-metadata:s:v", "comment=Cover (front)"
+                    ])
+                except Exception:
+                    pass
+
+            cmd.extend(["-f", self.INTERMEDIATE_FORMAT, str(temp_output)])
+
+            subprocess.run(cmd, capture_output=True, check=True, timeout=120)
+
+            # Replace original with metadata-tagged file
+            import shutil
+            shutil.move(str(temp_output), str(audio_file))
+
+            # Clean up temp cover if it exists
+            cover_path = self.tmp_dir / "temp_cover.jpg"
+            if cover_path.exists():
+                cover_path.unlink()
+
+            return True
+
+        except Exception as e:
+            print(f"[DEBUG] Failed to apply metadata to {audio_file.name}: {e}")
+            return False
+
+    def validate_and_convert_track(self, track: Path, use_cache: bool = True, preserve_metadata: bool = True) -> Tuple[Path, bool, str]:
         """
         OPTIMIZED: Validate and convert a single audio track.
 
@@ -81,6 +270,12 @@ class AudioProcessor:
         - Optimized FFmpeg command with better error handling
         - Streaming output to reduce memory usage
         - Detailed error messages
+        - Optional metadata preservation
+
+        Args:
+            track: Input audio file path
+            use_cache: Whether to use caching
+            preserve_metadata: Whether to preserve metadata (artist, album, cover)
 
         Returns:
             Tuple of (output_path, success, error_message)
@@ -88,7 +283,9 @@ class AudioProcessor:
         import subprocess
 
         safe_name = re.sub(r"[^a-zA-Z0-9_.+-]+", "_", track.stem)
-        cache_key = f"{track.name}_{track.stat().st_mtime}"
+        # Use size + mtime combination for better cache invalidation
+        stat = track.stat()
+        cache_key = f"{track.name}_{stat.st_size}_{stat.st_mtime}"
         output = self.tmp_dir / f"validated_{safe_name}.{self.INTERMEDIATE_FORMAT}"
 
         # Check cache
@@ -101,6 +298,14 @@ class AudioProcessor:
                 self._validated_cache.add(cache_key)
             return output, True, ""
 
+        # Extract metadata before conversion if preservation is enabled
+        metadata = {}
+        if preserve_metadata:
+            metadata = self._extract_metadata(track)
+
+        # Detect original channel count to preserve it
+        channels = self._get_audio_channels(track)
+
         # Optimized FFmpeg command for audio validation
         cmd = [
             "ffmpeg", "-y", "-hide_banner",
@@ -108,7 +313,7 @@ class AudioProcessor:
             "-i", str(track),
             "-c:a", self.INTERMEDIATE_CODEC,
             "-ar", str(self.SAMPLE_RATE),
-            "-ac", "2",  # Stereo
+            "-ac", str(channels),  # Preserve original channels (mono/stereo)
             "-map_metadata", "-1",  # Strip metadata for faster processing
             "-f", self.INTERMEDIATE_FORMAT,
             str(output)
@@ -133,6 +338,10 @@ class AudioProcessor:
             # Verify output exists and has content
             if not output.exists() or output.stat().st_size < 1000:
                 return track, False, f"Cikti dosyasi gecersiz: {track.name}"
+
+            # Re-apply metadata if preservation was requested
+            if preserve_metadata and any(metadata.values()):
+                self._apply_metadata(output, metadata)
 
             # Add to cache
             if use_cache:
@@ -232,12 +441,86 @@ class AudioProcessor:
 
         return valid, invalid
     
+    def _trim_silence(self, track: Path, output: Path) -> bool:
+        """
+        Trim silence from the beginning and end of an audio track.
+
+        Uses FFmpeg's silencedetect and atrim filters to remove silence.
+
+        Args:
+            track: Input audio file
+            output: Output audio file path
+
+        Returns:
+            True if trimming was successful, False otherwise
+        """
+        import subprocess
+        import json
+
+        try:
+            # Detect silence at the beginning
+            detect_cmd = [
+                "ffmpeg", "-y", "-i", str(track),
+                "-af", "silencedetect=noise=0.0001:duration=0.1",
+                "-f", "null", "-"
+            ]
+
+            result = subprocess.run(
+                detect_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False
+            )
+
+            # Parse silence detection output
+            silence_start = None
+            silence_end = None
+
+            for line in result.stderr.split('\n'):
+                if 'silence_start' in line:
+                    try:
+                        silence_start = float(line.split('silence_start:')[1].split()[0])
+                    except (IndexError, ValueError):
+                        pass
+                elif 'silence_end' in line:
+                    try:
+                        silence_end = float(line.split('silence_end:')[1].split()[0])
+                    except (IndexError, ValueError):
+                        pass
+
+            # If we detected significant silence at start or end, trim it
+            if silence_start is not None and silence_start > 0.1:
+                # Trim silence from start
+                trim_cmd = [
+                    "ffmpeg", "-y", "-i", str(track),
+                    "-af", f"atrim={silence_start}:",
+                    "-c:a", self.INTERMEDIATE_CODEC,
+                    "-ar", str(self.SAMPLE_RATE),
+                    str(output)
+                ]
+                subprocess.run(trim_cmd, capture_output=True, check=True, timeout=120)
+                return True
+
+            # No significant silence detected, just copy the file
+            import shutil
+            shutil.copy2(track, output)
+            return False
+
+        except Exception as e:
+            print(f"[WARN] Failed to trim silence from {track.name}: {e}")
+            # Fallback: just copy the file
+            import shutil
+            shutil.copy2(track, output)
+            return False
+
     def create_music_loop(
         self,
         tracks: List[Path],
         total_seconds: int,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
-        pre_validated: bool = False
+        pre_validated: bool = False,
+        trim_silence: bool = True
     ) -> Path:
         """
         OPTIMIZED: Create a looped music track from multiple tracks.
@@ -246,12 +529,14 @@ class AudioProcessor:
         - Optimized concat list generation
         - Better memory efficiency with streaming
         - Parallel validation option
+        - Optional silence trimming for smooth transitions
 
         Args:
             tracks: List of music tracks to loop (or pre-validated w64 files)
             total_seconds: Target duration
             progress_callback: Optional progress callback
             pre_validated: If True, tracks are already validated w64 files
+            trim_silence: If True, trim silence from track beginnings/ends
 
         Returns:
             Path to looped audio file
@@ -264,8 +549,23 @@ class AudioProcessor:
                 raise ValueError(f"Bozuk track'ler: {', '.join(invalid_names)}")
             tracks = valid_tracks
 
-        # Calculate total duration of all tracks
-        total_track_duration = sum(get_duration(t) for t in tracks)
+        # Optionally trim silence from tracks for smooth transitions
+        if trim_silence:
+            print(f"[AUDIO] Trimming silence from {len(tracks)} tracks...")
+            trimmed_tracks = []
+            for i, track in enumerate(tracks):
+                trimmed_path = self.tmp_dir / f"trimmed_{i}.{self.INTERMEDIATE_FORMAT}"
+                self._trim_silence(track, trimmed_path)
+                trimmed_tracks.append(trimmed_path)
+            tracks = trimmed_tracks
+
+        # Calculate total duration of all tracks (with error handling)
+        durations = [get_duration_safe(t) for t in tracks]
+        if None in durations:
+            corrupted = [tracks[i].name for i, d in enumerate(durations) if d is None]
+            raise AudioProcessingError(f"Bazi track'lerin suresi hesaplanamadi: {', '.join(corrupted)}")
+
+        total_track_duration = sum(durations)
 
         if total_track_duration <= 0:
             raise ValueError("Track'lerin toplam suresi 0 veya negatif!")
@@ -276,10 +576,9 @@ class AudioProcessor:
         print(f"[AUDIO] Looping {len(tracks)} tracks ({total_track_duration:.1f}s total) "
               f"{repeat_count} times for {total_seconds}s target")
 
-        # Create a repeated concat list (memory-efficient alternative to -stream_loop)
+        # Create a repeated concat list (memory-efficient)
         music_list = self.tmp_dir / "music_list.txt"
-        repeated_tracks = tracks * repeat_count
-        write_concat_list(repeated_tracks, music_list)
+        write_concat_list(tracks, music_list, repeat_count)
 
         output = self.tmp_dir / f"music_loop.{self.INTERMEDIATE_FORMAT}"
 
