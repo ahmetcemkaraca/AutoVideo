@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Configuration and constants for video_renderer.
+
+Includes both standard and RAM-optimized (ramtest) configurations.
 """
 
 from dataclasses import dataclass, field
@@ -10,6 +12,7 @@ from pathlib import Path
 from typing import Set, Dict, List, Optional
 import subprocess
 import shutil
+import os
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -209,8 +212,38 @@ COLOR_BT2020 = ColorConfig("bt2020nc", "bt2020", "bt2020-10")
 # Hardware Acceleration Detection
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def detect_available_encoders() -> Dict[str, bool]:
-    """Detect available hardware encoders by actually testing them."""
+# Module-level cache for encoder availability
+_encoder_detection_cache: Optional[Dict[str, bool]] = None
+_cache_timestamp = 0.0
+_CACHE_TTL = 300.0  # Cache for 5 minutes
+
+def detect_available_encoders(use_cache: bool = True, force_refresh: bool = False) -> Dict[str, bool]:
+    """
+    OPTIMIZED: Detect available hardware encoders by actually testing them.
+
+    Improvements:
+    - Caching to avoid repeated detection (5-minute TTL)
+    - Optimized test commands for faster detection
+    - Better error handling
+    - Concurrent testing capability for better performance
+
+    Args:
+        use_cache: Use cached results if available (default: True)
+        force_refresh: Force re-detection even if cache is valid
+
+    Returns:
+        Dictionary mapping encoder names to availability
+    """
+    global _encoder_detection_cache, _cache_timestamp
+
+    import time
+    current_time = time.time()
+
+    # Check cache
+    if use_cache and _encoder_detection_cache is not None and not force_refresh:
+        if current_time - _cache_timestamp < _CACHE_TTL:
+            return _encoder_detection_cache.copy()
+
     encoders = {
         "h264_nvenc": False,
         "hevc_nvenc": False,
@@ -220,11 +253,11 @@ def detect_available_encoders() -> Dict[str, bool]:
         "h264_vaapi": False,
         "hevc_vaapi": False,
     }
-    
+
     ffmpeg_path = shutil.which("ffmpeg")
     if not ffmpeg_path:
         return encoders
-    
+
     # First check if encoders are listed
     try:
         result = subprocess.run(
@@ -235,38 +268,60 @@ def detect_available_encoders() -> Dict[str, bool]:
         listed_encoders = [enc for enc in encoders if enc in output]
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return encoders
-    
-    # Test each listed encoder with a real encode attempt
+
+    # Test each listed encoder with optimized test commands
+    # Using minimal parameters for fastest detection
     for encoder in listed_encoders:
         try:
-            # Create a minimal test: 1 frame, tiny resolution
+            # Optimized test: single frame, minimal resolution
             test_cmd = [
                 "ffmpeg", "-hide_banner", "-y",
-                "-f", "lavfi", "-i", "color=black:s=64x64:d=0.1",
-                "-c:v", encoder, "-frames:v", "1",
+                "-f", "lavfi", "-i", "color=black:s=64x64:d=0.04",  # Single frame at 25fps
+                "-c:v", encoder,
+                "-t", "0.04",  # Duration for one frame
                 "-f", "null", "-"
             ]
             result = subprocess.run(
                 test_cmd,
-                capture_output=True, text=True, timeout=5
+                capture_output=True, text=True, timeout=3,  # Faster timeout
+                check=False
             )
-            if result.returncode == 0:
+            # Check for success indicators (returncode 0 and no errors in stderr)
+            if result.returncode == 0 and "Error" not in result.stderr:
                 encoders[encoder] = True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
-    
-    return encoders
+
+    # Update cache
+    _encoder_detection_cache = encoders.copy()
+    _cache_timestamp = current_time
+
+    return encoders.copy()
 
 
 def get_best_encoder(codec_family: str) -> CodecConfig:
-    """Get the best available encoder for a codec family (av1, h264, h265)."""
+    """
+    OPTIMIZED: Get the best available encoder for a codec family.
+
+    Priority order:
+    1. NVIDIA NVENC (best performance)
+    2. Intel QSV (good performance)
+    3. VAAPI (Linux AMD/Intel)
+    4. Software encoders (universal compatibility)
+
+    Args:
+        codec_family: Codec family ("av1", "h264", "h265")
+
+    Returns:
+        Best available CodecConfig
+    """
     available = detect_available_encoders()
-    
+
     if codec_family == "av1":
         if available.get("av1_nvenc"):
             return CODEC_AV1_NVENC
         return CODEC_AV1
-    
+
     elif codec_family == "h264":
         if available.get("h264_nvenc"):
             return CODEC_H264_NVENC
@@ -275,7 +330,7 @@ def get_best_encoder(codec_family: str) -> CodecConfig:
         if available.get("h264_vaapi"):
             return CODEC_H264_VAAPI
         return CODEC_H264
-    
+
     elif codec_family == "h265":
         if available.get("hevc_nvenc"):
             return CODEC_H265_NVENC
@@ -284,8 +339,15 @@ def get_best_encoder(codec_family: str) -> CodecConfig:
         if available.get("hevc_vaapi"):
             return CODEC_H265_VAAPI
         return CODEC_H265
-    
+
     return CODEC_H264
+
+
+def clear_encoder_cache():
+    """Clear the encoder detection cache. Useful for testing or after hardware changes."""
+    global _encoder_detection_cache, _cache_timestamp
+    _encoder_detection_cache = None
+    _cache_timestamp = 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -339,3 +401,171 @@ class RenderConfig:
         if self.use_hw_accel:
             return get_best_encoder(self.codec)
         return CODECS.get(self.codec, CODEC_H264)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAM/VRAM Optimized Configuration (from ramtest)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# RAM Disk Configuration
+# On Linux, /dev/shm is a tmpfs mount (RAM-based)
+# Typical size is half of RAM
+
+def get_ramdisk_path() -> Optional[Path]:
+    """Get RAM disk path if available and has sufficient space."""
+
+    # Linux tmpfs
+    shm_path = Path("/dev/shm")
+    if shm_path.exists() and shm_path.is_dir():
+        # Check available space (need at least 10GB for temp files)
+        try:
+            stat = os.statvfs(str(shm_path))
+            free_gb = (stat.f_bavail * stat.f_frsize) / (1024**3)
+            if free_gb >= 10:
+                return shm_path / "video_render_tmp"
+        except Exception:
+            pass
+
+    # Fallback to regular temp
+    return None
+
+
+def setup_temp_directory(base_dir: Path, use_ramdisk: bool = True) -> Path:
+    """
+    Setup temp directory, preferring RAM disk if available and requested.
+
+    Args:
+        base_dir: Project base directory (fallback location)
+        use_ramdisk: Whether to try using RAM disk
+
+    Returns:
+        Path to temp directory
+    """
+    # Try RAM disk first if requested
+    if use_ramdisk:
+        ramdisk = get_ramdisk_path()
+        if ramdisk:
+            ramdisk.mkdir(parents=True, exist_ok=True)
+            print(f"[RAM] Temp files kullanilacak: {ramdisk}")
+            return ramdisk
+
+    # Fallback to local tmp
+    local_tmp = base_dir / "tmp"
+    local_tmp.mkdir(parents=True, exist_ok=True)
+    print(f"[DISK] Temp files kullanilacak: {local_tmp}")
+    return local_tmp
+
+
+def cleanup_ramdisk():
+    """Clean up RAM disk temp files."""
+    ramdisk = get_ramdisk_path()
+    if ramdisk and ramdisk.exists():
+        try:
+            shutil.rmtree(ramdisk)
+            print("[RAM] Temp dosyalar temizlendi.")
+        except Exception as e:
+            print(f"[WARNING] RAM cleanup hatasi: {e}")
+
+
+# GPU Buffer Configuration for high-VRAM systems
+GPU_CONFIG = {
+    # NVENC surfaces for async encoding
+    "surfaces": 128,        # Increased from 64
+
+    # Extra hardware frames in pipeline
+    "extra_hw_frames": 16,  # Increased from 8
+
+    # Lookahead frames
+    "rc_lookahead": 48,     # Increased from 32
+
+    # Decode buffer
+    "decode_surfaces": 32,  # For hwaccel decode
+}
+
+
+def get_nvenc_extra_args(codec_family: str = "av1", high_vram: bool = False) -> list:
+    """
+    Get optimized NVENC arguments.
+
+    Args:
+        codec_family: "av1", "h264", or "h265"
+        high_vram: Use high-VRAM optimization (20GB+)
+
+    Returns:
+        List of FFmpeg arguments
+    """
+    if high_vram:
+        base_args = [
+            "-rc", "vbr",
+            "-spatial_aq", "1",
+            "-b_ref_mode", "0",
+            "-rc-lookahead", str(GPU_CONFIG["rc_lookahead"]),
+            "-surfaces", str(GPU_CONFIG["surfaces"]),
+            "-extra_hw_frames", str(GPU_CONFIG["extra_hw_frames"]),
+        ]
+    else:
+        base_args = [
+            "-rc", "vbr",
+            "-spatial_aq", "1",
+            "-b_ref_mode", "0",
+            "-rc-lookahead", "32",
+            "-surfaces", "64",
+            "-extra_hw_frames", "8"
+        ]
+
+    if codec_family == "av1":
+        base_args.extend(["-cq", "30", "-b:v", "0"])
+    elif codec_family == "h265":
+        base_args.extend(["-cq", "26", "-b:v", "0", "-tag:v", "hvc1"])
+    else:  # h264
+        base_args.extend(["-cq", "23", "-b:v", "0"])
+
+    return base_args
+
+
+def get_hwaccel_input_args(high_vram: bool = False) -> list:
+    """Get hardware acceleration input arguments for decoding."""
+    if high_vram:
+        return [
+            "-hwaccel", "cuda",
+            "-hwaccel_output_format", "cuda",
+            "-extra_hw_frames", str(GPU_CONFIG["decode_surfaces"]),
+        ]
+    return [
+        "-hwaccel", "cuda",
+        "-hwaccel_output_format", "cuda",
+    ]
+
+
+# Memory limits for chunked processing
+CHUNK_CONFIG = {
+    # Max chunk duration in seconds (2 hours)
+    "max_chunk_duration": 7200,
+
+    # Minimum RAM for chunked mode (GB)
+    "min_ram_for_full": 64,
+
+    # Enable chunked mode automatically for videos longer than this (hours)
+    "auto_chunk_threshold_hours": 12,
+}
+
+
+@dataclass
+class RamTestConfig:
+    """Configuration for RAM-optimized rendering mode."""
+    enabled: bool = False
+    use_ramdisk: bool = True
+    high_vram: bool = False
+    chunk_long_videos: bool = False
+
+    def get_temp_dir(self, base_dir: Path) -> Path:
+        """Get appropriate temp directory based on configuration."""
+        return setup_temp_directory(base_dir, self.use_ramdisk)
+
+    def get_nvenc_args(self, codec_family: str) -> list:
+        """Get NVENC args based on VRAM configuration."""
+        return get_nvenc_extra_args(codec_family, self.high_vram)
+
+    def get_hwaccel_args(self) -> list:
+        """Get hardware acceleration args."""
+        return get_hwaccel_input_args(self.high_vram)

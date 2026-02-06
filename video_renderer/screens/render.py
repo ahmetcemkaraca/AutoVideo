@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Render Screen - Shows render progress with live updates.
+
+Supports both standard and RAM-optimized (ramtest) rendering modes.
 """
 
 from pathlib import Path
@@ -10,6 +12,8 @@ import asyncio
 import time
 import json
 import threading
+import psutil
+import os
 
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -33,11 +37,11 @@ class RenderStep:
 
 class RenderScreen(Screen):
     """Screen showing render progress."""
-    
+
     BINDINGS = [
         ("escape", "cancel", "Iptal"),
     ]
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.steps = [
@@ -51,62 +55,131 @@ class RenderScreen(Screen):
         self.is_running = False
         self.error_message: Optional[str] = None
         self.render_worker: Optional[Worker] = None
-    
+
+        # Ramtest mode support
+        self.ramtest_mode = getattr(self.app, "ramtest_mode", False)
+        self.ramtest_config = getattr(self.app, "ramtest_config", None)
+
+        # Memory tracking
+        self._memory_update_interval = 2.0  # Update every 2 seconds
+        self._last_memory_update = 0
+
     def compose(self) -> ComposeResult:
+        mode_indicator = " [RAM]" if self.ramtest_mode else ""
         yield Container(
-            Static("🎬 Render Islemi", classes="title"),
+            Static(f"🎬 Render Islemi{mode_indicator}", classes="title"),
             Static("", id="status_text", classes="subtitle"),
             classes="container",
         )
-        
+
+        # Memory info panel (only in ramtest mode)
+        if self.ramtest_mode:
+            with Container(classes="panel"):
+                yield Static("💾 Memory Usage", classes="panel-title")
+                yield Static("RAM: --- | VRAM: ---", id="memory_info", classes="info-text")
+
         # Progress steps
         with Container(classes="panel"):
             for i, step in enumerate(self.steps, 1):
                 yield Static(f"○ [{i}/5] {step.description}", id=f"step_{step.name}", classes="progress-pending")
                 yield ProgressBar(total=100, show_eta=True, id=f"progress_{step.name}")
-        
+
         # Log panel
         with Container(classes="panel"):
             yield Static("📋 Log", classes="panel-title")
             yield Log(id="render_log", classes="log-panel")
-        
+
         with Horizontal(classes="action-bar"):
             yield Button("❌ Iptal", id="cancel", classes="-error")
-        
+
         yield Footer()
-    
+
     def on_mount(self) -> None:
         """Start render when mounted."""
         self.is_running = True
-        self._update_status("Render baslatiliyor...")
-        
+
+        mode_text = " (RAM-Optimized)" if self.ramtest_mode else ""
+        self._update_status(f"Render baslatiliyor{mode_text}...")
+
+        if self.ramtest_mode and self.ramtest_config:
+            from ..config import get_ramdisk_path
+            ramdisk = get_ramdisk_path()
+            if ramdisk:
+                self._log(f"✓ RAM Disk aktif: {ramdisk}")
+            else:
+                self._log("ℹ️  RAM Disk mevcut degil (disk kullaniliyor)")
+
         # Start render in worker thread
         self.render_worker = self.run_worker(self._run_render, thread=True)
-    
+
     def _update_status(self, text: str) -> None:
         """Update status text."""
         try:
             self.query_one("#status_text", Static).update(text)
         except:
             pass
-    
+
+    def _update_memory_info(self):
+        """Update memory usage information (ramtest mode only)."""
+        if not self.ramtest_mode:
+            return
+
+        current_time = time.time()
+        if current_time - self._last_memory_update < self._memory_update_interval:
+            return
+
+        self._last_memory_update = current_time
+
+        try:
+            process = psutil.Process(os.getpid())
+            ram_info = process.memory_info()
+
+            # RAM usage
+            ram_mb = ram_info.rss / (1024 * 1024)
+            ram_percent = process.memory_percent()
+
+            # Try to get GPU memory (nvidia-smi)
+            vram_mb = 0
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=1
+                )
+                if result.returncode == 0:
+                    vram_mb = int(result.stdout.strip().split('\n')[0])
+            except:
+                pass
+
+            memory_text = f"RAM: {ram_mb:.0f}MB ({ram_percent:.1f}%) | VRAM: {vram_mb}MB"
+
+            try:
+                self.query_one("#memory_info", Static).update(memory_text)
+            except:
+                pass
+        except Exception as e:
+            pass  # Silently fail memory tracking
+
     def _update_step_status(self, step_name: str, status: str, progress: float = 0) -> None:
         """Update step status (rate limited)."""
         import time
-        
+
+        # Update memory info periodically
+        self._update_memory_info()
+
         # Simple rate limiting for "active" status updates
         # Limit to 10 updates per second
         current_time = time.time()
         if status == "active" and hasattr(self, "_last_update_time"):
             if current_time - self._last_update_time < 0.1:
                 return
-        
+
         self._last_update_time = current_time
-            
+
         try:
             step_widget = self.query_one(f"#step_{step_name}", Static)
             idx = next(i for i, s in enumerate(self.steps) if s.name == step_name) + 1
-            
+
             if status == "active":
                 step_widget.update(f"● [{idx}/5] {self.steps[idx-1].description}")
                 step_widget.set_classes("progress-active")
@@ -116,12 +189,12 @@ class RenderScreen(Screen):
             elif status == "error":
                 step_widget.update(f"✗ [{idx}/5] {self.steps[idx-1].description}")
                 step_widget.set_classes("error-text")
-            
+
             progress_bar = self.query_one(f"#progress_{step_name}", ProgressBar)
             progress_bar.progress = progress
         except:
             pass
-    
+
     def _log(self, message: str) -> None:
         """Add message to log."""
         try:
@@ -129,7 +202,7 @@ class RenderScreen(Screen):
             log.write_line(message)
         except:
             pass
-    
+
     async def _run_render(self) -> None:
         """Run the render pipeline."""
         worker = get_current_worker()

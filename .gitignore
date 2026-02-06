@@ -24,6 +24,8 @@ MANIFEST
 # Virtual Env
 venv/
 .env
+.env.local
+.env.*.local
 
 # Media
 *.mp4
@@ -33,14 +35,28 @@ venv/
 tmp/
 archive/
 
-# Google Drive
+# Google Drive & YouTube Secrets (NEVER COMMIT)
 client_secrets.json
 token.pickle
 token.json
 credentials.json
+youtube_credentials.json
+*.secrets.json
+oauth-credentials.json
+
+# Security & Audit Logs
+logs/
+*.audit.log
+*.security.log
+*.log
 
 # Local State
 batch_queue.json
 last_session.json
 run_log.txt
 error_log.txt
+
+# Security Scanner Reports
+bandit_report.json
+safety_report.json
+pip_audit_report.txt

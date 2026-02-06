@@ -1496,9 +1496,32 @@ Ornekler:
         action="store_true",
         help="Smart Batch modu - Otomatik intro/loop ciftlerini tespit et ve sirali render yap"
     )
+
+    parser.add_argument(
+        "--rm", "--ramtest",
+        action="store_true",
+        help="RAM-optimizasyon modu (Ramtest) - tmpfs ve yüksek VRAM优化"
+    )
     
     args = parser.parse_args()
-    
+
+    # Set ramtest mode globally if flag is set
+    import sys
+    if args.rm:
+        sys.modules['video_renderer'].RAMTEST_MODE = True
+        from .config import RamTestConfig
+        # Configure ramtest
+        ramtest_cfg = RamTestConfig(enabled=True, use_ramdisk=True, high_vram=True)
+        print("[RAMTEST] RAM-optimizasyon modu aktif:")
+        print(f"  - RAM Disk: {ramtest_cfg.use_ramdisk}")
+        print(f"  - High VRAM: {ramtest_cfg.high_vram}")
+        from .config import get_ramdisk_path
+        ramdisk = get_ramdisk_path()
+        if ramdisk:
+            print(f"  - RAM Disk Path: {ramdisk}")
+        else:
+            print(f"  - RAM Disk: Not available (using disk tmp)")
+
     if args.list_hw:
         print_header()
         console.print("[header]Hardware Encoders:[/]\n")
@@ -1513,7 +1536,7 @@ Ornekler:
     # Launch Textual TUI if requested
     if args.tui:
         from .app import run_tui
-        return run_tui()
+        return run_tui(ramtest_mode=args.rm)
     
     # Smart Batch mode
     if args.batch:

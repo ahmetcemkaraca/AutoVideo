@@ -4,6 +4,7 @@
 Video Renderer TUI Application.
 
 Main Textual application for video rendering.
+Supports both standard and RAM-optimized (ramtest) modes.
 """
 
 from pathlib import Path
@@ -23,22 +24,22 @@ from .screens import (
     SmartBatchScreen,
 )
 from .ffmpeg import VideoInfo
-from .config import CodecConfig
+from .config import CodecConfig, RamTestConfig
 
 
 class VideoRendererApp(App):
     """Main Video Renderer TUI Application."""
-    
+
     TITLE = "Video Renderer v2.0"
     SUB_TITLE = "FFmpeg Video Processing"
-    
+
     CSS_PATH = "styles.tcss"
-    
+
     BINDINGS = [
         Binding("ctrl+q", "quit", "Cikis", show=True),
         Binding("ctrl+c", "quit", "Cikis", show=False),
     ]
-    
+
     SCREENS = {
         "home": HomeScreen,
         "video_select": VideoSelectScreen,
@@ -49,10 +50,14 @@ class VideoRendererApp(App):
         "batch": BatchScreen,
         "smart_batch": SmartBatchScreen,
     }
-    
-    def __init__(self, *args, **kwargs):
+
+    def __init__(self, ramtest_mode: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
+        # Ramtest mode configuration
+        self.ramtest_mode = ramtest_mode
+        self.ramtest_config = RamTestConfig(enabled=ramtest_mode) if ramtest_mode else RamTestConfig()
+
         # State variables
         self.intro_path: Optional[Path] = None
         self.intro_info: Optional[VideoInfo] = None
@@ -61,37 +66,48 @@ class VideoRendererApp(App):
         self.single_video_path: Optional[Path] = None
         self.single_video_info: Optional[VideoInfo] = None
         self.render_mode: str = "intro_loop"  # intro_loop or single
-        
+
         self.chosen_tracks: List[Path] = []
         self.chosen_bgs: List[Tuple[Path, float]] = []
-        
+
         self.codec_family: str = "av1"
         self.codec_config: Optional[CodecConfig] = None
         self.duration_str: str = "9:00:00"
         self.total_seconds: int = 32400
         self.out_path: Optional[Path] = None
-        
+
         self.session: Optional[Dict[str, Any]] = None
         self.render_result: Optional[Dict[str, Any]] = None
-        
-        
+
         # Batch mode
         from .batch import BatchQueue
         self.queue = BatchQueue()
         self.batch_job_id: Optional[int] = None
-    
+
+        # Drive integration
+        self.drive_folder_id: Optional[str] = None
+        self.enable_upload: bool = False
+
     def on_mount(self) -> None:
         """Called when app is mounted."""
         self.push_screen("home")
-    
+
     def action_quit(self) -> None:
         """Quit the application."""
+        # Cleanup ramtest temp files if enabled
+        if self.ramtest_mode and self.ramtest_config.use_ramdisk:
+            from .config import cleanup_ramdisk
+            cleanup_ramdisk()
         self.exit()
 
 
-def run_tui() -> int:
-    """Run the TUI application."""
-    app = VideoRendererApp()
+def run_tui(ramtest_mode: bool = False) -> int:
+    """Run the TUI application.
+
+    Args:
+        ramtest_mode: Enable RAM-optimized rendering mode
+    """
+    app = VideoRendererApp(ramtest_mode=ramtest_mode)
     app.run()
     return 0
 
