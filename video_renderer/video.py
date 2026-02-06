@@ -20,7 +20,8 @@ import subprocess
 
 from .config import (
     RenderConfig, CodecConfig, ColorConfig, COLOR_BT709,
-    DEFAULT_WIDTH, DEFAULT_HEIGHT, get_nvenc_extra_args, get_hwaccel_input_args
+    DEFAULT_WIDTH, DEFAULT_HEIGHT, get_nvenc_extra_args, get_hwaccel_input_args,
+    ALLOWED_FPS
 )
 from .ffmpeg import FFmpegRunner, FFmpegProgress, probe_video, get_duration, write_concat_list
 
@@ -91,11 +92,48 @@ class VideoEncoder:
             return 0.0
 
     def _get_expected_codec_name(self) -> str:
-        """Map encoder config to expected ffprobe codec name."""
+        """
+        Map encoder config to expected ffprobe codec name.
+
+        Comprehensive mapping for common video codecs.
+        Returns 'unknown' only for truly unrecognized codecs.
+        """
         enc = self.codec.encoder.lower()
+
+        # Modern codecs
         if "av1" in enc: return "av1"
+
+        # H.264 variants
         if "h264" in enc or "x264" in enc: return "h264"
+
+        # H.265/HEVC variants
         if "hevc" in enc or "x265" in enc or "h265" in enc: return "hevc"
+
+        # VPx series
+        if "vp9" in enc: return "vp9"
+        if "vp8" in enc: return "vp8"
+
+        # MPEG variants
+        if "mpeg2" in enc or "mpeg2video" in enc: return "mpeg2video"
+        if "mpeg4" in enc: return "mpeg4"
+
+        # ProRes family
+        if "prores" in enc:
+            if "proxy" in enc: return "prores"
+            if "lt" in enc: return "prores"
+            if "hq" in enc: return "prores"
+            if "4444" in enc: return "prores"
+            return "prores"
+
+        # Other common codecs
+        if "mjpeg" in enc: return "mjpeg"
+        if "wmv" in enc: return "wmv3"
+        if "divx" in enc: return "mpeg4"
+
+        # Log for unknown codecs (helps identify missing mappings)
+        import logging
+        logging.getLogger(__name__).warning(f"Unknown codec encoder: {self.codec.encoder}")
+
         return "unknown"
 
     def check_compatibility(self, source: Path, use_cache: bool = True) -> Tuple[bool, str]:
@@ -130,10 +168,15 @@ class VideoEncoder:
             if info.codec.lower() != expected_codec:
                 return False, f"Codec farkli: {info.codec} -> {expected_codec}"
 
-            # 3. FPS - return immediately if incompatible
+            # 3. FPS - check against ALLOWED_FPS set for compatibility
+            # 59.94 and 60.0 are considered compatible (both in ALLOWED_FPS)
+            from fractions import Fraction
             source_fps = self._parse_fps(info.fps)
-            if abs(source_fps - self.fps) > 0.1:
-                return False, f"FPS farkli: {float(source_fps):.2f} -> {self.fps}"
+            source_fps_fraction = Fraction(int(source_fps * 1000), 1000).limit_denominator(1001)
+
+            # Check if source FPS is in allowed set or matches target
+            if source_fps_fraction not in ALLOWED_FPS and abs(source_fps - self.fps) > 0.1:
+                return False, f"FPS farkli: {float(source_fps):.2f} -> {self.fps} (izin verilen: {', '.join(str(float(f)) for f in ALLOWED_FPS)})"
 
             # 4. Pixel Format - return immediately if incompatible
             valid_pix_fmts = {"yuv420p", "yuvj420p"}
@@ -231,14 +274,30 @@ class VideoEncoder:
         # Build optimized FFmpeg command
         cmd = self._build_normalize_command(source, output, scale_algo)
 
+        gpu_error = None
         try:
             self.runner.run(cmd, capture_progress=bool(progress_callback))
         except Exception as e:
             # Fallback to software encoding if hardware fails
             if self._use_gpu:
+                gpu_error = e
                 print(f"  [WARN] Hardware encoding failed: {e}. Falling back to software...")
-                cmd_software = self._build_normalize_command(source, output, scale_algo, force_software=True)
-                self.runner.run(cmd_software, capture_progress=bool(progress_callback))
+                try:
+                    cmd_software = self._build_normalize_command(source, output, scale_algo, force_software=True)
+                    self.runner.run(cmd_software, capture_progress=bool(progress_callback))
+                except Exception as sw_error:
+                    # Both GPU and software encoding failed
+                    raise RuntimeError(
+                        f"Failed to encode video after attempting both GPU and software encoding.\n\n"
+                        f"GPU Error: {gpu_error}\n"
+                        f"Software Error: {sw_error}\n\n"
+                        f"Suggestions:\n"
+                        f"- Try a different codec (h264 instead of av1/hevc)\n"
+                        f"- Lower resolution (1280x720 instead of 1920x1080)\n"
+                        f"- Update GPU drivers\n"
+                        f"- Check available disk space\n"
+                        f"- Verify source file is not corrupted"
+                    ) from sw_error
             else:
                 raise
 
@@ -252,6 +311,8 @@ class VideoEncoder:
         force_software: bool = False
     ) -> List[str]:
         """Build optimized FFmpeg command for video normalization.
+
+        OPTIMIZED: Added performance flags for better encoding speed and web optimization.
 
         Includes ramtest mode optimizations for high-VRAM systems.
         """
@@ -315,6 +376,11 @@ class VideoEncoder:
 
         # Color space
         cmd.extend(self.color.to_ffmpeg_args())
+
+        # Performance optimizations
+        cmd.extend([
+            "-tune", "fastdecode",  # Optimize for faster decoding
+        ])
 
         # No audio (video only)
         cmd.extend(["-an", str(output)])

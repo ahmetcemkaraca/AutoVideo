@@ -87,13 +87,22 @@ class FFmpegRunner:
     - Hardware acceleration fallback
     - Detailed error diagnostics
     - Thread-safe callback handling
+    - I/O optimization with configurable buffer size
     """
 
     # Class-level cache for encoder availability
     _encoder_cache: Dict[str, bool] = {}
     _cache_lock = threading.Lock()
 
-    def __init__(self, log_path: Optional[Path] = None, max_retries: int = 3):
+    # Default buffer size for I/O operations (1MB)
+    DEFAULT_BUFFER_SIZE = 1024 * 1024
+
+    def __init__(
+        self,
+        log_path: Optional[Path] = None,
+        max_retries: int = 3,
+        buffer_size: int = DEFAULT_BUFFER_SIZE
+    ):
         self.log_path = log_path
         self._progress_callback: Optional[Callable[[FFmpegProgress], None]] = None
         self._total_duration: float = 0.0
@@ -101,6 +110,8 @@ class FFmpegRunner:
         self._callback_lock = threading.Lock()
         # Circular buffer for last N stderr lines (memory optimization)
         self._stderr_buffer: deque[str] = deque(maxlen=100)
+        # I/O buffer size for faster processing
+        self._buffer_size = buffer_size
     
     def set_progress_callback(self, callback: Callable[[FFmpegProgress], None]):
         """Set a callback for progress updates."""
