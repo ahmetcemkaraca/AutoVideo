@@ -14,8 +14,10 @@ import os
 import time
 import json
 import httplib2
+import secrets
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Callable
+import logging
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -23,6 +25,8 @@ from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -124,12 +128,15 @@ class YouTubeUploader:
                         f"Client secrets file not found: {self.client_secrets_file}\n"
                         "Download from Google Cloud Console -> Credentials"
                     )
-                
+
+                # Generate cryptographically secure state parameter for CSRF protection
+                state = secrets.token_urlsafe(16)
+
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    self.client_secrets_file, SCOPES
+                    self.client_secrets_file, SCOPES, state=state
                 )
                 creds = flow.run_local_server(port=8080)
-            
+
             # Save credentials for next run
             with open(self.credentials_file, "w") as f:
                 f.write(creds.to_json())
