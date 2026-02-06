@@ -514,10 +514,12 @@ def run_batch() -> int:
             dur_str = dur_options[dur_idx - 1]
             total_seconds = parse_time(dur_str)
 
-        # Get music tracks
+        # Get music tracks (exclude background files)
         console.print()
         track_exts = (".mp3", ".wav", ".flac", ".ogg", ".m4a")
-        tracks = sorted([f for f in music_dir.iterdir() if f.suffix.lower() in track_exts])
+        # Filter: audio files that are NOT background files
+        tracks = sorted([f for f in music_dir.iterdir()
+                        if f.suffix.lower() in track_exts and not is_background_file(f)])
 
         if not tracks:
             print_error("music/ klasöründe müzik dosyası bulunamadı!")
@@ -530,18 +532,31 @@ def run_batch() -> int:
         console.print()
         chosen_bgs = []
         if ask_confirm("Arka plan sesi eklemek ister misiniz?", False):
+            # Collect bg files from both background/ directory and music/ directory
+            bg_files_list = []
+
+            # Check background/ directory first
             bg_audio = base / "background"
             if bg_audio.exists():
-                bg_files = sorted([f for f in bg_audio.iterdir() if f.suffix.lower() in track_exts])
-                if bg_files:
-                    for bg in bg_files:
-                        console.print(f"  [muted]- {bg.name}[/]")
-                    bg_gain = ask_text("Arka plan gain (dB, örn: -13)", "-13")
-                    try:
-                        bg_gain_db = float(bg_gain)
-                    except ValueError:
-                        bg_gain_db = -13.0
-                    chosen_bgs = [(bg, bg_gain_db) for bg in bg_files]
+                bg_files_list.extend([f for f in bg_audio.iterdir() if f.suffix.lower() in track_exts])
+
+            # Also check music/ directory for bg files (files starting with "bg" or containing "_bg_")
+            bg_from_music = sorted([f for f in music_dir.iterdir()
+                                   if f.suffix.lower() in track_exts and is_background_file(f)])
+            bg_files_list.extend(bg_from_music)
+
+            # Remove duplicates (by name) and sort
+            bg_files = sorted({bg.name: bg for bg in bg_files_list}.values())
+
+            if bg_files:
+                for bg in bg_files:
+                    console.print(f"  [muted]- {bg.name}[/]")
+                bg_gain = ask_text("Arka plan gain (dB, örn: -13)", "-13")
+                try:
+                    bg_gain_db = float(bg_gain)
+                except ValueError:
+                    bg_gain_db = -13.0
+                chosen_bgs = [(bg, bg_gain_db) for bg in bg_files]
 
         # Summary
         console.print("\n[header]Batch Özeti:[/]")
