@@ -106,6 +106,7 @@ class VideoEncoder:
         - Caching for repeated checks on same file
         - Fast-path for common formats
         - Detailed error messages
+        - Early return on first incompatibility (fix: prevent result overwrite)
 
         Returns:
             Tuple of (is_compatible, reason)
@@ -120,39 +121,38 @@ class VideoEncoder:
         try:
             info = probe_video(source)
 
-            # 1. Resolution
+            # 1. Resolution - return immediately if incompatible
             if info.width != self.width or info.height != self.height:
-                result = False, f"Cozunurluk farkli: {info.width}x{info.height} -> {self.width}x{self.height}"
+                return False, f"Cozunurluk farkli: {info.width}x{info.height} -> {self.width}x{self.height}"
 
-            # 2. Codec
+            # 2. Codec - return immediately if incompatible
             expected_codec = self._get_expected_codec_name()
             if info.codec.lower() != expected_codec:
-                result = False, f"Codec farkli: {info.codec} -> {expected_codec}"
+                return False, f"Codec farkli: {info.codec} -> {expected_codec}"
 
-            # 3. FPS
+            # 3. FPS - return immediately if incompatible
             source_fps = self._parse_fps(info.fps)
             if abs(source_fps - self.fps) > 0.1:
-                result = False, f"FPS farkli: {float(source_fps):.2f} -> {self.fps}"
+                return False, f"FPS farkli: {float(source_fps):.2f} -> {self.fps}"
 
-            # 4. Pixel Format
+            # 4. Pixel Format - return immediately if incompatible
             valid_pix_fmts = {"yuv420p", "yuvj420p"}
             if expected_codec in ("hevc", "av1"):
                 valid_pix_fmts.update({"yuv420p10le", "yuv420p10"})
 
             if info.pix_fmt not in valid_pix_fmts:
-                result = False, f"Pixel format uygun degil: {info.pix_fmt}"
+                return False, f"Pixel format uygun degil: {info.pix_fmt}"
 
-            # All checks passed
-            result = True, "Uyumlu"
+            # All checks passed - cache and return
+            if use_cache:
+                self._compatibility_cache[cache_key] = True
+            return True, "Uyumlu"
 
         except Exception as e:
-            result = False, f"Analiz hatasi: {e}"
-
-        # Cache result
-        if use_cache:
-            self._compatibility_cache[cache_key] = result[0]
-
-        return result
+            # Cache failure to avoid re-probing bad files
+            if use_cache:
+                self._compatibility_cache[cache_key] = False
+            return False, f"Analiz hatasi: {e}"
 
     def is_compatible(self, source: Path) -> bool:
         """Legacy wrapper for check_compatibility."""
