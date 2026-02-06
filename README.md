@@ -46,7 +46,7 @@ cd AutoVideo
 ```
 
 ### Step 2: Install Dependencies
-
+şş
 ```bash
 # Create virtual environment (recommended)
 python -m venv venv
