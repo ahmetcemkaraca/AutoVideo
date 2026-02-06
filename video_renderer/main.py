@@ -726,13 +726,711 @@ def get_output_filename(mode: str, single_video_path: Optional[Path], codec_fami
 # Interactive Wizard
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Configuration Mode Functions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def configure_render_settings(
+    mode: str,
+    intro_path: Optional[Path],
+    loop_path: Optional[Path],
+    single_video_path: Optional[Path]
+) -> Tuple:
+    """
+    Configure render settings based on user-selected mode.
+
+    Returns:
+        Tuple of (codec_family, codec_config, target_width, target_height, target_fps, scale_algo, audio_bitrate)
+    """
+    console.print()
+    config_mode_idx = ask_choice("Ayarlar Modu", [
+        "[green]Basit[/] (Otomatik 1080p @ 60fps, Standart Kalite)",
+        "[blue]Orta[/] (Cozunurluk Secimi, Otomatik Upscale)",
+        "[yellow]Gelismis[/] (Cozunurluk, FPS, Upscale Metodu, Preset)",
+        "[red]Ozel[/] (Her seyi elle ayarla)"
+    ], 1)
+
+    # Default Settings
+    target_width = 1920
+    target_height = 1080
+    target_fps = 60
+    scale_algo = "lanczos"
+    audio_bitrate = "192k"
+
+    available_encoders = detect_available_encoders()
+    hw_available = any(available_encoders.values())
+
+    if config_mode_idx == 1: # Basit
+        # Force Defaults: 1080p, 60fps, AV1, Lanczos
+        print_info("Basit Mod: Otomatik analiz yapiliyor...")
+
+        # Check source resolution to avoid unnecessary re-encode/resize
+        smart_res_found = False
+
+        if mode == "single" and single_video_path:
+            try:
+                ref_info = probe_video(single_video_path)
+                target_width, target_height = ref_info.width, ref_info.height
+                target_fps = float(ref_info.fps.split('/')[0]) / float(ref_info.fps.split('/')[1]) if '/' in ref_info.fps else float(ref_info.fps)
+                smart_res_found = True
+                print_success(f"Kaynak cozunurlugu kullanilacak: {target_width}x{target_height} @ {target_fps:.2f}fps")
+            except Exception as e:
+                print_warning(f"Video analiz hatasi: {e}. Varsayilan 1080p60 kullaniliyor.")
+
+        elif mode == "intro_loop" and intro_path and loop_path:
+            try:
+                i_info = probe_video(intro_path)
+                l_info = probe_video(loop_path)
+
+                if i_info.width == l_info.width and i_info.height == l_info.height:
+                    target_width, target_height = i_info.width, i_info.height
+                    smart_res_found = True
+                    print_success(f"Intro/Loop cozunurlugu eslesiyor: {target_width}x{target_height}. Resize yapilmadi.")
+                else:
+                    print_info("Intro ve Loop cozunurlukleri farkli. 1080p standardi uygulaniyor.")
+            except Exception as e:
+                print_warning(f"Analiz hatasi: {e}")
+
+        if not smart_res_found:
+             print_info("Varsayilan 1080p60 ayarlari uygulaniyor.")
+
+        codec_family = "av1"
+        # Fallback if AV1 HW invalid? get_best_encoder handles it.
+        codec_config = get_best_encoder(codec_family)
+        print_info(f"Encoder: {codec_config.name}")
+
+    else:
+        # Codec selection for Orta/Gelismis/Ozel
+        codec_options = [
+            "AV1 (YouTube 1080p Premium master)",
+            "H.264 (hizli encode, genis uyumluluk)",
+            "H.265/HEVC (yuksek sikistirma)"
+        ]
+        if hw_available:
+            hw_list = [k for k, v in available_encoders.items() if v]
+            print_success(f"Hardware acceleration mevcut: {', '.join(hw_list)}")
+
+        codec_idx = ask_choice("Hedef codec", codec_options, 1)
+        codec_family = ["av1", "h264", "h265"][codec_idx - 1]
+        codec_config = get_best_encoder(codec_family)
+
+        # Mode Logic
+        if config_mode_idx == 2: # Orta
+            # Ask Resolution only
+            res_choice = ask_choice("Cozunurluk", ["1080p (Full HD)", "1440p (2K)", "2160p (4K)", "Kaynak Cozunurlugu"], 1)
+            if res_choice == 1: target_width, target_height = 1920, 1080
+            elif res_choice == 2: target_width, target_height = 2560, 1440
+            elif res_choice == 3: target_width, target_height = 3840, 2160
+            elif res_choice == 4:
+                ref_path = single_video_path if mode == "single" else intro_path
+                ref_info = probe_video(ref_path)
+                target_width, target_height = ref_info.width, ref_info.height
+
+            print_info("Orta Mod: Diger ayarlar otomatik (60fps, Lanczos, 192k).")
+
+        elif config_mode_idx >= 3: # Gelismis / Ozel
+            # Resolution
+            res_choice = ask_choice("Cozunurluk", ["1080p", "1440p", "2160p", "Kaynak", "Manuel Gir"], 1)
+            if res_choice == 1: target_width, target_height = 1920, 1080
+            elif res_choice == 2: target_width, target_height = 2560, 1440
+            elif res_choice == 3: target_width, target_height = 3840, 2160
+            elif res_choice == 4:
+                ref_path = single_video_path if mode == "single" else intro_path
+                ref_info = probe_video(ref_path)
+                target_width, target_height = ref_info.width, ref_info.height
+            elif res_choice == 5:
+                target_width = ask_int("Genislik (px)", 100, 7680, 1920)
+                target_height = ask_int("Yukseklik (px)", 100, 4320, 1080)
+
+            # FPS
+            fps_choice = ask_choice("FPS", ["60", "30", "24", "Kaynak"], 1)
+            if fps_choice == 1: target_fps = 60
+            elif fps_choice == 2: target_fps = 30
+            elif fps_choice == 3: target_fps = 24
+            elif fps_choice == 4:
+                 ref_path = single_video_path if mode == "single" else intro_path
+                 ref_info = probe_video(ref_path)
+                 target_fps = float(ref_info.fps.split('/')[0]) / float(ref_info.fps.split('/')[1]) if '/' in ref_info.fps else float(ref_info.fps)
+
+            # Upscale Algo
+            scale_algo = ask_choice("Upscale Algoritmasi", ["lanczos (Keskin/High Qual)", "bicubic (Standart)", "bilinear (Hizli)", "spline (Yumusak)"], 1)
+            scale_algo = ["lanczos", "bicubic", "bilinear", "spline"][scale_algo-1]
+
+            # Audio Bitrate
+            audio_bitrate = ask_choice("Audio Bitrate", ["128k", "192k (Standart)", "256k", "320k (Yuksek)"], 2)
+            audio_bitrate = ["128k", "192k", "256k", "320k"][audio_bitrate-1]
+
+            if config_mode_idx == 4: # Ozel
+                # Ask about editing the command/header?
+                if ask_confirm("Varsayilan FFmpeg parametrelerini duzenlemek ister misiniz?"):
+                    print_info("Not: Bu ozellik su anki surumde komut satirina yansitilacaktir.")
+                    codec_config.preset = ask_text(f"Preset ({codec_config.preset})", codec_config.preset)
+                    crf_val = ask_int(f"CRF/CQ ({codec_config.crf})", 0, 51, codec_config.crf)
+                    codec_config.crf = crf_val
+
+    print_info(f"Ayarlar: {target_width}x{target_height} @ {target_fps} fps | {scale_algo}")
+
+    return codec_family, codec_config, target_width, target_height, target_fps, scale_algo, audio_bitrate
+
+
+def check_video_compatibility(
+    mode: str,
+    intro_path: Optional[Path],
+    loop_path: Optional[Path],
+    single_video_path: Optional[Path],
+    codec_config,
+    target_width: int,
+    target_height: int,
+    target_fps: float
+) -> None:
+    """Check video compatibility with target settings."""
+    console.print()
+    print_info("Video/Codec Analizi yapiliyor...")
+
+    temp_runner = FFmpegRunner()
+    temp_encoder = VideoEncoder(
+        temp_runner, codec_config,
+        width=target_width, height=target_height, fps=target_fps
+    )
+
+    if mode == "single":
+        ok, reason = temp_encoder.check_compatibility(single_video_path)
+        if ok:
+            print_success(f"[CHECK] VIDEO: Uyumlu ({reason}) - Direct Copy yapilacak.")
+        else:
+            print_warning(f"[CHECK] VIDEO: Re-encode gerekli! -> {reason}")
+    else:
+        # Check INTRO
+        ok_i, reason_i = temp_encoder.check_compatibility(intro_path)
+        if ok_i:
+            print_success(f"[CHECK] INTRO: Uyumlu ({reason_i})")
+        else:
+            print_warning(f"[CHECK] INTRO: Re-encode gerekli! -> {reason_i}")
+
+        # Check LOOP
+        ok_l, reason_l = temp_encoder.check_compatibility(loop_path)
+        if ok_l:
+            print_success(f"[CHECK] LOOP: Uyumlu ({reason_l})")
+        else:
+            print_warning(f"[CHECK] LOOP: Re-encode gerekli! -> {reason_l}")
+
+    console.print()
+
+
+def select_duration_and_audio(
+    mode: str,
+    single_video_path: Optional[Path],
+    music_dir: Path
+) -> Tuple:
+    """
+    Select video duration and audio tracks.
+
+    Returns:
+        Tuple of (total_seconds, dur_str, chosen_tracks, chosen_bgs)
+    """
+    # Duration
+    console.print()
+    if mode == "single" and single_video_path:
+        total_seconds = int(get_duration(single_video_path))
+        dur_str = format_duration(total_seconds)
+        print_info(f"Tek video suresi kullanilacak: {dur_str}")
+    else:
+        total_seconds = ask_duration_components(default_hours=8)
+        dur_str = format_duration(total_seconds)
+        print_info(f"Hedef sure: {dur_str}")
+
+    # Audio files
+    tracks, backgrounds = list_audio_files(music_dir)
+
+    if not tracks:
+        print_error("music/ icinde track bulunamadi!")
+        raise ValueError("No music tracks found")
+
+    # Track selection
+    console.print()
+    print_audio_table(tracks, "Muzik Track'leri")
+
+    track_mode = ask_choice("Track secimi", ["Hepsi (listedeki sirayla)", "Belirli track'leri sec"], 1)
+
+    if track_mode == 1:
+        chosen_tracks = tracks
+    else:
+        indices = ask_multiple_choice("Track sec", [p.name for p in tracks])
+        chosen_tracks = [tracks[i - 1] for i in indices]
+
+    # Shuffle tracks for variety
+    random.shuffle(chosen_tracks)
+    print_info("Muzik listesi ve siralamasi karistirildi.")
+
+    # Background selection
+    chosen_bgs: List[Tuple[Path, float]] = []
+
+    console.print()
+    print_info("Background ses secenekleri:")
+
+    bg_options = ["BG kullanma"]
+    if backgrounds:
+        bg_options.append(f"Mevcut BG dosyalarindan sec ({len(backgrounds)} adet)")
+    bg_options.append("Track listesinden BG olarak kullan")
+
+    bg_mode = ask_choice("Background secimi", bg_options, 1)
+
+    if bg_mode == 1:
+        # No BG
+        pass
+
+    elif bg_mode == 2 and backgrounds:
+        # Select from existing BG files
+        print_audio_table(backgrounds, "Background Sesler")
+
+        select_mode = ask_choice("BG secimi", ["Hepsi", "Belirli BG'leri sec"], 1)
+
+        if select_mode == 1:
+            selected_bgs = backgrounds
+        else:
+            indices = ask_multiple_choice("BG sec", [p.name for p in backgrounds])
+            selected_bgs = [backgrounds[i - 1] for i in indices]
+
+        # Get dB for each
+        console.print()
+        print_info("Secilen BG'ler icin dB ayari (Enter = varsayilan):")
+        for bg in selected_bgs:
+            default_db = parse_background_gain_db(bg)
+            db_str = ask_text(f"  {bg.name} dB", str(default_db))
+            try:
+                db = float(db_str)
+            except ValueError:
+                db = default_db
+            chosen_bgs.append((bg, db))
+
+    else:
+        # Select track as BG
+        console.print()
+        print_info("Track listesinden BG olarak kullanilacak parca secin:")
+        print_audio_table(tracks, "Muzik Track'leri (BG olarak)")
+
+        available_for_bg = tracks
+
+        indices = ask_multiple_choice(
+            "BG olarak kullanilacak track(lar)",
+            [p.name for p in available_for_bg],
+            min_count=1
+        )
+
+        console.print()
+        print_info("Secilen track'ler icin BG dB ayari:")
+        for idx in indices:
+            track = available_for_bg[idx - 1]
+            db_str = ask_text(f"  {track.name} dB", "-8")
+            try:
+                db = float(db_str)
+            except ValueError:
+                db = -8.0
+            chosen_bgs.append((track, db))
+
+    return total_seconds, dur_str, chosen_tracks, chosen_bgs
+
+
+def standardize_audio_files(
+    chosen_tracks: List[Path],
+    chosen_bgs: List[Tuple[Path, float]],
+    music_dir: Path,
+    run_log: Path,
+    tmp_dir: Path
+) -> Tuple[List[Path], List[Tuple[Path, float]]]:
+    """
+    Standardize audio files to common format.
+
+    Returns:
+        Tuple of (new_tracks, new_bgs)
+    """
+    console.print()
+    if not ask_confirm("Muzik dosyalarini otomatik normalize edip arsivlemek ister misiniz?", default=True):
+        return chosen_tracks, chosen_bgs
+
+    print_info("Muzik dosyalari standart (48kHz, 320k) formate donusturuluyor...")
+
+    runner = FFmpegRunner(run_log)
+    audio_processor = AudioProcessor(runner, tmp_dir)
+    archive_dir = music_dir / "archive"
+
+    def std_progress(name, current, total):
+        console.print(f"  Processed {current}/{total}: {name}", end="\r")
+
+    # Standardize Chosen Tracks
+    to_std = [t for t in chosen_tracks]
+    new_tracks = audio_processor.standardize_tracks(to_std, archive_dir, std_progress)
+
+    # Update BGs if they are separate files
+    bg_files = [b[0] for b in chosen_bgs if b[0] not in to_std]
+    if bg_files:
+        new_bgs = audio_processor.standardize_tracks(bg_files, archive_dir, std_progress)
+
+        # Re-map chosen_bgs
+        updated_bgs = []
+        for b_path, b_db in chosen_bgs:
+            if not b_path.exists() and b_path.with_suffix(".mp3").exists():
+                updated_bgs.append((b_path.with_suffix(".mp3"), b_db))
+            else:
+                updated_bgs.append((b_path, b_db))
+        chosen_bgs = updated_bgs
+
+    print_success("Ses dosyalari standardize edildi.")
+    return new_tracks, chosen_bgs
+
+
+def configure_drive_upload() -> Tuple[bool, str]:
+    """Configure Google Drive upload settings."""
+    console.print()
+    drive_enabled = False
+    drive_folder_id = ""
+
+    if ask_confirm("Render bitince videoyu Google Drive'a yedeklemek ister misiniz?"):
+        drive_enabled = True
+        drive_folder_id = ask_text("Drive Klasor ID (Bos = Root)", "")
+
+        try:
+            from .drive import DriveUploader
+            uploader = DriveUploader()
+            if not uploader.authenticate():
+                print_warning("Drive girisi yapilamadi! Tarayicida dogrulama gerekebilir.")
+                print_info("Lutfen cikan linki takip edin veya credentials.json'i kontrol edin.")
+        except ImportError:
+            print_error("Drive modulu yuklenemedi!")
+            drive_enabled = False
+
+    return drive_enabled, drive_folder_id
+
+
+def validate_audio_tracks(
+    chosen_tracks: List[Path],
+    run_log: Path,
+    tmp_dir: Path
+) -> List[Path]:
+    """Validate audio tracks and return valid ones."""
+    console.print()
+    print_info("Muzik dosyalari dogrulaniyor...")
+
+    runner = FFmpegRunner(run_log)
+    audio_processor = AudioProcessor(runner, tmp_dir)
+
+    def validation_progress(name: str, current: int, total: int):
+        console.print(f"  [{current}/{total}] {name}...", end="\r")
+
+    valid_tracks, invalid_tracks = audio_processor.validate_tracks(
+        chosen_tracks, validation_progress
+    )
+    console.print()
+
+    if invalid_tracks:
+        print_error(f"Bozuk muzik dosyalari tespit edildi ({len(invalid_tracks)} adet):")
+        for track, error in invalid_tracks:
+            console.print(f"  [error]✗[/] {track.name}: {error}")
+
+        console.print()
+
+        if valid_tracks:
+            choice = ask_choice(
+                "Ne yapmak istersiniz?",
+                [
+                    f"Sadece gecerli track'lerle devam et ({len(valid_tracks)} adet)",
+                    "Iptal et ve muzikleri degistir",
+                ],
+                1
+            )
+
+            if choice == 2:
+                print_warning("Iptal edildi. Bozuk muzik dosyalarini degistirin.")
+                raise ValueError("Invalid audio tracks")
+
+            print_success(f"{len(valid_tracks)} gecerli track ile devam ediliyor.")
+            return valid_tracks
+        else:
+            print_error("Hic gecerli track yok! Muzik dosyalarini kontrol edin.")
+            raise ValueError("No valid audio tracks")
+    else:
+        print_success(f"Tum track'ler dogrulandi ({len(valid_tracks)} adet)")
+        return valid_tracks
+
+
+def render_pipeline(
+    mode: str,
+    intro_path: Optional[Path],
+    loop_path: Optional[Path],
+    single_video_path: Optional[Path],
+    codec_config,
+    target_width: int,
+    target_height: int,
+    target_fps: float,
+    scale_algo: str,
+    audio_bitrate: str,
+    total_seconds: int,
+    chosen_tracks: List[Path],
+    chosen_bgs: List[Tuple[Path, float]],
+    out_path: Path,
+    run_log: Path,
+    tmp_dir: Path
+) -> Tuple[Path, dict]:
+    """
+    Execute the render pipeline.
+
+    Returns:
+        Tuple of (final_output_path, step_times)
+    """
+    steps = [
+        "Intro encode",
+        "Loop encode",
+        "Video concat",
+        "Audio isleme",
+        "Final mux"
+    ]
+
+    step_times = {}
+    render_start = time.perf_counter()
+
+    console.print()
+
+    runner = FFmpegRunner(run_log)
+    audio_processor = AudioProcessor(runner, tmp_dir)
+
+    with MultiStepProgress(steps) as progress:
+
+        encoder = VideoEncoder(
+            runner=runner,
+            codec_config=codec_config,
+            width=target_width,
+            height=target_height,
+            fps=target_fps
+        )
+
+        intro_norm = tmp_dir / f"intro_norm_{codec_config.codec_family}.mp4"
+        loop_norm = tmp_dir / f"loop_norm_{codec_config.codec_family}.mp4"
+        video_only_single = tmp_dir / f"video_only_single_{codec_config.codec_family}.mp4"
+
+        def make_progress_callback(step_idx: int):
+            def callback(p):
+                progress.update(step_idx, p.percent, speed=p.speed)
+            return callback
+
+        if mode == "single" and single_video_path:
+            # Single video encode (no concat)
+            t0 = time.perf_counter()
+            video_only = encoder.normalize_video(
+                single_video_path, video_only_single,
+                make_progress_callback(0),
+                scale_algo=scale_algo
+            )
+            step_times["Intro encode"] = time.perf_counter() - t0
+            progress.complete_step(0)
+            step_times["Loop encode"] = 0
+            progress.complete_step(1)
+            step_times["Video concat"] = 0
+            progress.complete_step(2)
+
+            # Audio (sequential for single mode)
+            t0 = time.perf_counter()
+            music_loop = audio_processor.create_music_loop(
+                chosen_tracks, total_seconds, pre_validated=True
+            )
+
+            if chosen_bgs:
+                bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                audio_full = audio_processor.mix_tracks(
+                    music_loop, bg_processed, total_seconds
+                )
+            else:
+                audio_full = music_loop
+
+            step_times["Audio isleme"] = time.perf_counter() - t0
+            progress.complete_step(3)
+        else:
+            # Parallel execution
+            from concurrent.futures import ThreadPoolExecutor
+
+            video_only = None
+            audio_full = None
+
+            def encode_video_branch():
+                """Encode intro, loop, then concat."""
+                nonlocal video_only
+
+                # Encode intro
+                t0 = time.perf_counter()
+                encoder.normalize_video(intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo)
+                intro_time = time.perf_counter() - t0
+                progress.complete_step(0)
+
+                # Encode loop
+                t0 = time.perf_counter()
+                encoder.normalize_video(loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo)
+                loop_time = time.perf_counter() - t0
+                progress.complete_step(1)
+
+                # Concat
+                t0 = time.perf_counter()
+                video_only = encoder.concat_videos(
+                    intro_norm, loop_norm,
+                    total_seconds, tmp_dir,
+                    make_progress_callback(2)
+                )
+                concat_time = time.perf_counter() - t0
+                progress.complete_step(2)
+
+                return intro_time, loop_time, concat_time
+
+            def process_audio_branch():
+                """Create music loop and mix with backgrounds."""
+                nonlocal audio_full
+
+                t0 = time.perf_counter()
+                music_loop = audio_processor.create_music_loop(
+                    chosen_tracks, total_seconds, pre_validated=True
+                )
+
+                if chosen_bgs:
+                    bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                    audio_full = audio_processor.mix_tracks(
+                        music_loop, bg_processed, total_seconds
+                    )
+                else:
+                    audio_full = music_loop
+
+                audio_time = time.perf_counter() - t0
+                return audio_time
+
+            # Run both branches in parallel
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                video_future = executor.submit(encode_video_branch)
+                audio_future = executor.submit(process_audio_branch)
+
+                # Wait for both to complete
+                intro_time, loop_time, concat_time = video_future.result()
+                audio_time = audio_future.result()
+
+            step_times["Intro encode"] = intro_time
+            step_times["Loop encode"] = loop_time
+            step_times["Video concat"] = concat_time
+            step_times["Audio isleme"] = audio_time
+            progress.complete_step(3)
+
+        # Step 5: Final mux
+        t0 = time.perf_counter()
+        mux_video_audio(
+            runner, video_only, audio_full, out_path,
+            audio_bitrate=audio_bitrate,
+            progress_callback=make_progress_callback(4)
+        )
+        step_times["Final mux"] = time.perf_counter() - t0
+        progress.complete_step(4)
+
+    # Calculate total render time
+    render_total = time.perf_counter() - render_start
+
+    # Format render time for filename
+    render_mins = int(render_total // 60)
+    render_secs = int(render_total % 60)
+    time_suffix = f"_{render_mins}m{render_secs}s"
+
+    # Rename output with time suffix
+    new_out_name = out_path.stem + time_suffix + out_path.suffix
+    new_out_path = out_path.parent / new_out_name
+    try:
+        out_path.rename(new_out_path)
+        out_path = new_out_path
+    except Exception:
+        pass  # Keep original name if rename fails
+
+    return out_path, step_times
+
+
+def handle_post_render_actions(
+    out_path: Path,
+    mode: str,
+    intro_path: Optional[Path],
+    loop_path: Optional[Path],
+    single_video_path: Optional[Path],
+    post_action: str,
+    drive_enabled: bool,
+    drive_folder_id: str,
+    base: Path,
+    step_times: dict
+) -> None:
+    """Handle post-render actions (cleanup, archive, upload)."""
+    # Completion with detailed timing
+    final_duration = get_duration(out_path)
+
+    console.print()
+    console.print("=" * 60)
+    console.print("[bold green]RENDER TAMAMLANDI[/]")
+    console.print("=" * 60)
+    console.print(f"[bold]Dosya:[/] {out_path.name}")
+    console.print(f"[bold]Video Suresi:[/] {final_duration:.1f} saniye ({final_duration/3600:.2f} saat)")
+    console.print()
+    console.print("[bold yellow]ADIM SURELERI:[/]")
+    for step_name, step_time in step_times.items():
+        if step_time > 0:
+            mins = int(step_time // 60)
+            secs = int(step_time % 60)
+            console.print(f"  {step_name}: {mins}m {secs}s")
+    console.print()
+
+    # Calculate total render time
+    render_total = sum(step_times.values())
+    render_mins = int(render_total // 60)
+    render_secs = int(render_total % 60)
+    console.print(f"[bold cyan]TOPLAM RENDER:[/] {render_mins}m {render_secs}s")
+
+    # Post action
+    if post_action == "delete":
+        try:
+            if mode == "single" and single_video_path:
+                single_video_path.unlink(missing_ok=True)
+                print_success("Kaynak video silindi.")
+            else:
+                intro_path.unlink(missing_ok=True)
+                loop_path.unlink(missing_ok=True)
+                print_success("Kaynak intro/loop silindi.")
+        except Exception as e:
+            print_warning(f"Kaynak silme hatasi: {e}")
+
+    elif post_action == "archive":
+        archive_dir = base / "archive" / time.strftime("%Y%m%d_%H%M%S")
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            if mode == "single" and single_video_path:
+                single_video_path.rename(archive_dir / single_video_path.name)
+                print_success(f"Kaynak video arsivlendi: {archive_dir.as_posix()}")
+            else:
+                intro_path.rename(archive_dir / intro_path.name)
+                loop_path.rename(archive_dir / loop_path.name)
+                print_success(f"Kaynak intro/loop arsivlendi: {archive_dir.as_posix()}")
+        except Exception as e:
+            print_warning(f"Arsivleme hatasi: {e}")
+
+    # Drive Upload
+    if drive_enabled:
+        console.print()
+        print_info("Google Drive'a yukleniyor...")
+
+        try:
+            from .drive import DriveUploader
+            uploader = DriveUploader()
+            success, file_id = uploader.upload_file(out_path, drive_folder_id if drive_folder_id else None)
+            if success:
+                print_success(f"Video basariyla yuklendi! ID: {file_id}")
+            else:
+                print_error(f"Yukleme basarisiz: {file_id}")
+        except Exception as e:
+            print_error(f"Upload hatasi: {e}")
+
+
 def run_interactive() -> int:
     """Run the interactive render wizard."""
     base = Path.cwd()
     music_dir = base / "music"
     tmp_dir = base / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # ═══════════════════════════════════════════════════════════════════════════════
     # CRITICAL: Clean stale tmp files before starting a new render
     # This prevents bugs where old encoded files are reused, causing:
@@ -747,20 +1445,20 @@ def run_interactive() -> int:
         # Keep session json but remove concat lists
         if f.name != "last_session.json":
             f.unlink(missing_ok=True)
-    
+
     run_log = tmp_dir / "run_log.txt"
     err_log = tmp_dir / "error_log.txt"
     session_json = tmp_dir / "last_session.json"
-    
+
     try:
         # Header
         print_header()
         print_working_directory(base)
-        
+
         # Check FFmpeg
         if not check_ffmpeg_install():
             return 2
-        
+
         # Check music dir (case insensitive)
         music_candidates = [base / "music", base / "Music"]
         found_music = False
@@ -769,20 +1467,20 @@ def run_interactive() -> int:
                 music_dir = candidate
                 found_music = True
                 break
-        
+
         if not found_music:
             print_error(f"'{music_dir.name}/' klasoru bulunamadi!")
             print_info(f"Beklenen konum: {music_dir.resolve()}")
             print_info("Lutfen 'music' klasoru olusturun ve ses dosyalarini icine atin.")
             return 2
-        
+
         # List videos
         videos = list_video_files(base)
         if len(videos) < 1:
             print_error("Video bulunamadi!")
             print_info(f"Lutfen su konuma video (mp4/mkv) dosyalarini atin:\n{base.resolve()}")
             return 2
-        
+
         print_video_table(videos)
 
         # Select render mode
@@ -790,361 +1488,32 @@ def run_interactive() -> int:
 
         # Select videos based on mode
         intro_path, loop_path, single_video_path = select_videos_for_mode(mode, videos)
-        
-        # ──────────────────────────────────────────────────────────────
-        # Configuration Mode
-        # ──────────────────────────────────────────────────────────────
-        console.print()
-        config_mode_idx = ask_choice("Ayarlar Modu", [
-            "[green]Basit[/] (Otomatik 1080p @ 60fps, Standart Kalite)",
-            "[blue]Orta[/] (Cozunurluk Secimi, Otomatik Upscale)",
-            "[yellow]Gelismis[/] (Cozunurluk, FPS, Upscale Metodu, Preset)",
-            "[red]Ozel[/] (Her seyi elle ayarla)"
-        ], 1)
-        
-        # Default Settings
-        target_width = 1920
-        target_height = 1080
-        target_fps = 60
-        scale_algo = "lanczos"
-        audio_bitrate = "192k"
-        
-        available_encoders = detect_available_encoders()
-        hw_available = any(available_encoders.values())
-        
-        if config_mode_idx == 1: # Basit
-            # Force Defaults: 1080p, 60fps, AV1, Lanczos
-            print_info("Basit Mod: Otomatik analiz yapiliyor...")
-            
-            # Check source resolution to avoid unnecessary re-encode/resize
-            smart_res_found = False
-            
-            if mode == "single" and single_video_path:
-                try:
-                    ref_info = probe_video(single_video_path)
-                    target_width, target_height = ref_info.width, ref_info.height
-                    target_fps = float(ref_info.fps.split('/')[0]) / float(ref_info.fps.split('/')[1]) if '/' in ref_info.fps else float(ref_info.fps)
-                    smart_res_found = True
-                    print_success(f"Kaynak cozunurlugu kullanilacak: {target_width}x{target_height} @ {target_fps:.2f}fps")
-                except Exception as e:
-                    print_warning(f"Video analiz hatasi: {e}. Varsayilan 1080p60 kullaniliyor.")
-            
-            elif mode == "intro_loop" and intro_path and loop_path:
-                try:
-                    i_info = probe_video(intro_path)
-                    l_info = probe_video(loop_path)
-                    
-                    if i_info.width == l_info.width and i_info.height == l_info.height:
-                        target_width, target_height = i_info.width, i_info.height
-                        # Use highest FPS or intro FPS? Let's stick to 60 for smoothness or intro FPS?
-                        # User asked to keep resolution mainly.
-                        # Let's keep 60fps default for smoothness unless they want source FPS too.
-                        # "Otomatik 1080p @ 60fps" was the label.
-                        # Let's keep 60fps but adapt resolution.
-                        smart_res_found = True
-                        print_success(f"Intro/Loop cozunurlugu eslesiyor: {target_width}x{target_height}. Resize yapilmadi.")
-                    else:
-                        print_info("Intro ve Loop cozunurlukleri farkli. 1080p standardi uygulaniyor.")
-                except Exception as e:
-                    print_warning(f"Analiz hatasi: {e}")
 
-            if not smart_res_found:
-                 print_info("Varsayilan 1080p60 ayarlari uygulaniyor.")
+        # Configure render settings
+        codec_family, codec_config, target_width, target_height, target_fps, scale_algo, audio_bitrate = \
+            configure_render_settings(mode, intro_path, loop_path, single_video_path)
 
-            codec_family = "av1"
-            # Fallback if AV1 HW invalid? get_best_encoder handles it.
-            codec_config = get_best_encoder(codec_family)
-            print_info(f"Encoder: {codec_config.name}")
-            
-        else:
-            # Codec selection for Orta/Gelismis/Ozel
-            codec_options = [
-                "AV1 (YouTube 1080p Premium master)",
-                "H.264 (hizli encode, genis uyumluluk)",
-                "H.265/HEVC (yuksek sikistirma)"
-            ]
-            if hw_available:
-                hw_list = [k for k, v in available_encoders.items() if v]
-                print_success(f"Hardware acceleration mevcut: {', '.join(hw_list)}")
-                
-            codec_idx = ask_choice("Hedef codec", codec_options, 1)
-            codec_family = ["av1", "h264", "h265"][codec_idx - 1]
-            codec_config = get_best_encoder(codec_family)
-            
-            # Mode Logic
-            if config_mode_idx == 2: # Orta
-                # Ask Resolution only
-                res_choice = ask_choice("Cozunurluk", ["1080p (Full HD)", "1440p (2K)", "2160p (4K)", "Kaynak Cozunurlugu"], 1)
-                if res_choice == 1: target_width, target_height = 1920, 1080
-                elif res_choice == 2: target_width, target_height = 2560, 1440
-                elif res_choice == 3: target_width, target_height = 3840, 2160
-                elif res_choice == 4:
-                    ref_path = single_video_path if mode == "single" else intro_path
-                    ref_info = probe_video(ref_path)
-                    target_width, target_height = ref_info.width, ref_info.height
-                    
-                print_info("Orta Mod: Diger ayarlar otomatik (60fps, Lanczos, 192k).")
-
-            elif config_mode_idx >= 3: # Gelismis / Ozel
-                # Resolution
-                res_choice = ask_choice("Cozunurluk", ["1080p", "1440p", "2160p", "Kaynak", "Manuel Gir"], 1)
-                if res_choice == 1: target_width, target_height = 1920, 1080
-                elif res_choice == 2: target_width, target_height = 2560, 1440
-                elif res_choice == 3: target_width, target_height = 3840, 2160
-                elif res_choice == 4:
-                    ref_path = single_video_path if mode == "single" else intro_path
-                    ref_info = probe_video(ref_path)
-                    target_width, target_height = ref_info.width, ref_info.height
-                elif res_choice == 5:
-                    target_width = ask_int("Genislik (px)", 100, 7680, 1920)
-                    target_height = ask_int("Yukseklik (px)", 100, 4320, 1080)
-                
-                # FPS
-                fps_choice = ask_choice("FPS", ["60", "30", "24", "Kaynak"], 1)
-                if fps_choice == 1: target_fps = 60
-                elif fps_choice == 2: target_fps = 30
-                elif fps_choice == 3: target_fps = 24
-                elif fps_choice == 4:
-                     ref_path = single_video_path if mode == "single" else intro_path
-                     ref_info = probe_video(ref_path)
-                     target_fps = float(ref_info.fps.split('/')[0]) / float(ref_info.fps.split('/')[1]) if '/' in ref_info.fps else float(ref_info.fps)
-
-                # Upscale Algo
-                scale_algo = ask_choice("Upscale Algoritmasi", ["lanczos (Keskin/High Qual)", "bicubic (Standart)", "bilinear (Hizli)", "spline (Yumusak)"], 1)
-                scale_algo = ["lanczos", "bicubic", "bilinear", "spline"][scale_algo-1]
-                
-                # Audio Bitrate
-                audio_bitrate = ask_choice("Audio Bitrate", ["128k", "192k (Standart)", "256k", "320k (Yuksek)"], 2)
-                audio_bitrate = ["128k", "192k", "256k", "320k"][audio_bitrate-1]
-                
-                if config_mode_idx == 4: # Ozel
-                    # Ask about editing the command/header?
-                    if ask_confirm("Varsayilan FFmpeg parametrelerini duzenlemek ister misiniz?"):
-                        print_info("Not: Bu ozellik su anki surumde komut satirina yansitilacaktir.")
-                        codec_config.preset = ask_text(f"Preset ({codec_config.preset})", codec_config.preset)
-                        crf_val = ask_int(f"CRF/CQ ({codec_config.crf})", 0, 51, codec_config.crf)
-                        codec_config.crf = crf_val
-                    # Update extra args usually done inside CodecConfig, tricky to edit raw list here interactively
-        
-        print_info(f"Ayarlar: {target_width}x{target_height} @ {target_fps} fps | {scale_algo}")
-        
-        # ──────────────────────────────────────────────────────────────
-        # Analysis & Compatibility Check
-        # ──────────────────────────────────────────────────────────────
-        console.print()
-        print_info("Video/Codec Analizi yapiliyor...")
-        
-        # Helper to check
-        # We assume 1920x1080 @ 60fps as target for now, or we could ask BEFORE.
-        # But generally we want to standardize.
-        temp_runner = FFmpegRunner()
-        temp_encoder = VideoEncoder(
-            temp_runner, codec_config,
-            width=target_width, height=target_height, fps=target_fps
+        # Check compatibility
+        check_video_compatibility(
+            mode, intro_path, loop_path, single_video_path,
+            codec_config, target_width, target_height, target_fps
         )
 
-        if mode == "single":
-            ok, reason = temp_encoder.check_compatibility(single_video_path)
-            if ok:
-                print_success(f"[CHECK] VIDEO: Uyumlu ({reason}) - Direct Copy yapilacak.")
-            else:
-                print_warning(f"[CHECK] VIDEO: Re-encode gerekli! -> {reason}")
-        else:
-            # Check INTRO
-            ok_i, reason_i = temp_encoder.check_compatibility(intro_path)
-            if ok_i: 
-                print_success(f"[CHECK] INTRO: Uyumlu ({reason_i})")
-            else: 
-                print_warning(f"[CHECK] INTRO: Re-encode gerekli! -> {reason_i}")
+        # Select duration and audio
+        total_seconds, dur_str, chosen_tracks, chosen_bgs = \
+            select_duration_and_audio(mode, single_video_path, music_dir)
 
-            # Check LOOP
-            ok_l, reason_l = temp_encoder.check_compatibility(loop_path)
-            if ok_l: 
-                print_success(f"[CHECK] LOOP: Uyumlu ({reason_l})")
-            else: 
-                print_warning(f"[CHECK] LOOP: Re-encode gerekli! -> {reason_l}")
-        
-        console.print()
-        
-        # Duration
-        console.print()
-        if mode == "single" and single_video_path:
-            total_seconds = int(get_duration(single_video_path))
-            dur_str = format_duration(total_seconds)
-            print_info(f"Tek video suresi kullanilacak: {dur_str}")
-        else:
-            total_seconds = ask_duration_components(default_hours=8)
-            dur_str = format_duration(total_seconds)
-            print_info(f"Hedef sure: {dur_str}")
-        
-        # Audio files
-        tracks, backgrounds = list_audio_files(music_dir)
-        
-        if not tracks:
-            print_error("music/ icinde track bulunamadi!")
-            return 2
-        
-        # Track selection
-        console.print()
-        print_audio_table(tracks, "Muzik Track'leri")
-        
-        track_mode = ask_choice("Track secimi", ["Hepsi (listedeki sirayla)", "Belirli track'leri sec"], 1)
-        
-        if track_mode == 1:
-            chosen_tracks = tracks
-        else:
-            indices = ask_multiple_choice("Track sec", [p.name for p in tracks])
-            chosen_tracks = [tracks[i - 1] for i in indices]
-        
-        # Shuffle tracks for variety
-        random.shuffle(chosen_tracks)
-        print_info("Muzik listesi ve siralamasi karistirildi.")
-        
-        # Background selection
-        chosen_bgs: List[Tuple[Path, float]] = []
-        
-        console.print()
-        print_info("Background ses secenekleri:")
-        
-        bg_options = ["BG kullanma"]
-        if backgrounds:
-            bg_options.append(f"Mevcut BG dosyalarindan sec ({len(backgrounds)} adet)")
-        bg_options.append("Track listesinden BG olarak kullan")
-        
-        bg_mode = ask_choice("Background secimi", bg_options, 1)
-        
-        if bg_mode == 1:
-            # No BG
-            pass
-        
-        elif bg_mode == 2 and backgrounds:
-            # Select from existing BG files
-            print_audio_table(backgrounds, "Background Sesler")
-            
-            select_mode = ask_choice("BG secimi", ["Hepsi", "Belirli BG'leri sec"], 1)
-            
-            if select_mode == 1:
-                selected_bgs = backgrounds
-            else:
-                indices = ask_multiple_choice("BG sec", [p.name for p in backgrounds])
-                selected_bgs = [backgrounds[i - 1] for i in indices]
-            
-            # Get dB for each
-            console.print()
-            print_info("Secilen BG'ler icin dB ayari (Enter = varsayilan):")
-            for bg in selected_bgs:
-                default_db = parse_background_gain_db(bg)
-                db_str = ask_text(f"  {bg.name} dB", str(default_db))
-                try:
-                    db = float(db_str)
-                except ValueError:
-                    db = default_db
-                chosen_bgs.append((bg, db))
-        
-        else:
-            # Select track as BG (last option, or option 2 if no existing BGs)
-            console.print()
-            print_info("Track listesinden BG olarak kullanilacak parca secin:")
-            print_audio_table(tracks, "Muzik Track'leri (BG olarak)")
-            
-            # Allow selecting tracks that are NOT in chosen_tracks to avoid confusion
-            available_for_bg = tracks  # Could filter out chosen_tracks if desired
-            
-            indices = ask_multiple_choice(
-                "BG olarak kullanilacak track(lar)",
-                [p.name for p in available_for_bg],
-                min_count=1
-            )
-            
-            console.print()
-            print_info("Secilen track'ler icin BG dB ayari:")
-            for idx in indices:
-                track = available_for_bg[idx - 1]
-                db_str = ask_text(f"  {track.name} dB", "-8")  # Default -8 dB for BG
-                try:
-                    db = float(db_str)
-                except ValueError:
-                    db = -8.0
-                chosen_bgs.append((track, db))
-        
-        # ──────────────────────────────────────────────────────────────
-        # Audio Standardization
-        # ──────────────────────────────────────────────────────────────
-        console.print()
-        if ask_confirm("Muzik dosyalarini otomatik normalize edip arsivlemek ister misiniz?", default=True):
-            print_info("Muzik dosyalari standart (48kHz, 320k) formate donusturuluyor...")
-            
-            runner = FFmpegRunner(run_log)
-            audio_processor = AudioProcessor(runner, tmp_dir)
-            archive_dir = music_dir / "archive" # or just archive/ in root? User said "archived"
-            
-            def std_progress(name, current, total):
-                console.print(f"  Processed {current}/{total}: {name}", end="\r")
-            
-            # Standardize Chosen Tracks
-            # We standardize ALL relevant tracks just in case
-            to_std = [t for t in chosen_tracks]
-            new_tracks = audio_processor.standardize_tracks(to_std, archive_dir, std_progress)
-            chosen_tracks = new_tracks # Update references
-            
-            # Update BGs if they are files (if from tracks, they are already processed in to_std if overlap)
-            # This logic is tricky if BG is same as Track. 
-            # standardize_tracks updates file in place basically (moves original).
-            # So paths might point to new files automatically if names match.
-            # But standardize_tracks returns new paths (same names). 
-            # We should be safe.
-            
-            # Note: Backgrounds tuple is (Path, float).
-            # We should standardize background files too if they are separate.
-            bg_files = [b[0] for b in chosen_bgs if b[0] not in to_std]
-            if bg_files:
-                new_bgs = audio_processor.standardize_tracks(bg_files, archive_dir, std_progress)
-                # Update chosen_bgs list with new paths?
-                # Since standardize_tracks replaces file content at same path (mostly), 
-                # or updates existing path, we might not need to update `chosen_bgs` tuples 
-                # unless extension changed.
-                # standardize_tracks logic: moves orig to archive, puts new at original path with .mp3.
-                # If original was .wav, new is .mp3. Path object needs update.
-                
-                # Re-map chosen_bgs
-                # Iterate and replace paths
-                updated_bgs = []
-                for b_path, b_db in chosen_bgs:
-                    # Find if this path was standardized
-                    # If it was in to_std or bg_files, it might have changed extension
-                    # Check if file exists, if not, check .mp3 version
-                    if not b_path.exists() and b_path.with_suffix(".mp3").exists():
-                        updated_bgs.append((b_path.with_suffix(".mp3"), b_db))
-                    else:
-                        updated_bgs.append((b_path, b_db))
-                chosen_bgs = updated_bgs
-            
-            print_success("Ses dosyalari standardize edildi.")
+        # Standardize audio files
+        chosen_tracks, chosen_bgs = standardize_audio_files(
+            chosen_tracks, chosen_bgs, music_dir, run_log, tmp_dir
+        )
 
-        # ──────────────────────────────────────────────────────────────
-        # Drive Backup
-        # ──────────────────────────────────────────────────────────────
-        console.print()
-        drive_enabled = False
-        drive_folder_id = ""
-        
-        if ask_confirm("Render bitince videoyu Google Drive'a yedeklemek ister misiniz?"):
-            drive_enabled = True
-            drive_folder_id = ask_text("Drive Klasor ID (Bos = Root)", "")
-            # Verify auth?
-            try:
-                from .drive import DriveUploader
-                uploader = DriveUploader()
-                if not uploader.authenticate():
-                    print_warning("Drive girisi yapilamadi! Tarayicida dogrulama gerekebilir.")
-                    print_info("Lutfen cikan linki takip edin veya credentials.json'i kontrol edin.")
-            except ImportError:
-                print_error("Drive modulu yuklenemedi!")
-                drive_enabled = False
+        # Configure Drive upload
+        drive_enabled, drive_folder_id = configure_drive_upload()
 
         # Output filename
         out_path = get_output_filename(mode, single_video_path, codec_family, dur_str)
-        
+
         # Post action
         console.print()
         post_action_idx = ask_choice(
@@ -1153,7 +1522,7 @@ def run_interactive() -> int:
             1
         )
         post_action = ["keep", "archive", "delete"][post_action_idx - 1]
-        
+
         # Summary
         print_summary(
             intro_path, loop_path,
@@ -1162,60 +1531,14 @@ def run_interactive() -> int:
             out_path, post_action,
             single_video=single_video_path
         )
-        
+
         if not ask_confirm("Devam edilsin mi?", True):
             print_warning("Iptal edildi.")
             return 0
-        
-        # ═══════════════════════════════════════════════════════════════════════
-        # AUDIO VALIDATION
-        # ═══════════════════════════════════════════════════════════════════════
-        
-        console.print()
-        print_info("Muzik dosyalari dogrulaniyor...")
-        
-        runner = FFmpegRunner(run_log)
-        audio_processor = AudioProcessor(runner, tmp_dir)
-        
-        def validation_progress(name: str, current: int, total: int):
-            console.print(f"  [{current}/{total}] {name}...", end="\r")
-        
-        valid_tracks, invalid_tracks = audio_processor.validate_tracks(
-            chosen_tracks, validation_progress
-        )
-        console.print()  # Clear the progress line
-        
-        if invalid_tracks:
-            print_error(f"Bozuk muzik dosyalari tespit edildi ({len(invalid_tracks)} adet):")
-            for track, error in invalid_tracks:
-                console.print(f"  [error]✗[/] {track.name}: {error}")
-            
-            console.print()
-            
-            if valid_tracks:
-                choice = ask_choice(
-                    "Ne yapmak istersiniz?",
-                    [
-                        f"Sadece gecerli track'lerle devam et ({len(valid_tracks)} adet)",
-                        "Iptal et ve muzikleri degistir",
-                    ],
-                    1
-                )
-                
-                if choice == 2:
-                    print_warning("Iptal edildi. Bozuk muzik dosyalarini degistirin.")
-                    return 2
-                
-                # Update chosen tracks with valid ones only
-                chosen_tracks = valid_tracks
-                print_success(f"{len(valid_tracks)} gecerli track ile devam ediliyor.")
-            else:
-                print_error("Hic gecerli track yok! Muzik dosyalarini kontrol edin.")
-                return 2
-        else:
-            print_success(f"Tum track'ler dogrulandi ({len(valid_tracks)} adet)")
-            chosen_tracks = valid_tracks  # Use validated versions
-        
+
+        # Validate audio tracks
+        chosen_tracks = validate_audio_tracks(chosen_tracks, run_log, tmp_dir)
+
         # Save session with validated tracks
         session = {
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1228,7 +1551,7 @@ def run_interactive() -> int:
             "duration": dur_str,
             "duration_sec": total_seconds,
             "tracks": [p.resolve().as_posix() for p in chosen_tracks],
-            "tracks_validated": True,  # Mark as pre-validated
+            "tracks_validated": True,
             "bgs": [{"path": p.resolve().as_posix(), "db": db} for p, db in chosen_bgs],
             "out": out_path.as_posix(),
             "post_action": post_action,
@@ -1243,252 +1566,33 @@ def run_interactive() -> int:
             }
         }
         session_json.write_text(json.dumps(session, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        
-        # ═══════════════════════════════════════════════════════════════════════
-        # RENDER PIPELINE
-        # ═══════════════════════════════════════════════════════════════════════
-        
-        steps = [
-            "Intro encode",
-            "Loop encode",
-            "Video concat",
-            "Audio isleme",
-            "Final mux"
-        ]
-        
-        # Timing dictionary
-        step_times = {}
-        render_start = time.perf_counter()
-        
-        console.print()
-        
-        with MultiStepProgress(steps) as progress:
-            
-            # Step 1 & 2: Encode intro/loop
-            encoder = VideoEncoder(
-                runner=runner,
-                codec_config=codec_config,
-                width=target_width,
-                height=target_height,
-                fps=target_fps
-            )
-            
-            intro_norm = tmp_dir / f"intro_norm_{codec_family}.mp4"
-            loop_norm = tmp_dir / f"loop_norm_{codec_family}.mp4"
-            video_only_single = tmp_dir / f"video_only_single_{codec_family}.mp4"
-            
-            def make_progress_callback(step_idx: int):
-                def callback(p):
-                    progress.update(step_idx, p.percent, speed=p.speed)
-                return callback
-            
-            if mode == "single" and single_video_path:
-                # Single video encode (no concat)
-                t0 = time.perf_counter()
-                video_only = encoder.normalize_video(
-                    single_video_path, video_only_single, 
-                    make_progress_callback(0),
-                    scale_algo=scale_algo
-                )
-                step_times["Intro encode"] = time.perf_counter() - t0
-                progress.complete_step(0)
-                step_times["Loop encode"] = 0
-                progress.complete_step(1)
-                step_times["Video concat"] = 0
-                progress.complete_step(2)
-                
-                # Audio (sequential for single mode)
-                t0 = time.perf_counter()
-                music_loop = audio_processor.create_music_loop(
-                    chosen_tracks, total_seconds, pre_validated=True
-                )
-                
-                if chosen_bgs:
-                    bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                    audio_full = audio_processor.mix_tracks(
-                        music_loop, bg_processed, total_seconds
-                    )
-                else:
-                    audio_full = music_loop
-                
-                step_times["Audio isleme"] = time.perf_counter() - t0
-                progress.complete_step(3)
-            else:
-                # ═══════════════════════════════════════════════════════════════
-                # PARALLEL EXECUTION: Video (Intro+Loop) and Audio run concurrently
-                # This maximizes CPU/GPU/Disk utilization
-                # ═══════════════════════════════════════════════════════════════
-                from concurrent.futures import ThreadPoolExecutor, as_completed
-                
-                video_only = None
-                audio_full = None
-                
-                def encode_video_branch():
-                    """Encode intro, loop, then concat."""
-                    nonlocal video_only
-                    
-                    # Encode intro
-                    t0 = time.perf_counter()
-                    encoder.normalize_video(intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo)
-                    intro_time = time.perf_counter() - t0
-                    progress.complete_step(0)
-                    
-                    # Encode loop
-                    t0 = time.perf_counter()
-                    encoder.normalize_video(loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo)
-                    loop_time = time.perf_counter() - t0
-                    progress.complete_step(1)
-                    
-                    # Concat
-                    t0 = time.perf_counter()
-                    video_only = encoder.concat_videos(
-                        intro_norm, loop_norm,
-                        total_seconds, tmp_dir,
-                        make_progress_callback(2)
-                    )
-                    concat_time = time.perf_counter() - t0
-                    progress.complete_step(2)
-                    
-                    return intro_time, loop_time, concat_time
-                
-                def process_audio_branch():
-                    """Create music loop and mix with backgrounds."""
-                    nonlocal audio_full
-                    
-                    t0 = time.perf_counter()
-                    music_loop = audio_processor.create_music_loop(
-                        chosen_tracks, total_seconds, pre_validated=True
-                    )
-                    
-                    if chosen_bgs:
-                        bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                        audio_full = audio_processor.mix_tracks(
-                            music_loop, bg_processed, total_seconds
-                        )
-                    else:
-                        audio_full = music_loop
-                    
-                    audio_time = time.perf_counter() - t0
-                    return audio_time
-                
-                # Run both branches in parallel
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    video_future = executor.submit(encode_video_branch)
-                    audio_future = executor.submit(process_audio_branch)
-                    
-                    # Wait for both to complete
-                    intro_time, loop_time, concat_time = video_future.result()
-                    audio_time = audio_future.result()
-                
-                step_times["Intro encode"] = intro_time
-                step_times["Loop encode"] = loop_time
-                step_times["Video concat"] = concat_time
-                step_times["Audio isleme"] = audio_time
-                progress.complete_step(3)
-            
-            # Step 5: Final mux
-            t0 = time.perf_counter()
-            mux_video_audio(
-                runner, video_only, audio_full, out_path,
-                audio_bitrate=audio_bitrate,
-                progress_callback=make_progress_callback(4)
-            )
-            step_times["Final mux"] = time.perf_counter() - t0
-            progress.complete_step(4)
-        
-        # Calculate total render time
-        render_total = time.perf_counter() - render_start
-        
-        # Format render time for filename
-        render_mins = int(render_total // 60)
-        render_secs = int(render_total % 60)
-        time_suffix = f"_{render_mins}m{render_secs}s"
-        
-        # Rename output with time suffix
-        new_out_name = out_path.stem + time_suffix + out_path.suffix
-        new_out_path = out_path.parent / new_out_name
-        try:
-            out_path.rename(new_out_path)
-            out_path = new_out_path
-        except Exception:
-            pass  # Keep original name if rename fails
-        
-        # Completion with detailed timing
-        final_duration = get_duration(out_path)
-        
-        console.print()
-        console.print("=" * 60)
-        console.print("[bold green]RENDER TAMAMLANDI[/]")
-        console.print("=" * 60)
-        console.print(f"[bold]Dosya:[/] {out_path.name}")
-        console.print(f"[bold]Video Suresi:[/] {final_duration:.1f} saniye ({final_duration/3600:.2f} saat)")
-        console.print()
-        console.print("[bold yellow]ADIM SURELERI:[/]")
-        for step_name, step_time in step_times.items():
-            if step_time > 0:
-                mins = int(step_time // 60)
-                secs = int(step_time % 60)
-                console.print(f"  {step_name}: {mins}m {secs}s")
-        console.print()
-        console.print(f"[bold cyan]TOPLAM RENDER:[/] {render_mins}m {render_secs}s")
-        
-        # Post action
-        if post_action == "delete":
-            try:
-                if mode == "single" and single_video_path:
-                    single_video_path.unlink(missing_ok=True)
-                    print_success("Kaynak video silindi.")
-                else:
-                    intro_path.unlink(missing_ok=True)
-                    loop_path.unlink(missing_ok=True)
-                    print_success("Kaynak intro/loop silindi.")
-            except Exception as e:
-                print_warning(f"Kaynak silme hatasi: {e}")
-        
-        elif post_action == "archive":
-            archive_dir = base / "archive" / time.strftime("%Y%m%d_%H%M%S")
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            try:
-                if mode == "single" and single_video_path:
-                    single_video_path.rename(archive_dir / single_video_path.name)
-                    print_success(f"Kaynak video arsivlendi: {archive_dir.as_posix()}")
-                else:
-                    intro_path.rename(archive_dir / intro_path.name)
-                    loop_path.rename(archive_dir / loop_path.name)
-                    print_success(f"Kaynak intro/loop arsivlendi: {archive_dir.as_posix()}")
-            except Exception as e:
-                print_warning(f"Arsivleme hatasi: {e}")
-        
-        # ──────────────────────────────────────────────────────────────
-        # Drive Upload
-        # ──────────────────────────────────────────────────────────────
-        if drive_enabled:
-            console.print()
-            print_info("Google Drive'a yukleniyor...")
-            
-            try:
-                from .drive import DriveUploader
-                uploader = DriveUploader()
-                success, file_id = uploader.upload_file(out_path, drive_folder_id if drive_folder_id else None)
-                if success:
-                    print_success(f"Video basariyla yuklendi! ID: {file_id}")
-                else:
-                    print_error(f"Yukleme basarisiz: {file_id}")
-            except Exception as e:
-                print_error(f"Upload hatasi: {e}")
+
+        # Render pipeline
+        out_path, step_times = render_pipeline(
+            mode, intro_path, loop_path, single_video_path,
+            codec_config, target_width, target_height, target_fps,
+            scale_algo, audio_bitrate, total_seconds, chosen_tracks, chosen_bgs,
+            out_path, run_log, tmp_dir
+        )
+
+        # Handle post-render actions
+        handle_post_render_actions(
+            out_path, mode, intro_path, loop_path, single_video_path,
+            post_action, drive_enabled, drive_folder_id, base, step_times
+        )
 
         return 0
-    
+
     except KeyboardInterrupt:
         console.print()
         print_warning("Kullanici tarafindan iptal edildi.")
         return 130
-    
+
     except Exception as e:
         tb = traceback.format_exc()
         msg = f"# ERROR — {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n{tb}\n"
         err_log.write_text(msg, encoding="utf-8")
-        
+
         console.print()
         print_error(f"Hata olustu: {e}")
         print_info(f"Detaylar: {err_log.as_posix()}")
