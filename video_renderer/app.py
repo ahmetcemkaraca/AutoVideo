@@ -37,6 +37,7 @@ from .resource_manager import ResourceManager
 @dataclass
 class RenderModeConfig:
     """Unified render mode configuration."""
+
     mode: Literal["standard", "ramtest", "ramdisk", "high_vram"] = "standard"
     enabled: bool = False
     use_ramdisk: bool = False
@@ -81,7 +82,7 @@ class VideoRendererApp(App):
         self,
         mode: Literal["standard", "ramtest", "ramdisk", "high_vram"] = "standard",
         *args,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
 
@@ -119,6 +120,7 @@ class VideoRendererApp(App):
 
         # Batch mode (uses StateManager internally)
         from .batch import BatchQueue
+
         self.queue = BatchQueue()
         self.batch_job_id: Optional[int] = None
 
@@ -150,9 +152,12 @@ class VideoRendererApp(App):
         """Check if high VRAM is available (8GB+)."""
         try:
             import subprocess
+
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader"],
-                capture_output=True, text=True, timeout=2
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             if result.returncode == 0:
                 vram_mb = int(result.stdout.strip().split()[0])
@@ -165,6 +170,7 @@ class VideoRendererApp(App):
         """Check if chunking is needed (less than 16GB RAM)."""
         try:
             import psutil
+
             return psutil.virtual_memory().total < 16 * 1024**3  # < 16GB
         except Exception:
             return False
@@ -173,6 +179,7 @@ class VideoRendererApp(App):
         """Check if RAM disk is available."""
         try:
             from config import get_ramdisk_path
+
             return get_ramdisk_path() is not None
         except Exception:
             return False
@@ -189,7 +196,7 @@ class VideoRendererApp(App):
             "standard": "",
             "ramtest": " [RAM]",
             "ramdisk": " [RAMDisk]",
-            "high_vram": " [HighVRAM]"
+            "high_vram": " [HighVRAM]",
         }.get(self.mode, "")
         self.SUB_TITLE = f"FFmpeg Video Processing{mode_suffix}"
         self.push_screen("home")
@@ -206,6 +213,7 @@ class VideoRendererApp(App):
         # Cleanup ramtest temp files if enabled
         if self.mode_config.use_ramdisk:
             from config import cleanup_ramdisk
+
             cleanup_ramdisk()
 
         # ResourceManager cleanup is automatic via atexit and signal handlers

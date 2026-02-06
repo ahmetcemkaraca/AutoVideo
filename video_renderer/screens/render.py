@@ -29,6 +29,7 @@ from ..config import get_render_config
 
 class RenderStep:
     """Represents a render step."""
+
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
@@ -79,7 +80,7 @@ class RenderScreen(Screen):
             "standard": "",
             "ramtest": " [RAM]",
             "ramdisk": " [RAMDisk]",
-            "high_vram": " [VRAM]"
+            "high_vram": " [VRAM]",
         }
         mode_indicator = mode_indicators.get(self.app_mode, "")
 
@@ -99,7 +100,11 @@ class RenderScreen(Screen):
         # Progress steps
         with Container(classes="panel"):
             for i, step in enumerate(self.steps, 1):
-                yield Static(f"○ [{i}/5] {step.description}", id=f"step_{step.name}", classes="progress-pending")
+                yield Static(
+                    f"○ [{i}/5] {step.description}",
+                    id=f"step_{step.name}",
+                    classes="progress-pending",
+                )
                 yield ProgressBar(total=100, show_eta=True, id=f"progress_{step.name}")
 
         # Log panel
@@ -121,7 +126,7 @@ class RenderScreen(Screen):
             "standard": "",
             "ramtest": " (RAM-Optimized)",
             "ramdisk": " (RAM Disk)",
-            "high_vram": " (High VRAM)"
+            "high_vram": " (High VRAM)",
         }
         mode_text = mode_messages.get(self.app_mode, "")
         self._update_status(f"Render baslatiliyor{mode_text}...")
@@ -181,19 +186,24 @@ class RenderScreen(Screen):
             vram_percent = 0
             try:
                 import subprocess
+
                 # Get used memory
                 result_used = subprocess.run(
                     ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                    capture_output=True, text=True, timeout=1
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
                 )
                 # Get total memory
                 result_total = subprocess.run(
                     ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                    capture_output=True, text=True, timeout=1
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
                 )
                 if result_used.returncode == 0 and result_total.returncode == 0:
-                    vram_mb = int(result_used.stdout.strip().split('\n')[0])
-                    vram_total_mb = int(result_total.stdout.strip().split('\n')[0])
+                    vram_mb = int(result_used.stdout.strip().split("\n")[0])
+                    vram_total_mb = int(result_total.stdout.strip().split("\n")[0])
                     vram_percent = (vram_mb / vram_total_mb) * 100
             except Exception:
                 pass
@@ -257,27 +267,27 @@ class RenderScreen(Screen):
         """Run the render pipeline."""
         worker = get_current_worker()
         app = self.app
-        
+
         base = Path.cwd()
         tmp_dir = base / "tmp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         run_log = tmp_dir / "run_log.txt"
-        
+
         try:
             # Get data from app
-            intro_path = getattr(app, 'intro_path', None)
-            loop_path = getattr(app, 'loop_path', None)
-            single_video_path = getattr(app, 'single_video_path', None)
-            chosen_tracks = getattr(app, 'chosen_tracks', [])
-            chosen_bgs = getattr(app, 'chosen_bgs', [])
-            codec_family = getattr(app, 'codec_family', 'av1')
-            codec_config = getattr(app, 'codec_config', None)
-            total_seconds = getattr(app, 'total_seconds', 32400)
-            out_path = getattr(app, 'out_path', base / "output.mp4")
-            
+            intro_path = getattr(app, "intro_path", None)
+            loop_path = getattr(app, "loop_path", None)
+            single_video_path = getattr(app, "single_video_path", None)
+            chosen_tracks = getattr(app, "chosen_tracks", [])
+            chosen_bgs = getattr(app, "chosen_bgs", [])
+            codec_family = getattr(app, "codec_family", "av1")
+            codec_config = getattr(app, "codec_config", None)
+            total_seconds = getattr(app, "total_seconds", 32400)
+            out_path = getattr(app, "out_path", base / "output.mp4")
+
             # Check for resume from session
-            session = getattr(app, 'session', None)
+            session = getattr(app, "session", None)
             if session:
                 if session.get("mode") == "single":
                     single_video_path = Path(session["video"])
@@ -290,24 +300,22 @@ class RenderScreen(Screen):
                 codec_config = codec_config or app.codec_config
                 total_seconds = session["duration_sec"]
                 out_path = Path(session["out"])
-            
+
             if not codec_config:
                 from config import get_best_encoder
+
                 codec_config = get_best_encoder(codec_family)
-            
+
             runner = FFmpegRunner(run_log)
-            
+
             # Define output paths
             intro_norm = tmp_dir / f"intro_norm_{codec_family}.mp4"
             loop_norm = tmp_dir / f"loop_norm_{codec_family}.mp4"
             video_only_single = tmp_dir / f"video_only_single_{codec_family}.mp4"
-            
+
             # Create encoder
-            encoder = VideoEncoder(
-                runner, codec_config,
-                width=1920, height=1080, fps=30
-            )
-            
+            encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=30)
+
             # ═══════════════════════════════════════════════════════════════════
             # STEP 1-3: Video Processing (Intro/Loop or Single)
             # ═══════════════════════════════════════════════════════════════════
@@ -326,10 +334,15 @@ class RenderScreen(Screen):
                     video_only = video_only_single
                     self.call_from_thread(self._log, "Video zaten var, atlaniyor...")
                 else:
-                    def single_progress(p: FFmpegProgress):
-                        self.call_from_thread(self._update_step_status, "intro", "active", p.percent)
 
-                    video_only = encoder.normalize_video(single_video_path, video_only_single, single_progress)
+                    def single_progress(p: FFmpegProgress):
+                        self.call_from_thread(
+                            self._update_step_status, "intro", "active", p.percent
+                        )
+
+                    video_only = encoder.normalize_video(
+                        single_video_path, video_only_single, single_progress
+                    )
 
                 self.call_from_thread(self._update_step_status, "intro", "complete", 100)
                 self.call_from_thread(self._update_step_status, "loop", "complete", 100)
@@ -342,8 +355,11 @@ class RenderScreen(Screen):
                 if intro_norm.exists():
                     self.call_from_thread(self._log, "Intro zaten var, atlaniyor...")
                 else:
+
                     def intro_progress(p: FFmpegProgress):
-                        self.call_from_thread(self._update_step_status, "intro", "active", p.percent)
+                        self.call_from_thread(
+                            self._update_step_status, "intro", "active", p.percent
+                        )
 
                     encoder.normalize_video(intro_path, intro_norm, intro_progress)
 
@@ -359,6 +375,7 @@ class RenderScreen(Screen):
                 if loop_norm.exists():
                     self.call_from_thread(self._log, "Loop zaten var, atlaniyor...")
                 else:
+
                     def loop_progress(p: FFmpegProgress):
                         self.call_from_thread(self._update_step_status, "loop", "active", p.percent)
 
@@ -378,32 +395,33 @@ class RenderScreen(Screen):
                     video_only = video_only_files[0]
                     self.call_from_thread(self._log, "Concat zaten var, atlaniyor...")
                 else:
+
                     def concat_progress(p: FFmpegProgress):
-                        self.call_from_thread(self._update_step_status, "concat", "active", p.percent)
+                        self.call_from_thread(
+                            self._update_step_status, "concat", "active", p.percent
+                        )
 
                     video_only = encoder.concat_videos(
-                        intro_norm, loop_norm,
-                        total_seconds, tmp_dir,
-                        concat_progress
+                        intro_norm, loop_norm, total_seconds, tmp_dir, concat_progress
                     )
 
                 self.call_from_thread(self._update_step_status, "concat", "complete", 100)
-            
+
             # ═══════════════════════════════════════════════════════════════════
             # STEP 4: Audio
             # ═══════════════════════════════════════════════════════════════════
-            
+
             if worker.is_cancelled:
                 return
-            
+
             self.call_from_thread(self._update_step_status, "audio", "active")
             self.call_from_thread(self._log, "Audio isleniyor...")
-            
+
             audio_processor = AudioProcessor(runner, tmp_dir)
-            
+
             music_loop_path = tmp_dir / "music_loop.w64"
             audio_mixed_path = tmp_dir / "audio_mixed.w64"
-            
+
             if chosen_bgs and audio_mixed_path.exists():
                 audio_full = audio_mixed_path
                 self.call_from_thread(self._log, "Audio zaten var, atlaniyor...")
@@ -413,85 +431,89 @@ class RenderScreen(Screen):
             else:
                 # Validate and process tracks
                 self.call_from_thread(self._log, "Track'ler dogrulaniyor...")
-                
+
                 valid_tracks, invalid = audio_processor.validate_tracks(chosen_tracks)
                 if invalid:
                     self.call_from_thread(self._log, f"Uyari: {len(invalid)} bozuk track atlandi")
-                
+
                 if not valid_tracks:
                     raise ValueError("Hic gecerli track yok!")
-                
-                self.call_from_thread(self._log, f"{len(valid_tracks)} track ile loop olusturuluyor...")
-                
+
+                self.call_from_thread(
+                    self._log, f"{len(valid_tracks)} track ile loop olusturuluyor..."
+                )
+
                 music_loop = audio_processor.create_music_loop(
                     valid_tracks, total_seconds, pre_validated=True
                 )
-                
+
                 if chosen_bgs:
                     self.call_from_thread(self._log, "Background sesler ekleniyor...")
                     bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                    audio_full = audio_processor.mix_tracks(
-                        music_loop, bg_processed, total_seconds
-                    )
+                    audio_full = audio_processor.mix_tracks(music_loop, bg_processed, total_seconds)
                 else:
                     audio_full = music_loop
-            
+
             self.call_from_thread(self._update_step_status, "audio", "complete", 100)
-            
+
             # ═══════════════════════════════════════════════════════════════════
             # STEP 5: Final Mux
             # ═══════════════════════════════════════════════════════════════════
-            
+
             if worker.is_cancelled:
                 return
-            
+
             self.call_from_thread(self._update_step_status, "mux", "active")
             self.call_from_thread(self._log, f"Final mux: {out_path.name}")
-            
+
             if out_path.exists():
                 self.call_from_thread(self._log, "Cikti zaten var, atlaniyor...")
             else:
+
                 def mux_progress(p: FFmpegProgress):
                     self.call_from_thread(self._update_step_status, "mux", "active", p.percent)
-                
+
                 mux_video_audio(runner, video_only, audio_full, out_path, mux_progress)
-            
+
             self.call_from_thread(self._update_step_status, "mux", "complete", 100)
-            
+
             # ═══════════════════════════════════════════════════════════════════
             # COMPLETE
             # ═══════════════════════════════════════════════════════════════════
-            
+
             self.call_from_thread(self._log, "✓ Render tamamlandi!")
             self.call_from_thread(self._update_status, "Tamamlandi!")
-            
+
             # Store result
             app.render_result = {
                 "success": True,
                 "output": out_path,
                 "duration": get_duration(out_path) if out_path.exists() else 0,
             }
-            
+
             # Go to complete screen
             self.call_from_thread(self._go_to_complete)
-            
+
         except Exception as e:
             import traceback
+
             self.error_message = str(e)
             self.call_from_thread(self._log, f"✗ Hata: {e}")
             self.call_from_thread(self._update_status, f"Hata: {e}")
-            
+
             # Mark current step as error
-            step_name = self.steps[self.current_step].name if self.current_step < len(self.steps) else "mux"
+            step_name = (
+                self.steps[self.current_step].name if self.current_step < len(self.steps) else "mux"
+            )
             self.call_from_thread(self._update_step_status, step_name, "error")
-            
+
             # Show error buttons
             self.call_from_thread(self._show_error_options)
-    
+
     def _go_to_complete(self) -> None:
         """Navigate to complete screen."""
         self.app.push_screen("complete")
-    
+
     def _show_error_options(self) -> None:
         """Show error recovery options."""
         try:
@@ -502,7 +524,7 @@ class RenderScreen(Screen):
             action_bar.mount(Button("🚪 Cikis", id="quit", classes="-error"))
         except:
             pass
-    
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "cancel":
@@ -515,13 +537,13 @@ class RenderScreen(Screen):
             self.app.push_screen("video_select")
         elif event.button.id == "quit":
             self.app.exit()
-    
+
     def _cancel_render(self) -> None:
         """Cancel the render."""
         if self.render_worker:
             self.render_worker.cancel()
         self.app.pop_screen()
-    
+
     def action_cancel(self) -> None:
         """Cancel action."""
         self._cancel_render()

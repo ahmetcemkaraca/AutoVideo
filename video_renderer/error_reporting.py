@@ -26,22 +26,24 @@ from .exceptions import (
 )
 from .logging import get_logger, LogContext, generate_request_id
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Reporter Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class ErrorReportingMode(Enum):
     """Error reporting modes."""
-    SILENT = "silent"           # No user output, log only
-    USER_FRIENDLY = "user"      # User-friendly messages only
-    DEVELOPER = "developer"     # Detailed error information
-    DEBUG = "debug"            # Full debug information with stack traces
+
+    SILENT = "silent"  # No user output, log only
+    USER_FRIENDLY = "user"  # User-friendly messages only
+    DEVELOPER = "developer"  # Detailed error information
+    DEBUG = "debug"  # Full debug information with stack traces
 
 
 @dataclass
 class ErrorReportConfig:
     """Configuration for error reporting."""
+
     mode: ErrorReportingMode = ErrorReportingMode.USER_FRIENDLY
     show_stack_traces: bool = False
     show_technical_details: bool = False
@@ -55,9 +57,11 @@ class ErrorReportConfig:
 # Error Record
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class ErrorRecord:
     """Record of an error that occurred."""
+
     timestamp: datetime
     exception_type: str
     message: str
@@ -74,24 +78,27 @@ class ErrorRecord:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
-            'timestamp': self.timestamp.isoformat(),
-            'exception_type': self.exception_type,
-            'message': self.message,
-            'user_message': self.user_message,
-            'component': self.component,
-            'operation': self.operation,
-            'severity': self.severity.value if isinstance(self.severity, ErrorSeverity) else self.severity,
-            'recovery_possible': self.recovery_possible,
-            'suggested_action': self.suggested_action,
-            'stack_trace': self.stack_trace,
-            'request_id': self.request_id,
-            'context': self.context,
+            "timestamp": self.timestamp.isoformat(),
+            "exception_type": self.exception_type,
+            "message": self.message,
+            "user_message": self.user_message,
+            "component": self.component,
+            "operation": self.operation,
+            "severity": (
+                self.severity.value if isinstance(self.severity, ErrorSeverity) else self.severity
+            ),
+            "recovery_possible": self.recovery_possible,
+            "suggested_action": self.suggested_action,
+            "stack_trace": self.stack_trace,
+            "request_id": self.request_id,
+            "context": self.context,
         }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Aggregator
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class ErrorAggregator:
     """
@@ -103,7 +110,7 @@ class ErrorAggregator:
 
     def __init__(self, config: Optional[ErrorReportConfig] = None):
         self.config = config or ErrorReportConfig()
-        self.logger = get_logger('ErrorAggregator')
+        self.logger = get_logger("ErrorAggregator")
         self._error_history: List[ErrorRecord] = []
         self._error_counts: Dict[str, int] = {}
         self._lock = threading.Lock()
@@ -112,7 +119,7 @@ class ErrorAggregator:
         self,
         exception: Exception,
         request_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> ErrorRecord:
         """
         Report an error and create an error record.
@@ -157,7 +164,7 @@ class ErrorAggregator:
             suggested_action=suggested_action,
             stack_trace=traceback.format_exc() if self.config.show_stack_traces else None,
             request_id=request_id,
-            context=context or {}
+            context=context or {},
         )
 
         # Add to history
@@ -240,18 +247,22 @@ class ErrorAggregator:
             by_component = {}
 
             for record in self._error_history:
-                severity = record.severity.value if isinstance(record.severity, ErrorSeverity) else record.severity
+                severity = (
+                    record.severity.value
+                    if isinstance(record.severity, ErrorSeverity)
+                    else record.severity
+                )
                 by_severity[severity] = by_severity.get(severity, 0) + 1
 
-                component = record.component or 'unknown'
+                component = record.component or "unknown"
                 by_component[component] = by_component.get(component, 0) + 1
 
             return {
-                'total_errors': total,
-                'by_severity': by_severity,
-                'by_component': by_component,
-                'error_counts': dict(self._error_counts),
-                'recent_errors': [r.to_dict() for r in self._error_history[-10:]],
+                "total_errors": total,
+                "by_severity": by_severity,
+                "by_component": by_component,
+                "error_counts": dict(self._error_counts),
+                "recent_errors": [r.to_dict() for r in self._error_history[-10:]],
             }
 
     def clear_history(self) -> None:
@@ -332,11 +343,12 @@ def format_error(exception: Exception, **kwargs) -> str:
 # Error Handling Decorators
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def handle_errors(
     default_return: Any = None,
     raise_on_error: bool = False,
     error_callback: Optional[Callable[[Exception], Any]] = None,
-    component: Optional[str] = None
+    component: Optional[str] = None,
 ):
     """
     Decorator to automatically handle and report errors.
@@ -353,6 +365,7 @@ def handle_errors(
             # Function that might raise an exception
             pass
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -367,9 +380,9 @@ def handle_errors(
                 record = aggregator.report_error(
                     e,
                     context={
-                        'function': func.__qualname__,
-                        'component': component_name,
-                    }
+                        "function": func.__qualname__,
+                        "component": component_name,
+                    },
                 )
 
                 # Call error callback if provided
@@ -382,6 +395,7 @@ def handle_errors(
                 return default_return
 
         return wrapper
+
     return decorator
 
 
@@ -391,7 +405,7 @@ def safe_execute(
     default_return: Any = None,
     raise_on_error: bool = False,
     error_callback: Optional[Callable[[Exception], Any]] = None,
-    **kwargs
+    **kwargs,
 ) -> Any:
     """
     Safely execute a function with error handling.
@@ -424,6 +438,7 @@ def safe_execute(
 # User-Friendly Error Messages
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class ErrorMessage:
     """
     User-friendly error message templates.
@@ -435,77 +450,77 @@ class ErrorMessage:
     # File errors
     FILE_NOT_FOUND = (
         "The file '{file}' could not be found.",
-        "Check that the file path is correct and the file exists."
+        "Check that the file path is correct and the file exists.",
     )
 
     FILE_NOT_READABLE = (
         "The file '{file}' cannot be read.",
-        "Check file permissions and ensure the file is not corrupted."
+        "Check file permissions and ensure the file is not corrupted.",
     )
 
     FILE_NOT_WRITABLE = (
         "Cannot write to '{file}'.",
-        "Check directory permissions and available disk space."
+        "Check directory permissions and available disk space.",
     )
 
     # FFmpeg errors
     FFMPEG_NOT_FOUND = (
         "FFmpeg is not installed or not in PATH.",
-        "Install FFmpeg from https://ffmpeg.org/download.html"
+        "Install FFmpeg from https://ffmpeg.org/download.html",
     )
 
     FFMPEG_COMMAND_FAILED = (
         "FFmpeg command failed while processing '{file}'.",
-        "Check the file format and try again, or use a different codec."
+        "Check the file format and try again, or use a different codec.",
     )
 
     # Video errors
     VIDEO_INCOMPATIBLE = (
         "The video '{file}' is not compatible with target settings.",
-        "The video will be re-encoded automatically."
+        "The video will be re-encoded automatically.",
     )
 
     VIDEO_ENCODING_FAILED = (
         "Failed to encode video '{file}' with codec '{codec}'.",
-        "Try a different codec or check hardware encoder availability."
+        "Try a different codec or check hardware encoder availability.",
     )
 
     # Audio errors
     AUDIO_CORRUPTED = (
         "The audio file '{file}' appears to be corrupted.",
-        "Remove or replace the corrupted file."
+        "Remove or replace the corrupted file.",
     )
 
     AUDIO_MIXING_FAILED = (
         "Failed to mix audio tracks.",
-        "Ensure all audio files have compatible formats."
+        "Ensure all audio files have compatible formats.",
     )
 
     # Validation errors
     INVALID_DURATION = (
         "Duration must be between {min} and {max} seconds.",
-        "Enter a valid duration value."
+        "Enter a valid duration value.",
     )
 
     INVALID_RESOLUTION = (
         "Invalid resolution: {resolution}.",
-        "Use standard resolutions like 1920x1080 or 3840x2160."
+        "Use standard resolutions like 1920x1080 or 3840x2160.",
     )
 
     # External service errors
     YOUTUBE_AUTH_FAILED = (
         "YouTube authentication failed.",
-        "Run --auth-youtube to authenticate with YouTube."
+        "Run --auth-youtube to authenticate with YouTube.",
     )
 
     YOUTUBE_UPLOAD_FAILED = (
         "Failed to upload video to YouTube.",
-        "Check your internet connection and API credentials."
+        "Check your internet connection and API credentials.",
     )
 
     DRIVE_UPLOAD_FAILED = (
         "Failed to upload file to Google Drive.",
-        "Check your internet connection and API credentials."
+        "Check your internet connection and API credentials.",
     )
 
     @staticmethod
@@ -533,6 +548,7 @@ class ErrorMessage:
 # Error Recovery System
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class RecoveryAction:
     """Base class for error recovery actions."""
 
@@ -559,8 +575,7 @@ class RetryRecovery(RecoveryAction):
 
     def __init__(self, max_retries: int = 3):
         super().__init__(
-            name="retry",
-            description=f"Retry the operation (up to {max_retries} times)"
+            name="retry", description=f"Retry the operation (up to {max_retries} times)"
         )
         self.max_retries = max_retries
 
@@ -570,7 +585,7 @@ class RetryRecovery(RecoveryAction):
 
     def recover(self, error: Exception, context: Dict[str, Any]) -> bool:
         """Retry the operation."""
-        retry_count = context.get('retry_count', 0)
+        retry_count = context.get("retry_count", 0)
         return retry_count < self.max_retries
 
 
@@ -578,10 +593,7 @@ class FallbackRecovery(RecoveryAction):
     """Recovery action that falls back to alternative method."""
 
     def __init__(self, fallback_func: Callable, name: str = "fallback"):
-        super().__init__(
-            name=name,
-            description=f"Use alternative method: {name}"
-        )
+        super().__init__(name=name, description=f"Use alternative method: {name}")
         self.fallback_func = fallback_func
 
     def can_recover(self, error: Exception) -> bool:
@@ -602,17 +614,13 @@ class ErrorRecoveryManager:
 
     def __init__(self):
         self.recovery_actions: List[RecoveryAction] = []
-        self.logger = get_logger('ErrorRecovery')
+        self.logger = get_logger("ErrorRecovery")
 
     def register_action(self, action: RecoveryAction) -> None:
         """Register a recovery action."""
         self.recovery_actions.append(action)
 
-    def attempt_recovery(
-        self,
-        error: Exception,
-        context: Dict[str, Any]
-    ) -> bool:
+    def attempt_recovery(self, error: Exception, context: Dict[str, Any]) -> bool:
         """
         Attempt to recover from an error.
 
@@ -628,7 +636,7 @@ class ErrorRecoveryManager:
                 self.logger.info(
                     f"Attempting recovery: {action.name}",
                     action=action.name,
-                    error_type=type(error).__name__
+                    error_type=type(error).__name__,
                 )
 
                 try:
@@ -636,10 +644,7 @@ class ErrorRecoveryManager:
                         self.logger.info(f"Recovery successful: {action.name}")
                         return True
                 except Exception as recovery_error:
-                    self.logger.error(
-                        f"Recovery failed: {action.name}",
-                        exception=recovery_error
-                    )
+                    self.logger.error(f"Recovery failed: {action.name}", exception=recovery_error)
 
         return False
 
@@ -661,6 +666,7 @@ def get_recovery_manager() -> ErrorRecoveryManager:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CLI Error Formatting
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def format_cli_error(exception: Exception, show_traceback: bool = False) -> str:
     """

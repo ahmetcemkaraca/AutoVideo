@@ -25,22 +25,25 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # İzin verilen video dosya formatları
-ALLOWED_VIDEO_EXTENSIONS: Set[str] = {
-    '.mp4', '.mkv', '.mov', '.avi', '.webm', '.flv', '.wmv'
-}
+ALLOWED_VIDEO_EXTENSIONS: Set[str] = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".wmv"}
 
 # İzin verilen audio dosya formatları
 ALLOWED_AUDIO_EXTENSIONS: Set[str] = {
-    '.mp3', '.wav', '.flac', '.ogg', '.wma', '.aac', '.m4a', '.w64'
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".wma",
+    ".aac",
+    ".m4a",
+    ".w64",
 }
 
 # İzin verilen resim formatları
-ALLOWED_IMAGE_EXTENSIONS: Set[str] = {
-    '.jpg', '.jpeg', '.png', '.webp', '.bmp'
-}
+ALLOWED_IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
 # Tehlikeli karakterler (path traversal için)
-DANGEROUS_CHARS = set('..\\\\')
+DANGEROUS_CHARS = set("..\\\\")
 
 # Max dosya boyutu (100 GB)
 MAX_FILE_SIZE = 100 * 1024 * 1024 * 1024
@@ -53,8 +56,10 @@ MIN_FILE_SIZE = 1024
 # Path Security
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class PathSecurityError(Exception):
     """Path güvenliği hatası."""
+
     pass
 
 
@@ -63,7 +68,7 @@ def validate_path(
     allowed_extensions: Optional[Set[str]] = None,
     base_dir: Optional[Path] = None,
     check_exists: bool = False,
-    max_size: Optional[int] = None
+    max_size: Optional[int] = None,
 ) -> Path:
     """
     Dosya yolunu güvenli bir şekilde validate eder.
@@ -83,7 +88,7 @@ def validate_path(
     """
     if isinstance(path, str):
         # String'deki tehlikeli karakterleri kontrol et
-        if '..' in path or '\\\\' in path:
+        if ".." in path or "\\\\" in path:
             raise PathSecurityError(f"Tehlikeli path tespit edildi: {path}")
         path = Path(path)
 
@@ -102,8 +107,7 @@ def validate_path(
                 resolved_path.relative_to(resolved_base)
             except ValueError:
                 raise PathSecurityError(
-                    f"Path base directory dışında: {resolved_path} "
-                    f"(base: {resolved_base})"
+                    f"Path base directory dışında: {resolved_path} " f"(base: {resolved_base})"
                 )
         except (OSError, RuntimeError) as e:
             raise PathSecurityError(f"Base directory resolve edilemedi: {base_dir}") from e
@@ -113,8 +117,7 @@ def validate_path(
         ext = resolved_path.suffix.lower()
         if ext not in allowed_extensions:
             raise PathSecurityError(
-                f"İzin verilmeyen dosya uzantısı: {ext} "
-                f"(izin verilen: {allowed_extensions})"
+                f"İzin verilmeyen dosya uzantısı: {ext} " f"(izin verilen: {allowed_extensions})"
             )
 
     # Dosya varlığı kontrolü
@@ -130,13 +133,9 @@ def validate_path(
                     f"Dosya çok küçük (boş/corrupted olabilir): {resolved_path}"
                 )
             if max_size is not None and file_size > max_size:
-                raise PathSecurityError(
-                    f"Dosya boyutu sınırı aşıldı: {file_size} > {max_size}"
-                )
+                raise PathSecurityError(f"Dosya boyutu sınırı aşıldı: {file_size} > {max_size}")
             if file_size > MAX_FILE_SIZE:
-                raise PathSecurityError(
-                    f"Dosya çok büyük: {file_size} > {MAX_FILE_SIZE}"
-                )
+                raise PathSecurityError(f"Dosya çok büyük: {file_size} > {MAX_FILE_SIZE}")
         except OSError as e:
             raise PathSecurityError(f"Dosya bilgisi alınamadı: {resolved_path}") from e
 
@@ -150,7 +149,7 @@ def validate_video_path(path: Path | str, base_dir: Optional[Path] = None) -> Pa
         allowed_extensions=ALLOWED_VIDEO_EXTENSIONS,
         base_dir=base_dir,
         check_exists=True,
-        max_size=MAX_FILE_SIZE
+        max_size=MAX_FILE_SIZE,
     )
 
 
@@ -161,7 +160,7 @@ def validate_audio_path(path: Path | str, base_dir: Optional[Path] = None) -> Pa
         allowed_extensions=ALLOWED_AUDIO_EXTENSIONS,
         base_dir=base_dir,
         check_exists=True,
-        max_size=MAX_FILE_SIZE
+        max_size=MAX_FILE_SIZE,
     )
 
 
@@ -172,13 +171,14 @@ def validate_image_path(path: Path | str, base_dir: Optional[Path] = None) -> Pa
         allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
         base_dir=base_dir,
         check_exists=True,
-        max_size=50 * 1024 * 1024  # 50 MB max for images
+        max_size=50 * 1024 * 1024,  # 50 MB max for images
     )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Input Sanitization
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def sanitize_filename(filename: str, max_length: int = 255) -> str:
     """
@@ -193,20 +193,20 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
     """
     # Tehlikeli karakterleri kaldır
     # Sadece alfanümerik, tire, alt çizgi, ve nokta bırak
-    safe = re.sub(r'[^\w\-.]', '_', filename)
+    safe = re.sub(r"[^\w\-.]", "_", filename)
 
     # Sondaki noktaları ve boşlukları kaldır (Windows güvenliği)
-    safe = safe.rstrip('. ')
+    safe = safe.rstrip(". ")
 
     # Uzunluk kontrolü
     if len(safe) > max_length:
         # Uzantıyı koru
         name_part, ext = os.path.splitext(safe)
-        safe = name_part[:max_length - len(ext)] + ext
+        safe = name_part[: max_length - len(ext)] + ext
 
     # Boş isim kontrolü
-    if not safe or safe == '.':
-        safe = 'unnamed'
+    if not safe or safe == ".":
+        safe = "unnamed"
 
     return safe
 
@@ -222,11 +222,11 @@ def sanitize_path_string(path_str: str) -> str:
         Güvenli path string
     """
     # Path traversal karakterlerini kaldır
-    safe = path_str.replace('..', '').replace('\\\\', '/')
+    safe = path_str.replace("..", "").replace("\\\\", "/")
 
     # Absolute path'i koru
     if os.path.isabs(path_str):
-        return '/' + safe.lstrip('/')
+        return "/" + safe.lstrip("/")
     return safe
 
 
@@ -256,9 +256,7 @@ def safe_join(base: Path, *paths: str) -> Path:
         resolved_base = base.resolve()
         resolved.relative_to(resolved_base)
     except ValueError:
-        raise PathSecurityError(
-            f"Path birleştirme sonucu base dışında: {result}"
-        )
+        raise PathSecurityError(f"Path birleştirme sonucu base dışında: {result}")
 
     return result
 
@@ -266,6 +264,7 @@ def safe_join(base: Path, *paths: str) -> Path:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Command Injection Prevention
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def validate_command_arg(arg: str) -> bool:
     """
@@ -279,15 +278,18 @@ def validate_command_arg(arg: str) -> bool:
     """
     # Tehlikeli karakterleri kontrol et
     dangerous_patterns = [
-        r';',          # Command separator
-        r'&&', r'\|\|',  # Command chaining
-        r'\|',         # Pipe
-        r'\$',         # Variable expansion
-        r'\`',         # Command substitution
-        r'\$',         # Variable expansion
-        r'\(', r'\)',  # Subshell
-        r'<', r'>',    # Redirection
-        r'&',          # Background execution
+        r";",  # Command separator
+        r"&&",
+        r"\|\|",  # Command chaining
+        r"\|",  # Pipe
+        r"\$",  # Variable expansion
+        r"\`",  # Command substitution
+        r"\$",  # Variable expansion
+        r"\(",
+        r"\)",  # Subshell
+        r"<",
+        r">",  # Redirection
+        r"&",  # Background execution
     ]
 
     arg_lower = arg.lower()
@@ -325,6 +327,7 @@ def validate_ffmpeg_args(args: List[str]) -> bool:
 # File Content Validation
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def validate_media_file(path: Path) -> bool:
     """
     Medya dosyasının gerçekten medya dosyası olduğunu kontrol eder.
@@ -344,16 +347,20 @@ def validate_media_file(path: Path) -> bool:
         # ffprobe ile dosyayı kontrol et
         result = subprocess.run(
             [
-                'ffprobe',
-                '-v', 'error',
-                '-select_streams', 'v:0',
-                '-show_entries', 'stream=codec_name',
-                '-of', 'default=noprint_wrappers=1:nokey=1',
-                str(path)
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
             ],
             capture_output=True,
             text=True,
-            timeout=10  # 10 saniye timeout
+            timeout=10,  # 10 saniye timeout
         )
 
         # Video stream'i bulduysa geçerli
@@ -363,16 +370,20 @@ def validate_media_file(path: Path) -> bool:
         # Video yoksa audio kontrol et
         result = subprocess.run(
             [
-                'ffprobe',
-                '-v', 'error',
-                '-select_streams', 'a:0',
-                '-show_entries', 'stream=codec_name',
-                '-of', 'default=noprint_wrappers=1:nokey=1',
-                str(path)
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
             ],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         return result.returncode == 0 and bool(result.stdout.strip())
@@ -385,6 +396,7 @@ def validate_media_file(path: Path) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Credential Security
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> bool:
     """
@@ -405,7 +417,7 @@ def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> b
         stat_info = path.stat()
         file_mode = stat_info.st_mode
 
-        if os.name == 'posix':
+        if os.name == "posix":
             # POSIX systems - check permission bits
             if expected_mode is None:
                 expected_mode = 0o600
@@ -420,12 +432,10 @@ def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> b
 
             # Check that file is owned by current user
             if stat_info.st_uid != os.getuid():
-                logger.warning(
-                    f"File not owned by current user: {path}"
-                )
+                logger.warning(f"File not owned by current user: {path}")
                 return False
 
-        elif os.name == 'nt':
+        elif os.name == "nt":
             # Windows systems - check for Everyone/Anonymous access
             try:
                 import win32security
@@ -434,8 +444,7 @@ def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> b
 
                 # Get security descriptor
                 sd = win32security.GetFileSecurity(
-                    str(path),
-                    win32security.DACL_SECURITY_INFORMATION
+                    str(path), win32security.DACL_SECURITY_INFORMATION
                 )
                 dacl = sd.GetSecurityDescriptorDacl()
 
@@ -445,14 +454,10 @@ def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> b
                         sid = ace[2]
 
                         # Check for Everyone or Anonymous Logon
-                        account_name = win32security.LookupAccountSid(
-                            None, sid
-                        )[0]
+                        account_name = win32security.LookupAccountSid(None, sid)[0]
 
-                        if account_name in ['Everyone', 'ANONYMOUS LOGON']:
-                            logger.warning(
-                                f"File accessible to everyone: {path}"
-                            )
+                        if account_name in ["Everyone", "ANONYMOUS LOGON"]:
+                            logger.warning(f"File accessible to everyone: {path}")
                             return False
 
             except ImportError:
@@ -463,13 +468,11 @@ def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> b
         parent = path.parent
         if parent.exists():
             parent_stat = parent.stat()
-            if os.name == 'posix':
+            if os.name == "posix":
                 parent_mode = parent_stat.st_mode & 0o777
                 # Parent should not be world-writable
                 if parent_mode & 0o002:
-                    logger.warning(
-                        f"Parent directory is world-writable: {parent}"
-                    )
+                    logger.warning(f"Parent directory is world-writable: {parent}")
                     return False
 
         return True
@@ -493,10 +496,10 @@ def set_secure_permissions(path: Path) -> bool:
         return True
 
     try:
-        if os.name == 'posix':
+        if os.name == "posix":
             # Set 0600 (read/write for owner only)
             os.chmod(path, 0o600)
-        elif os.name == 'nt':
+        elif os.name == "nt":
             # Windows - remove inherited permissions
             try:
                 import win32security
@@ -506,10 +509,9 @@ def set_secure_permissions(path: Path) -> bool:
                 # Get current user
                 user_sid = win32security.GetTokenInformation(
                     win32security.OpenProcessToken(
-                        win32api.GetCurrentProcess(),
-                        win32con.TOKEN_QUERY
+                        win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
                     ),
-                    win32security.TokenUser
+                    win32security.TokenUser,
                 )[0]
 
                 # Create new security descriptor
@@ -519,17 +521,13 @@ def set_secure_permissions(path: Path) -> bool:
                 # Create DACL granting full control to owner only
                 dacl = win32security.ACL()
                 dacl.AddAccessAllowedAce(
-                    win32security.ACL_REVISION_DS,
-                    win32con.FILE_ALL_ACCESS,
-                    user_sid
+                    win32security.ACL_REVISION_DS, win32con.FILE_ALL_ACCESS, user_sid
                 )
                 sd.SetSecurityDescriptorDacl(1, dacl, 0)
 
                 # Apply security descriptor
                 win32security.SetFileSecurity(
-                    str(path),
-                    win32security.DACL_SECURITY_INFORMATION,
-                    sd
+                    str(path), win32security.DACL_SECURITY_INFORMATION, sd
                 )
 
             except ImportError:
@@ -558,14 +556,13 @@ def validate_client_secrets(path: Path) -> bool:
         return False
 
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # Check for valid client type
         if "installed" not in data and "web" not in data:
             logger.error(
-                f"Invalid client_secrets.json format: "
-                f"missing 'installed' or 'web' key"
+                f"Invalid client_secrets.json format: " f"missing 'installed' or 'web' key"
             )
             return False
 
@@ -576,24 +573,18 @@ def validate_client_secrets(path: Path) -> bool:
         required_fields = ["client_id", "client_secret"]
         for field in required_fields:
             if field not in client_config:
-                logger.error(
-                    f"Invalid client_secrets.json: missing required field '{field}'"
-                )
+                logger.error(f"Invalid client_secrets.json: missing required field '{field}'")
                 return False
 
         # Check for redirect URIs
         if "redirect_uris" not in client_config:
-            logger.warning(
-                f"client_secrets.json missing 'redirect_uris' field"
-            )
+            logger.warning(f"client_secrets.json missing 'redirect_uris' field")
 
         # Check for insecure configurations
         if "redirect_uris" in client_config:
             redirect_uris = client_config["redirect_uris"]
             if any(uri.startswith("http://") for uri in redirect_uris if uri):
-                logger.warning(
-                    f"client_secrets.json contains insecure HTTP redirect URIs"
-                )
+                logger.warning(f"client_secrets.json contains insecure HTTP redirect URIs")
 
         return True
 
@@ -615,7 +606,7 @@ def generate_oauth_state() -> str:
     return secrets.token_urlsafe(16)
 
 
-def hash_file(path: Path, algorithm: str = 'sha256') -> str:
+def hash_file(path: Path, algorithm: str = "sha256") -> str:
     """
     Calculate hash of a file.
 
@@ -628,14 +619,14 @@ def hash_file(path: Path, algorithm: str = 'sha256') -> str:
     """
     hash_func = hashlib.new(algorithm)
 
-    with open(path, 'rb') as f:
-        for chunk in iter(lambda: f.read(4096), b''):
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
             hash_func.update(chunk)
 
     return hash_func.hexdigest()
 
 
-def validate_integrity(path: Path, expected_hash: str, algorithm: str = 'sha256') -> bool:
+def validate_integrity(path: Path, expected_hash: str, algorithm: str = "sha256") -> bool:
     """
     Validate file integrity using hash comparison.
 
@@ -655,7 +646,9 @@ def validate_integrity(path: Path, expected_hash: str, algorithm: str = 'sha256'
         return False
 
 
-def sanitize_log_data(data: Dict[str, Any], sensitive_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+def sanitize_log_data(
+    data: Dict[str, Any], sensitive_keys: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """
     Sanitize dictionary data for logging by redacting sensitive fields.
 
@@ -668,10 +661,17 @@ def sanitize_log_data(data: Dict[str, Any], sensitive_keys: Optional[List[str]] 
     """
     if sensitive_keys is None:
         sensitive_keys = [
-            'password', 'passwd', 'pwd',
-            'token', 'access_token', 'refresh_token',
-            'secret', 'client_secret', 'api_key',
-            'authorization', 'auth'
+            "password",
+            "passwd",
+            "pwd",
+            "token",
+            "access_token",
+            "refresh_token",
+            "secret",
+            "client_secret",
+            "api_key",
+            "authorization",
+            "auth",
         ]
 
     sanitized = {}
@@ -680,9 +680,9 @@ def sanitize_log_data(data: Dict[str, Any], sensitive_keys: Optional[List[str]] 
         if any(sensitive in key_lower for sensitive in sensitive_keys):
             if isinstance(value, str) and len(value) > 4:
                 # Show last 4 characters for debugging
-                sanitized[key] = f'[REDACTED: ...{value[-4:]}]'
+                sanitized[key] = f"[REDACTED: ...{value[-4:]}]"
             else:
-                sanitized[key] = '[REDACTED]'
+                sanitized[key] = "[REDACTED]"
         else:
             sanitized[key] = value
 

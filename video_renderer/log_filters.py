@@ -29,60 +29,39 @@ class SensitiveDataFilter(logging.Filter):
     # Patterns for sensitive data (ordered by specificity)
     SENSITIVE_PATTERNS: List[tuple[str, str]] = [
         # Bearer tokens (RFC 6750)
-        (
-            r'Bearer\s+([A-Za-z0-9\-._~+/]+=*)',
-            'Bearer [REDACTED]'
-        ),
+        (r"Bearer\s+([A-Za-z0-9\-._~+/]+=*)", "Bearer [REDACTED]"),
         # Authorization headers
-        (
-            r'Authorization:\s*[A-Za-z]+\s+[A-Za-z0-9\-._~+/]+=*',
-            'Authorization: [REDACTED]'
-        ),
+        (r"Authorization:\s*[A-Za-z]+\s+[A-Za-z0-9\-._~+/]+=*", "Authorization: [REDACTED]"),
         # OAuth refresh tokens
         (
             r'(["\']?)refresh_token\1[\s:]+(["\']?)([A-Za-z0-9\-._~+/]+={0,2})\2',
-            r'\1refresh_token\1\2[REDACTED]\2'
+            r"\1refresh_token\1\2[REDACTED]\2",
         ),
         # OAuth access tokens
         (
             r'(["\']?)access_token\1[\s:]+(["\']?)([A-Za-z0-9\-._~+/]+={0,2})\2',
-            r'\1access_token\1\2[REDACTED]\2'
+            r"\1access_token\1\2[REDACTED]\2",
         ),
         # API keys (common patterns)
         (
             r'(["\']?)(?:api[_-]?key|apikey)\1[\s:]+(["\']?)([A-Za-z0-9\-_]{20,})\2',
-            r'\1\1\2[REDACTED]\2'
+            r"\1\1\2[REDACTED]\2",
         ),
         # Client secrets
         (
             r'(["\']?)(?:client[_-]?secret|clientsecret)\1[\s:]+(["\']?)([A-Za-z0-9\-_.]{20,})\2',
-            r'\1\1\2[REDACTED]\2'
+            r"\1\1\2[REDACTED]\2",
         ),
         # Passwords in URLs
-        (
-            r'://([^:]+):([^@]+)@',
-            r'://\1:[REDACTED]@'
-        ),
+        (r"://([^:]+):([^@]+)@", r"://\1:[REDACTED]@"),
         # Password fields
-        (
-            r'(["\']?)(?:password|passwd|pwd)\1[\s:]+(["\']?)([^\s"\']{4,})\2',
-            r'\1\1\2[REDACTED]\2'
-        ),
+        (r'(["\']?)(?:password|passwd|pwd)\1[\s:]+(["\']?)([^\s"\']{4,})\2', r"\1\1\2[REDACTED]\2"),
         # Session IDs (hex strings)
-        (
-            r'(["\']?)session[_-]?id\1[\s:]+(["\']?)([0-9a-fA-F]{16,})\2',
-            r'\1\1\2[REDACTED]\2'
-        ),
+        (r'(["\']?)session[_-]?id\1[\s:]+(["\']?)([0-9a-fA-F]{16,})\2', r"\1\1\2[REDACTED]\2"),
         # JWT tokens (matches header.payload.signature format)
-        (
-            r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+',
-            '[JWT_REDACTED]'
-        ),
+        (r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[JWT_REDACTED]"),
         # Generic token patterns
-        (
-            r'(["\']?)token\1[\s:]+(["\']?)([A-Za-z0-9\-._~+/]{20,}={0,2})\2',
-            r'\1\1\2[REDACTED]\2'
-        ),
+        (r'(["\']?)token\1[\s:]+(["\']?)([A-Za-z0-9\-._~+/]{20,}={0,2})\2', r"\1\1\2[REDACTED]\2"),
     ]
 
     def __init__(self, patterns: Optional[List[tuple[str, str]]] = None):
@@ -96,8 +75,7 @@ class SensitiveDataFilter(logging.Filter):
         super().__init__()
         self.patterns = patterns or self.SENSITIVE_PATTERNS
         self._compiled_patterns: List[tuple[Pattern, str]] = [
-            (re.compile(pattern), replacement)
-            for pattern, replacement in self.patterns
+            (re.compile(pattern), replacement) for pattern, replacement in self.patterns
         ]
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -117,8 +95,7 @@ class SensitiveDataFilter(logging.Filter):
         # Redact from args
         if record.args:
             record.args = tuple(
-                self._redact(str(arg)) if isinstance(arg, str) else arg
-                for arg in record.args
+                self._redact(str(arg)) if isinstance(arg, str) else arg for arg in record.args
             )
 
         return True
@@ -137,7 +114,7 @@ class SensitiveDataFilter(logging.Filter):
             text = pattern.sub(replacement, text)
         return text
 
-    def add_pattern(self, pattern: str, replacement: str = '[REDACTED]') -> None:
+    def add_pattern(self, pattern: str, replacement: str = "[REDACTED]") -> None:
         """
         Add a custom redaction pattern.
 
@@ -146,10 +123,7 @@ class SensitiveDataFilter(logging.Filter):
             replacement: Replacement string (default: [REDACTED])
         """
         self.patterns.append((pattern, replacement))
-        self._compiled_patterns.append((
-            re.compile(pattern),
-            replacement
-        ))
+        self._compiled_patterns.append((re.compile(pattern), replacement))
 
 
 class PathRedactionFilter(logging.Filter):
@@ -160,11 +134,7 @@ class PathRedactionFilter(logging.Filter):
     information like usernames or system details.
     """
 
-    def __init__(
-        self,
-        base_paths: Optional[List[str]] = None,
-        replacement: str = '[PATH]'
-    ):
+    def __init__(self, base_paths: Optional[List[str]] = None, replacement: str = "[PATH]"):
         """
         Initialize the path redaction filter.
 
@@ -200,8 +170,8 @@ class PathRedactionFilter(logging.Filter):
             paths.append(cwd)
 
         # User profile (Windows)
-        if os.name == 'nt':
-            userprofile = os.environ.get('USERPROFILE')
+        if os.name == "nt":
+            userprofile = os.environ.get("USERPROFILE")
             if userprofile:
                 paths.append(userprofile)
 
@@ -220,7 +190,7 @@ class PathRedactionFilter(logging.Filter):
             # Escape special regex characters in path
             escaped = re.escape(base_path)
             # Match the path with optional trailing components
-            pattern = re.compile(rf'{escaped}[\\/][^\s]*')
+            pattern = re.compile(rf"{escaped}[\\/][^\s]*")
             patterns.append(pattern)
 
         return patterns
@@ -242,10 +212,7 @@ class PathRedactionFilter(logging.Filter):
         return True
 
 
-def setup_sensitive_data_logging(
-    logger: logging.Logger,
-    level: int = logging.INFO
-) -> None:
+def setup_sensitive_data_logging(logger: logging.Logger, level: int = logging.INFO) -> None:
     """
     Configure a logger with sensitive data filtering.
 

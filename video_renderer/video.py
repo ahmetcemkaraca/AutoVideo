@@ -18,17 +18,23 @@ from pathlib import Path
 from typing import List, Optional, Callable, Tuple, Dict, Set
 import subprocess
 
-from config import (
-    RendererConfig as RenderConfig, CodecConfig, ColorConfig, COLOR_BT709,
-    DEFAULT_WIDTH, DEFAULT_HEIGHT, get_nvenc_extra_args, get_hwaccel_input_args,
-    ALLOWED_FPS
+from .config import (
+    RenderConfig,
+    CodecConfig,
+    ColorConfig,
+    COLOR_BT709,
+    DEFAULT_WIDTH,
+    DEFAULT_HEIGHT,
+    get_nvenc_extra_args,
+    get_hwaccel_input_args,
+    ALLOWED_FPS,
 )
 from .ffmpeg import FFmpegRunner, FFmpegProgress, probe_video, get_duration, write_concat_list
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Video Encoder
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class VideoEncoder:
     """
@@ -51,7 +57,7 @@ class VideoEncoder:
         height: int = DEFAULT_HEIGHT,
         ramtest_mode: bool = False,
         high_vram: bool = False,
-        fps: int = 60
+        fps: int = 60,
     ):
         self.runner = runner
         self.codec = codec_config
@@ -66,20 +72,20 @@ class VideoEncoder:
 
         # Determine acceleration type from encoder name
         self._accel_type = self._detect_acceleration_type()
-        self._use_gpu = self._accel_type != 'none'
-    
+        self._use_gpu = self._accel_type != "none"
+
     def _detect_acceleration_type(self) -> str:
         """Detect hardware acceleration type from encoder name."""
         enc = self.codec.encoder.lower()
-        if 'nvenc' in enc:
-            return 'nvenc'
-        elif 'qsv' in enc:
-            return 'qsv'
-        elif 'vaapi' in enc:
-            return 'vaapi'
-        elif 'videotoolbox' in enc:
-            return 'videotoolbox'
-        return 'none'
+        if "nvenc" in enc:
+            return "nvenc"
+        elif "qsv" in enc:
+            return "qsv"
+        elif "vaapi" in enc:
+            return "vaapi"
+        elif "videotoolbox" in enc:
+            return "videotoolbox"
+        return "none"
 
     def _detect_vaapi_device(self) -> Optional[str]:
         """
@@ -133,37 +139,52 @@ class VideoEncoder:
         enc = self.codec.encoder.lower()
 
         # Modern codecs
-        if "av1" in enc: return "av1"
+        if "av1" in enc:
+            return "av1"
 
         # H.264 variants
-        if "h264" in enc or "x264" in enc: return "h264"
+        if "h264" in enc or "x264" in enc:
+            return "h264"
 
         # H.265/HEVC variants
-        if "hevc" in enc or "x265" in enc or "h265" in enc: return "hevc"
+        if "hevc" in enc or "x265" in enc or "h265" in enc:
+            return "hevc"
 
         # VPx series
-        if "vp9" in enc: return "vp9"
-        if "vp8" in enc: return "vp8"
+        if "vp9" in enc:
+            return "vp9"
+        if "vp8" in enc:
+            return "vp8"
 
         # MPEG variants
-        if "mpeg2" in enc or "mpeg2video" in enc: return "mpeg2video"
-        if "mpeg4" in enc: return "mpeg4"
+        if "mpeg2" in enc or "mpeg2video" in enc:
+            return "mpeg2video"
+        if "mpeg4" in enc:
+            return "mpeg4"
 
         # ProRes family
         if "prores" in enc:
-            if "proxy" in enc: return "prores"
-            if "lt" in enc: return "prores"
-            if "hq" in enc: return "prores"
-            if "4444" in enc: return "prores"
+            if "proxy" in enc:
+                return "prores"
+            if "lt" in enc:
+                return "prores"
+            if "hq" in enc:
+                return "prores"
+            if "4444" in enc:
+                return "prores"
             return "prores"
 
         # Other common codecs
-        if "mjpeg" in enc: return "mjpeg"
-        if "wmv" in enc: return "wmv3"
-        if "divx" in enc: return "mpeg4"
+        if "mjpeg" in enc:
+            return "mjpeg"
+        if "wmv" in enc:
+            return "wmv3"
+        if "divx" in enc:
+            return "mpeg4"
 
         # Log for unknown codecs (helps identify missing mappings)
         import logging
+
         logging.getLogger(__name__).warning(f"Unknown codec encoder: {self.codec.encoder}")
 
         return "unknown"
@@ -193,7 +214,10 @@ class VideoEncoder:
 
             # 1. Resolution - return immediately if incompatible
             if info.width != self.width or info.height != self.height:
-                return False, f"Cozunurluk farkli: {info.width}x{info.height} -> {self.width}x{self.height}"
+                return (
+                    False,
+                    f"Cozunurluk farkli: {info.width}x{info.height} -> {self.width}x{self.height}",
+                )
 
             # 2. Codec - return immediately if incompatible
             expected_codec = self._get_expected_codec_name()
@@ -203,12 +227,16 @@ class VideoEncoder:
             # 3. FPS - check against ALLOWED_FPS set for compatibility
             # 59.94 and 60.0 are considered compatible (both in ALLOWED_FPS)
             from fractions import Fraction
+
             source_fps = self._parse_fps(info.fps)
             source_fps_fraction = Fraction(int(source_fps * 1000), 1000).limit_denominator(1001)
 
             # Check if source FPS is in allowed set or matches target
             if source_fps_fraction not in ALLOWED_FPS and abs(source_fps - self.fps) > 0.1:
-                return False, f"FPS farkli: {float(source_fps):.2f} -> {self.fps} (izin verilen: {', '.join(str(float(f)) for f in ALLOWED_FPS)})"
+                return (
+                    False,
+                    f"FPS farkli: {float(source_fps):.2f} -> {self.fps} (izin verilen: {', '.join(str(float(f)) for f in ALLOWED_FPS)})",
+                )
 
             # 4. Pixel Format - return immediately if incompatible
             valid_pix_fmts = {"yuv420p", "yuvj420p"}
@@ -241,6 +269,7 @@ class VideoEncoder:
         OPTIMIZED: Better CPU utilization while avoiding oversubscription.
         """
         import os
+
         cpu_count = os.cpu_count() or 4
 
         if self._use_gpu:
@@ -256,7 +285,7 @@ class VideoEncoder:
         source: Path,
         output: Path,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
-        scale_algo: str = "lanczos"
+        scale_algo: str = "lanczos",
     ) -> Path:
         """
         OPTIMIZED: Normalize a video to target specs.
@@ -294,7 +323,7 @@ class VideoEncoder:
                         percent=100.0,
                         time_seconds=duration,
                         fps=float(self.fps),
-                        speed=float('inf')
+                        speed=float("inf"),
                     )
                     progress_callback(p)
                 return output
@@ -315,7 +344,9 @@ class VideoEncoder:
                 gpu_error = e
                 print(f"  [WARN] Hardware encoding failed: {e}. Falling back to software...")
                 try:
-                    cmd_software = self._build_normalize_command(source, output, scale_algo, force_software=True)
+                    cmd_software = self._build_normalize_command(
+                        source, output, scale_algo, force_software=True
+                    )
                     self.runner.run(cmd_software, capture_progress=bool(progress_callback))
                 except Exception as sw_error:
                     # Both GPU and software encoding failed
@@ -336,11 +367,7 @@ class VideoEncoder:
         return output
 
     def _build_normalize_command(
-        self,
-        source: Path,
-        output: Path,
-        scale_algo: str,
-        force_software: bool = False
+        self, source: Path, output: Path, scale_algo: str, force_software: bool = False
     ) -> List[str]:
         """Build optimized FFmpeg command for video normalization.
 
@@ -352,38 +379,40 @@ class VideoEncoder:
 
         # Hardware acceleration options
         if self._use_gpu and not force_software:
-            if self._accel_type == 'nvenc':
+            if self._accel_type == "nvenc":
                 # NVIDIA NVENC optimizations
                 # Apply ramtest high-VRAM settings if enabled
                 if self.high_vram:
                     cmd.extend(get_hwaccel_input_args(high_vram=True))
                 else:
-                    cmd.extend([
-                        "-hwaccel", "cuda",
-                        "-hwaccel_output_format", "cuda"
-                    ])
-            elif self._accel_type == 'qsv':
+                    cmd.extend(["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"])
+            elif self._accel_type == "qsv":
                 # Intel QSV optimizations
-                cmd.extend([
-                    "-hwaccel", "qsv",
-                    "-hwaccel_output_format", "qsv"
-                ])
-            elif self._accel_type == 'vaapi':
+                cmd.extend(["-hwaccel", "qsv", "-hwaccel_output_format", "qsv"])
+            elif self._accel_type == "vaapi":
                 # VAAPI (Linux AMD/Intel) optimizations with dynamic device detection
                 vaapi_device = self._detect_vaapi_device()
                 if vaapi_device:
-                    cmd.extend([
-                        "-hwaccel", "vaapi",
-                        "-hwaccel_output_format", "vaapi",
-                        "-vaapi_device", vaapi_device
-                    ])
+                    cmd.extend(
+                        [
+                            "-hwaccel",
+                            "vaapi",
+                            "-hwaccel_output_format",
+                            "vaapi",
+                            "-vaapi_device",
+                            vaapi_device,
+                        ]
+                    )
                 else:
                     # No VAAPI device found, skip hardware acceleration
                     import logging
-                    logging.getLogger(__name__).warning("No VAAPI device found, falling back to software encoding")
+
+                    logging.getLogger(__name__).warning(
+                        "No VAAPI device found, falling back to software encoding"
+                    )
                     # Force software encoding by setting acceleration to none
                     self._use_gpu = False
-                    self._accel_type = 'none'
+                    self._accel_type = "none"
 
         # Input file
         cmd.extend(["-i", str(source)])
@@ -406,9 +435,13 @@ class VideoEncoder:
         codec_args = self.codec.to_ffmpeg_args()
 
         # Apply ramtest NVENC optimizations if enabled
-        if self.high_vram and 'nvenc' in self.codec.encoder.lower():
+        if self.high_vram and "nvenc" in self.codec.encoder.lower():
             # Determine codec family
-            codec_family = "av1" if "av1" in self.codec.encoder.lower() else "h265" if "hevc" in self.codec.encoder.lower() else "h264"
+            codec_family = (
+                "av1"
+                if "av1" in self.codec.encoder.lower()
+                else "h265" if "hevc" in self.codec.encoder.lower() else "h264"
+            )
             nvenc_args = get_nvenc_extra_args(codec_family, high_vram=True)
             # Override default args with optimized ones
             codec_args = nvenc_args
@@ -419,9 +452,12 @@ class VideoEncoder:
         cmd.extend(self.color.to_ffmpeg_args())
 
         # Performance optimizations
-        cmd.extend([
-            "-tune", "fastdecode",  # Optimize for faster decoding
-        ])
+        cmd.extend(
+            [
+                "-tune",
+                "fastdecode",  # Optimize for faster decoding
+            ]
+        )
 
         # No audio (video only)
         cmd.extend(["-an", str(output)])
@@ -430,7 +466,7 @@ class VideoEncoder:
 
     def _build_gpu_filter(self, scale_algo: str) -> str:
         """Build GPU-accelerated filter chain."""
-        if self._accel_type == 'nvenc':
+        if self._accel_type == "nvenc":
             # NVIDIA CUDA scaling
             return (
                 f"scale_cuda={self.width}:{self.height}:"
@@ -439,7 +475,7 @@ class VideoEncoder:
                 f"pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2,"
                 f"setsar=1"
             )
-        elif self._accel_type == 'qsv':
+        elif self._accel_type == "qsv":
             # Intel QSV scaling
             return (
                 f"vpp_qsv=w={self.width}:h={self.height}:"
@@ -447,7 +483,7 @@ class VideoEncoder:
                 f"force_original_aspect_ratio=decrease,"
                 f"pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2"
             )
-        elif self._accel_type == 'vaapi':
+        elif self._accel_type == "vaapi":
             # VAAPI scaling
             return (
                 f"scale_vaapi=w={self.width}:h={self.height}:"
@@ -467,56 +503,64 @@ class VideoEncoder:
             f"pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2,"
             f"format=yuv420p"
         )
-    
+
     def concat_videos(
         self,
         intro: Path,
         loop: Path,
         total_seconds: int,
         tmp_dir: Path,
-        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None
+        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
     ) -> Path:
         """
         Concatenate intro + repeated loop to reach target duration.
         Uses stream copy for speed (no re-encoding).
-        
+
         Args:
             intro: Normalized intro video
             loop: Normalized loop video
             total_seconds: Target duration in seconds
             tmp_dir: Temp directory for concat list
             progress_callback: Optional progress callback
-            
+
         Returns:
             Path to concatenated video
         """
         intro_duration = get_duration(intro)
         loop_duration = get_duration(loop)
-        
+
         remaining = max(0.0, total_seconds - intro_duration)
         loop_count = int(math.ceil(remaining / loop_duration)) if loop_duration > 0 else 0
-        
+
         # Write concat list
         concat_list = tmp_dir / "video_list.txt"
         files = [intro] + [loop] * loop_count
         write_concat_list(files, concat_list)
-        
+
         output = tmp_dir / "video_only.mp4"
-        
+
         if progress_callback:
             self.runner.set_total_duration(total_seconds)
             self.runner.set_progress_callback(progress_callback)
-        
+
         cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_list),
-            "-c:v", "copy",
-            "-t", str(total_seconds),  # Trim to exact duration
-            "-movflags", "+faststart",
-            str(output)
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c:v",
+            "copy",
+            "-t",
+            str(total_seconds),  # Trim to exact duration
+            "-movflags",
+            "+faststart",
+            str(output),
         ]
-        
+
         self.runner.run(cmd, capture_progress=bool(progress_callback))
         return output
 
@@ -525,37 +569,39 @@ class VideoEncoder:
 # Parallel Encoding
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def encode_parallel(
     encoder: VideoEncoder,
     sources: List[Tuple[Path, Path]],  # List of (source, output) pairs
-    progress_callback: Optional[Callable[[str, FFmpegProgress], None]] = None
+    progress_callback: Optional[Callable[[str, FFmpegProgress], None]] = None,
 ) -> List[Path]:
     """
     Encode multiple videos in parallel.
-    
+
     Args:
         encoder: VideoEncoder instance
         sources: List of (source_path, output_path) tuples
         progress_callback: Callback receiving (label, progress)
-        
+
     Returns:
         List of output paths
     """
     results = []
-    
+
     def encode_one(source: Path, output: Path, label: str) -> Path:
         def wrapped_callback(p: FFmpegProgress):
             if progress_callback:
                 progress_callback(label, p)
+
         return encoder.normalize_video(source, output, wrapped_callback)
-    
+
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = {}
         for i, (src, out) in enumerate(sources):
             label = f"Encoding {src.name}"
             future = executor.submit(encode_one, src, out, label)
             futures[future] = out
-        
+
         for future in as_completed(futures):
             output = futures[future]
             try:
@@ -563,5 +609,5 @@ def encode_parallel(
                 results.append(result)
             except Exception as e:
                 raise RuntimeError(f"Encoding failed for {output.name}: {e}") from e
-    
+
     return results

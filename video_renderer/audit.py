@@ -24,6 +24,7 @@ except ImportError:
     # Fallback if log_filters is not available
     class SensitiveDataFilter(logging.Filter):
         """Fallback filter implementation."""
+
         def filter(self, record):
             return True
 
@@ -31,6 +32,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Audit Event Types
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class AuditEventType(Enum):
     """Audit olay tipleri."""
@@ -74,6 +76,7 @@ class AuditEventType(Enum):
 # Audit Event
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class AuditEvent:
     """Audit olayı."""
@@ -105,6 +108,7 @@ class AuditEvent:
 # Audit Logger
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class AuditLogger:
     """
     Audit logger sınıfı.
@@ -120,7 +124,7 @@ class AuditLogger:
         log_dir: Optional[Path] = None,
         app_name: str = "video_renderer",
         enable_console: bool = True,
-        enable_sensitive_filter: bool = True
+        enable_sensitive_filter: bool = True,
     ):
         """
         Args:
@@ -158,7 +162,7 @@ class AuditLogger:
         severity: str = "INFO",
         user_id: Optional[str] = None,
         ip_address: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> None:
         """
         Audit olayını loglar.
@@ -180,7 +184,7 @@ class AuditLogger:
             severity=severity,
             user_id=user_id,
             ip_address=ip_address,
-            session_id=session_id
+            session_id=session_id,
         )
 
         with self._lock:
@@ -204,8 +208,8 @@ class AuditLogger:
 
             # Audit log dosyasına yaz
             try:
-                with open(self.audit_log_file, 'a', encoding='utf-8') as f:
-                    f.write(log_line + '\n')
+                with open(self.audit_log_file, "a", encoding="utf-8") as f:
+                    f.write(log_line + "\n")
             except OSError as e:
                 logger.error(f"Cannot write to audit log: {e}")
 
@@ -216,8 +220,8 @@ class AuditLogger:
                 AuditEventType.COMMAND_INJECTION_ATTEMPT,
             ]:
                 try:
-                    with open(self.security_log_file, 'a', encoding='utf-8') as f:
-                        f.write(log_line + '\n')
+                    with open(self.security_log_file, "a", encoding="utf-8") as f:
+                        f.write(log_line + "\n")
                 except OSError as e:
                     logger.error(f"Cannot write to security log: {e}")
 
@@ -234,11 +238,7 @@ class AuditLogger:
                     logger.info(log_msg)
 
     def log_file_access(
-        self,
-        action: str,
-        filepath: Path,
-        source: str,
-        user_id: Optional[str] = None
+        self, action: str, filepath: Path, source: str, user_id: Optional[str] = None
     ) -> None:
         """
         Dosya erişimini loglar.
@@ -265,15 +265,11 @@ class AuditLogger:
                 "action": action,
                 "size": filepath.stat().st_size if filepath.exists() else None,
             },
-            user_id=user_id
+            user_id=user_id,
         )
 
     def log_auth_event(
-        self,
-        success: bool,
-        service: str,
-        source: str,
-        error: Optional[str] = None
+        self, success: bool, service: str, source: str, error: Optional[str] = None
     ) -> None:
         """
         Authentication olayını loglar.
@@ -294,19 +290,10 @@ class AuditLogger:
         if error:
             details["error"] = error
 
-        self.log_event(
-            event_type=event_type,
-            source=source,
-            details=details,
-            severity=severity
-        )
+        self.log_event(event_type=event_type, source=source, details=details, severity=severity)
 
     def log_security_violation(
-        self,
-        violation_type: str,
-        details: Dict[str, Any],
-        source: str,
-        severity: str = "WARNING"
+        self, violation_type: str, details: Dict[str, Any], source: str, severity: str = "WARNING"
     ) -> None:
         """
         Güvenlik ihlalini loglar.
@@ -322,12 +309,7 @@ class AuditLogger:
             "command_injection": AuditEventType.COMMAND_INJECTION_ATTEMPT,
         }.get(violation_type, AuditEventType.SECURITY_VIOLATION)
 
-        self.log_event(
-            event_type=event_type,
-            source=source,
-            details=details,
-            severity=severity
-        )
+        self.log_event(event_type=event_type, source=source, details=details, severity=severity)
 
     def log_video_encode(
         self,
@@ -335,7 +317,7 @@ class AuditLogger:
         success: bool,
         duration: Optional[float] = None,
         error: Optional[str] = None,
-        source: str = "video_encoder"
+        source: str = "video_encoder",
     ) -> None:
         """
         Video encoding olayını loglar.
@@ -364,17 +346,10 @@ class AuditLogger:
         if error:
             details["error"] = error
 
-        self.log_event(
-            event_type=event_type,
-            source=source,
-            details=details,
-            severity=severity
-        )
+        self.log_event(event_type=event_type, source=source, details=details, severity=severity)
 
     def get_recent_events(
-        self,
-        event_type: Optional[AuditEventType] = None,
-        limit: int = 100
+        self, event_type: Optional[AuditEventType] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
         Son olayları okur.
@@ -389,7 +364,7 @@ class AuditLogger:
         events = []
 
         try:
-            with open(self.audit_log_file, 'r', encoding='utf-8') as f:
+            with open(self.audit_log_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             # Son N satırı al
@@ -419,7 +394,7 @@ class AuditLogger:
         events = []
 
         try:
-            with open(self.security_log_file, 'r', encoding='utf-8') as f:
+            with open(self.security_log_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             for line in reversed(lines[-limit:]):
@@ -458,9 +433,7 @@ def get_audit_logger() -> AuditLogger:
 
 
 def init_audit_logger(
-    log_dir: Optional[Path] = None,
-    app_name: str = "video_renderer",
-    enable_console: bool = True
+    log_dir: Optional[Path] = None, app_name: str = "video_renderer", enable_console: bool = True
 ) -> AuditLogger:
     """
     Global audit logger'ı başlatır.
@@ -476,9 +449,7 @@ def init_audit_logger(
     global _global_audit_logger
 
     _global_audit_logger = AuditLogger(
-        log_dir=log_dir,
-        app_name=app_name,
-        enable_console=enable_console
+        log_dir=log_dir, app_name=app_name, enable_console=enable_console
     )
 
     return _global_audit_logger

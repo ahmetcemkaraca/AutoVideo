@@ -98,9 +98,9 @@ class ResourceManager:
         """Setup signal handlers for graceful shutdown."""
         # Signals to handle
         signals = []
-        if hasattr(signal, 'SIGTERM'):
+        if hasattr(signal, "SIGTERM"):
             signals.append(signal.SIGTERM)
-        if hasattr(signal, 'SIGINT'):
+        if hasattr(signal, "SIGINT"):
             signals.append(signal.SIGINT)
 
         # Register handlers
@@ -117,15 +117,12 @@ class ResourceManager:
         self.cleanup()
 
         # Exit with appropriate code
-        sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+        sig_name = signal.Signals(signum).name if hasattr(signal, "Signals") else str(signum)
         logger.info(f"Exiting due to {sig_name}")
         sys.exit(0)
 
     def register_process(
-        self,
-        proc: subprocess.Popen,
-        name: str = "",
-        auto_cleanup: bool = True
+        self, proc: subprocess.Popen, name: str = "", auto_cleanup: bool = True
     ) -> None:
         """
         Register a process for tracking.
@@ -156,11 +153,7 @@ class ResourceManager:
                 info = self._processes.pop(pid)
                 logger.debug(f"Unregistered process: {info}")
 
-    def register_temp_file(
-        self,
-        path: Path,
-        auto_cleanup: bool = True
-    ) -> None:
+    def register_temp_file(self, path: Path, auto_cleanup: bool = True) -> None:
         """
         Register a temporary file for cleanup.
 
@@ -296,6 +289,7 @@ class ResourceManager:
                     elif path.is_dir():
                         # Remove directory recursively
                         import shutil
+
                         shutil.rmtree(path)
                     count += 1
                     logger.debug(f"Deleted temp file: {path}")
@@ -381,7 +375,7 @@ class TempFile:
         self,
         path: Path,
         resource_manager: Optional[ResourceManager] = None,
-        auto_cleanup: bool = True
+        auto_cleanup: bool = True,
     ):
         """
         Initialize temp file context manager.
@@ -416,6 +410,7 @@ class TempFile:
                         self.path.unlink()
                     elif self.path.is_dir():
                         import shutil
+
                         shutil.rmtree(self.path)
             except Exception as e:
                 logger.error(f"Error cleaning up temp file {self.path}: {e}")
@@ -424,9 +419,7 @@ class TempFile:
 
 
 def cleanup_directory(
-    directory: Path,
-    pattern: str = "*",
-    max_age_seconds: Optional[float] = None
+    directory: Path, pattern: str = "*", max_age_seconds: Optional[float] = None
 ) -> int:
     """
     Cleanup files in a directory matching a pattern.
@@ -443,6 +436,7 @@ def cleanup_directory(
         return 0
 
     import time
+
     count = 0
     now = time.time()
 

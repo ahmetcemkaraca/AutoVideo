@@ -28,11 +28,12 @@ from googleapiclient.http import MediaFileUpload
 logger = logging.getLogger(__name__)
 
 # Scopes required for uploading
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
 class DriveUploadError(Exception):
     """Exception raised when Drive upload fails."""
+
     pass
 
 
@@ -51,7 +52,7 @@ class DriveUploader:
         self,
         credentials_path: Optional[Path] = None,
         token_path: Optional[Path] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
     ):
         self.credentials_path = credentials_path or self._find_credentials()
         self.token_path = token_path or Path("token.pickle")
@@ -100,7 +101,7 @@ class DriveUploader:
 
                     # Load existing token
                     if self.token_path.exists():
-                        with open(self.token_path, 'rb') as token:
+                        with open(self.token_path, "rb") as token:
                             try:
                                 self.creds = pickle.load(token)
                             except Exception:
@@ -129,18 +130,19 @@ class DriveUploader:
                                 print("Google Drive yetkilendirmesi baslatiliyor...")
                                 print("Lutfen asagidaki linke tiklayin ve onay kodunu yapistirin:")
                                 flow = InstalledAppFlow.from_client_secrets_file(
-                                    str(self.credentials_path), SCOPES, state=state)
+                                    str(self.credentials_path), SCOPES, state=state
+                                )
                                 # Use run_console to handle VPS scenario cleanly
                                 self.creds = flow.run_console()
                             except Exception as e:
                                 raise DriveUploadError(f"Authentication failed: {e}")
 
                         # Save the token
-                        with open(self.token_path, 'wb') as token:
+                        with open(self.token_path, "wb") as token:
                             pickle.dump(self.creds, token)
 
                     # Build service
-                    self.service = build('drive', 'v3', credentials=self.creds)
+                    self.service = build("drive", "v3", credentials=self.creds)
                     return True
 
             except DriveUploadError:
@@ -148,9 +150,11 @@ class DriveUploader:
                 raise
             except Exception as e:
                 if attempt == max_attempts - 1:
-                    raise DriveUploadError(f"Authentication failed after {max_attempts} attempts: {e}")
+                    raise DriveUploadError(
+                        f"Authentication failed after {max_attempts} attempts: {e}"
+                    )
                 # Exponential backoff
-                wait_time = 2 ** attempt
+                wait_time = 2**attempt
                 print(f"Authentication attempt {attempt + 1} failed, retrying in {wait_time}s...")
                 time.sleep(wait_time)
 
@@ -182,13 +186,17 @@ class DriveUploader:
             return []
 
         try:
-            results = self.service.files().list(
-                pageSize=page_size,
-                q="mimeType='application/vnd.google-apps.folder' and trashed=false",
-                fields="nextPageToken, files(id, name)",
-                orderBy="folder,name"
-            ).execute()
-            items = results.get('files', [])
+            results = (
+                self.service.files()
+                .list(
+                    pageSize=page_size,
+                    q="mimeType='application/vnd.google-apps.folder' and trashed=false",
+                    fields="nextPageToken, files(id, name)",
+                    orderBy="folder,name",
+                )
+                .execute()
+            )
+            items = results.get("files", [])
             return items
         except Exception as e:
             print(f"List folders failed: {e}")
@@ -199,7 +207,7 @@ class DriveUploader:
         file_path: Path,
         folder_id: Optional[str] = None,
         progress_callback: Optional[Callable[[float], None]] = None,
-        max_retries: Optional[int] = None
+        max_retries: Optional[int] = None,
     ) -> Tuple[bool, str]:
         """
         Upload a file to Google Drive with progress tracking and retry logic.
@@ -226,17 +234,14 @@ class DriveUploader:
             return False, str(e)
 
         # File metadata
-        file_metadata = {
-            'name': file_path.name,
-            'parents': [folder_id] if folder_id else []
-        }
+        file_metadata = {"name": file_path.name, "parents": [folder_id] if folder_id else []}
 
         # Media upload with chunking for large files
         media = MediaFileUpload(
             str(file_path),
-            mimetype='video/mp4',
+            mimetype="video/mp4",
             chunksize=1024 * 1024 * 5,  # 5MB chunks for better reliability
-            resumable=True
+            resumable=True,
         )
 
         # Upload with retry
@@ -246,9 +251,7 @@ class DriveUploader:
         for attempt in range(max_attempts):
             try:
                 request = self.service.files().create(
-                    body=file_metadata,
-                    media_body=media,
-                    fields='id'
+                    body=file_metadata, media_body=media, fields="id"
                 )
 
                 response = None
@@ -257,7 +260,7 @@ class DriveUploader:
                     if status and progress_callback:
                         progress_callback(status.progress())
 
-                file_id = response.get('id')
+                file_id = response.get("id")
                 return True, file_id
 
             except Exception as e:
@@ -265,11 +268,12 @@ class DriveUploader:
                 if attempt == max_attempts - 1:
                     break
                 # Exponential backoff before retry
-                wait_time = 5 * (2 ** attempt)
+                wait_time = 5 * (2**attempt)
                 print(f"Upload attempt {attempt + 1} failed, retrying in {wait_time}s...")
                 time.sleep(wait_time)
 
         return False, f"Upload failed after {max_attempts} attempts: {last_error}"
+
 
 if __name__ == "__main__":
     # Test

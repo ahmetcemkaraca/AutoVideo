@@ -39,6 +39,7 @@ class StateSnapshot:
         data: Copy of state data at snapshot time
         metadata: Optional metadata about the snapshot
     """
+
     version: str
     timestamp: float
     data: Dict[str, Any]
@@ -91,8 +92,7 @@ class StateLock:
                 lock_age = time.time() - self._lock_path.stat().st_mtime
                 if lock_age > self.STALE_LOCK_SECONDS:
                     logger.warning(
-                        f"Removing stale lock file: {self._lock_path} "
-                        f"(age: {lock_age:.0f}s)"
+                        f"Removing stale lock file: {self._lock_path} " f"(age: {lock_age:.0f}s)"
                     )
                     try:
                         self._lock_path.unlink()
@@ -112,8 +112,7 @@ class StateLock:
                 # Lock held by another process
                 if time.time() - start_time > self.timeout:
                     raise TimeoutError(
-                        f"Could not acquire lock on {self.state_file} "
-                        f"after {self.timeout}s"
+                        f"Could not acquire lock on {self.state_file} " f"after {self.timeout}s"
                     )
                 time.sleep(0.05)  # Wait 50ms before retry
 
@@ -157,7 +156,7 @@ class StateManager:
         state_file: Path,
         version: str = DEFAULT_VERSION,
         auto_save: bool = True,
-        enable_locking: bool = True
+        enable_locking: bool = True,
     ):
         """
         Initialize state manager.
@@ -305,19 +304,13 @@ class StateManager:
 
         # Create snapshot
         snapshot = StateSnapshot(
-            version=self._version,
-            timestamp=time.time(),
-            data=self._state.copy()
+            version=self._version, timestamp=time.time(), data=self._state.copy()
         )
 
         # Write to temp file
         try:
             with tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix='.tmp',
-                dir=self.state_file.parent,
-                delete=False,
-                encoding='utf-8'
+                mode="w", suffix=".tmp", dir=self.state_file.parent, delete=False, encoding="utf-8"
             ) as tmp:
                 json.dump(snapshot.to_dict(), tmp, indent=2, ensure_ascii=False)
                 tmp_path = Path(tmp.name)
@@ -331,7 +324,7 @@ class StateManager:
 
         except Exception as e:
             # Clean up temp file on error
-            if 'tmp_path' in locals() and tmp_path.exists():
+            if "tmp_path" in locals() and tmp_path.exists():
                 try:
                     tmp_path.unlink()
                 except OSError:
@@ -363,8 +356,7 @@ class StateManager:
             # Version check (for future migration support)
             if snapshot.version != self._version:
                 logger.warning(
-                    f"State version mismatch: expected {self._version}, "
-                    f"got {snapshot.version}"
+                    f"State version mismatch: expected {self._version}, " f"got {snapshot.version}"
                 )
 
             with self._lock:
@@ -388,9 +380,7 @@ class StateManager:
         """
         with self._lock:
             return StateSnapshot(
-                version=self._version,
-                timestamp=time.time(),
-                data=self._state.copy()
+                version=self._version, timestamp=time.time(), data=self._state.copy()
             )
 
     def restore_snapshot(self, snapshot: StateSnapshot, save: bool = True) -> None:
@@ -414,10 +404,7 @@ class StateManager:
             if save:
                 self._save()
 
-    def set_change_callback(
-        self,
-        callback: Optional[Callable[[str, Any], None]]
-    ) -> None:
+    def set_change_callback(self, callback: Optional[Callable[[str, Any], None]]) -> None:
         """
         Set callback for state changes.
 
@@ -494,7 +481,7 @@ class TypedStateManager(StateManager):
             return default
         if isinstance(value, bool):
             return value
-        return str(value).lower() in ('true', '1', 'yes', 'on')
+        return str(value).lower() in ("true", "1", "yes", "on")
 
     def get_list(self, key: str, default: Optional[List] = None) -> List:
         """Get list value."""

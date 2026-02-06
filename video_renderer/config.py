@@ -14,7 +14,6 @@ import subprocess
 import shutil
 import os
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # File Extensions
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -36,9 +35,11 @@ ALLOWED_FPS: Set[Fraction] = {Fraction(60, 1), Fraction(60000, 1001)}  # 60 or 5
 # Codec Configurations
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class CodecConfig:
     """Configuration for a video codec."""
+
     name: str
     encoder: str
     preset: str
@@ -46,7 +47,7 @@ class CodecConfig:
     profile: Optional[str] = None
     level: Optional[str] = None
     extra_args: List[str] = field(default_factory=list)
-    
+
     def to_ffmpeg_args(self) -> List[str]:
         """Convert config to FFmpeg arguments."""
         args = ["-c:v", self.encoder, "-preset", self.preset, "-crf", str(self.crf)]
@@ -60,11 +61,7 @@ class CodecConfig:
 
 # Software encoders
 CODEC_AV1 = CodecConfig(
-    name="AV1",
-    encoder="libsvtav1",
-    preset="6",
-    crf=28,
-    extra_args=["-g", "240"]
+    name="AV1", encoder="libsvtav1", preset="6", crf=28, extra_args=["-g", "240"]
 )
 
 CODEC_H264 = CodecConfig(
@@ -74,7 +71,7 @@ CODEC_H264 = CodecConfig(
     crf=20,
     profile="high",
     level="4.2",
-    extra_args=["-g", "240", "-tune", "film"]
+    extra_args=["-g", "240", "-tune", "film"],
 )
 
 CODEC_H265 = CodecConfig(
@@ -82,7 +79,7 @@ CODEC_H265 = CodecConfig(
     encoder="libx265",
     preset="fast",
     crf=23,
-    extra_args=["-g", "240", "-tag:v", "hvc1"]
+    extra_args=["-g", "240", "-tag:v", "hvc1"],
 )
 
 # Hardware encoders (NVIDIA)
@@ -93,13 +90,23 @@ CODEC_H264_NVENC = CodecConfig(
     crf=23,  # actually uses -cq for NVENC
     profile="high",
     extra_args=[
-        "-rc", "vbr", "-cq", "23", "-b:v", "0",
-        "-spatial_aq", "1",
-        "-b_ref_mode", "0",        # Disable B-frame ref for faster encode
-        "-rc-lookahead", "32",     # Lookahead frames for better quality
-        "-surfaces", "64",         # Async depth for GPU utilization
-        "-extra_hw_frames", "8"    # Extra frames for pipeline
-    ]
+        "-rc",
+        "vbr",
+        "-cq",
+        "23",
+        "-b:v",
+        "0",
+        "-spatial_aq",
+        "1",
+        "-b_ref_mode",
+        "0",  # Disable B-frame ref for faster encode
+        "-rc-lookahead",
+        "32",  # Lookahead frames for better quality
+        "-surfaces",
+        "64",  # Async depth for GPU utilization
+        "-extra_hw_frames",
+        "8",  # Extra frames for pipeline
+    ],
 )
 
 CODEC_H265_NVENC = CodecConfig(
@@ -109,13 +116,25 @@ CODEC_H265_NVENC = CodecConfig(
     crf=26,
     profile="main",
     extra_args=[
-        "-rc", "vbr", "-cq", "26", "-b:v", "0",
-        "-tag:v", "hvc1", "-spatial_aq", "1",
-        "-b_ref_mode", "0",
-        "-rc-lookahead", "32",
-        "-surfaces", "64",
-        "-extra_hw_frames", "8"
-    ]
+        "-rc",
+        "vbr",
+        "-cq",
+        "26",
+        "-b:v",
+        "0",
+        "-tag:v",
+        "hvc1",
+        "-spatial_aq",
+        "1",
+        "-b_ref_mode",
+        "0",
+        "-rc-lookahead",
+        "32",
+        "-surfaces",
+        "64",
+        "-extra_hw_frames",
+        "8",
+    ],
 )
 
 CODEC_AV1_NVENC = CodecConfig(
@@ -124,13 +143,23 @@ CODEC_AV1_NVENC = CodecConfig(
     preset="p6",
     crf=40,
     extra_args=[
-        "-rc", "vbr", "-cq", "40", "-b:v", "0",
-        "-spatial_aq", "1",
-        "-b_ref_mode", "0",
-        "-rc-lookahead", "32",
-        "-surfaces", "64",
-        "-extra_hw_frames", "8"
-    ]
+        "-rc",
+        "vbr",
+        "-cq",
+        "40",
+        "-b:v",
+        "0",
+        "-spatial_aq",
+        "1",
+        "-b_ref_mode",
+        "0",
+        "-rc-lookahead",
+        "32",
+        "-surfaces",
+        "64",
+        "-extra_hw_frames",
+        "8",
+    ],
 )
 
 # Hardware encoders (Intel QSV)
@@ -140,7 +169,7 @@ CODEC_H264_QSV = CodecConfig(
     preset="medium",
     crf=23,
     profile="high",
-    extra_args=["-global_quality", "23"]
+    extra_args=["-global_quality", "23"],
 )
 
 CODEC_H265_QSV = CodecConfig(
@@ -148,7 +177,7 @@ CODEC_H265_QSV = CodecConfig(
     encoder="hevc_qsv",
     preset="medium",
     crf=28,
-    extra_args=["-global_quality", "28", "-tag:v", "hvc1"]
+    extra_args=["-global_quality", "28", "-tag:v", "hvc1"],
 )
 
 # Hardware encoders (VAAPI - AMD/Intel on Linux)
@@ -158,7 +187,7 @@ CODEC_H264_VAAPI = CodecConfig(
     preset="",  # VAAPI doesn't use preset
     crf=23,
     profile="high",
-    extra_args=["-qp", "23"]
+    extra_args=["-qp", "23"],
 )
 
 CODEC_H265_VAAPI = CodecConfig(
@@ -166,7 +195,7 @@ CODEC_H265_VAAPI = CodecConfig(
     encoder="hevc_vaapi",
     preset="",
     crf=28,
-    extra_args=["-qp", "28", "-tag:v", "hvc1"]
+    extra_args=["-qp", "28", "-tag:v", "hvc1"],
 )
 
 
@@ -189,18 +218,23 @@ CODECS: Dict[str, CodecConfig] = {
 # Color Space Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class ColorConfig:
     """Color space configuration."""
+
     colorspace: str
     color_primaries: str
     color_trc: str
-    
+
     def to_ffmpeg_args(self) -> List[str]:
         return [
-            "-colorspace", self.colorspace,
-            "-color_primaries", self.color_primaries,
-            "-color_trc", self.color_trc
+            "-colorspace",
+            self.colorspace,
+            "-color_primaries",
+            self.color_primaries,
+            "-color_trc",
+            self.color_trc,
         ]
 
 
@@ -217,7 +251,10 @@ _encoder_detection_cache: Optional[Dict[str, bool]] = None
 _cache_timestamp = 0.0
 _CACHE_TTL = 300.0  # Cache for 5 minutes
 
-def detect_available_encoders(use_cache: bool = True, force_refresh: bool = False) -> Dict[str, bool]:
+
+def detect_available_encoders(
+    use_cache: bool = True, force_refresh: bool = False
+) -> Dict[str, bool]:
     """
     OPTIMIZED: Detect available hardware encoders by actually testing them.
 
@@ -237,6 +274,7 @@ def detect_available_encoders(use_cache: bool = True, force_refresh: bool = Fals
     global _encoder_detection_cache, _cache_timestamp
 
     import time
+
     current_time = time.time()
 
     # Check cache
@@ -261,16 +299,13 @@ def detect_available_encoders(use_cache: bool = True, force_refresh: bool = Fals
     # First check if encoders are listed (with word boundary matching to avoid false positives)
     try:
         result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True, text=True, timeout=10
+            ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=10
         )
         output = result.stdout
         # Use word boundary regex to avoid false positives (e.g., h264_nvenc vs h264_nvenc_old)
         import re as _re
-        listed_encoders = [
-            enc for enc in encoders
-            if _re.search(rf'\b{_re.escape(enc)}\b', output)
-        ]
+
+        listed_encoders = [enc for enc in encoders if _re.search(rf"\b{_re.escape(enc)}\b", output)]
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return encoders
 
@@ -280,16 +315,27 @@ def detect_available_encoders(use_cache: bool = True, force_refresh: bool = Fals
         try:
             # Optimized test: single frame, minimal resolution
             test_cmd = [
-                "ffmpeg", "-hide_banner", "-y",
-                "-f", "lavfi", "-i", "color=black:s=64x64:d=0.04",  # Single frame at 25fps
-                "-c:v", encoder,
-                "-t", "0.04",  # Duration for one frame
-                "-f", "null", "-"
+                "ffmpeg",
+                "-hide_banner",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=black:s=64x64:d=0.04",  # Single frame at 25fps
+                "-c:v",
+                encoder,
+                "-t",
+                "0.04",  # Duration for one frame
+                "-f",
+                "null",
+                "-",
             ]
             result = subprocess.run(
                 test_cmd,
-                capture_output=True, text=True, timeout=5,  # Increased from 3 to reduce false negatives
-                check=False
+                capture_output=True,
+                text=True,
+                timeout=5,  # Increased from 3 to reduce false negatives
+                check=False,
             )
             # Check for success indicators (returncode 0 and no errors in stderr)
             if result.returncode == 0 and "Error" not in result.stderr:
@@ -359,48 +405,50 @@ def clear_encoder_cache():
 # Render Session Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class RenderConfig:
     """Complete configuration for a render session."""
+
     # Paths
     work_dir: Path = field(default_factory=Path.cwd)
     music_dir: Optional[Path] = None
     tmp_dir: Optional[Path] = None
     output_path: Optional[Path] = None
-    
+
     # Video settings
     width: int = DEFAULT_WIDTH
     height: int = DEFAULT_HEIGHT
     fps: int = 60
     codec: str = "av1"
-    
+
     # Color
     color: ColorConfig = field(default_factory=lambda: COLOR_BT709)
-    
+
     # Duration
     duration_seconds: int = 0
-    
+
     # Source files
     intro_path: Optional[Path] = None
     loop_path: Optional[Path] = None
-    
+
     # Audio
     tracks: List[Path] = field(default_factory=list)
     backgrounds: List[tuple] = field(default_factory=list)  # List of (Path, dB)
-    
+
     # Post-render action
     post_action: str = "keep"  # keep, archive, delete
-    
+
     # Flags
     use_hw_accel: bool = True
     parallel_encode: bool = True
-    
+
     def __post_init__(self):
         if self.music_dir is None:
             self.music_dir = self.work_dir / "music"
         if self.tmp_dir is None:
             self.tmp_dir = self.work_dir / "tmp"
-    
+
     def get_codec_config(self) -> CodecConfig:
         """Get the codec configuration, preferring HW acceleration if available."""
         if self.use_hw_accel:
@@ -415,6 +463,7 @@ class RenderConfig:
 # RAM Disk Configuration
 # On Linux, /dev/shm is a tmpfs mount (RAM-based)
 # Typical size is half of RAM
+
 
 def get_ramdisk_path() -> Optional[Path]:
     """Get RAM disk path if available and has sufficient space."""
@@ -475,14 +524,11 @@ def cleanup_ramdisk():
 # GPU Buffer Configuration for high-VRAM systems
 GPU_CONFIG = {
     # NVENC surfaces for async encoding
-    "surfaces": 128,        # Increased from 64
-
+    "surfaces": 128,  # Increased from 64
     # Extra hardware frames in pipeline
     "extra_hw_frames": 16,  # Increased from 8
-
     # Lookahead frames
-    "rc_lookahead": 48,     # Increased from 32
-
+    "rc_lookahead": 48,  # Increased from 32
     # Decode buffer
     "decode_surfaces": 32,  # For hwaccel decode
 }
@@ -501,21 +547,33 @@ def get_nvenc_extra_args(codec_family: str = "av1", high_vram: bool = False) -> 
     """
     if high_vram:
         base_args = [
-            "-rc", "vbr",
-            "-spatial_aq", "1",
-            "-b_ref_mode", "0",
-            "-rc-lookahead", str(GPU_CONFIG["rc_lookahead"]),
-            "-surfaces", str(GPU_CONFIG["surfaces"]),
-            "-extra_hw_frames", str(GPU_CONFIG["extra_hw_frames"]),
+            "-rc",
+            "vbr",
+            "-spatial_aq",
+            "1",
+            "-b_ref_mode",
+            "0",
+            "-rc-lookahead",
+            str(GPU_CONFIG["rc_lookahead"]),
+            "-surfaces",
+            str(GPU_CONFIG["surfaces"]),
+            "-extra_hw_frames",
+            str(GPU_CONFIG["extra_hw_frames"]),
         ]
     else:
         base_args = [
-            "-rc", "vbr",
-            "-spatial_aq", "1",
-            "-b_ref_mode", "0",
-            "-rc-lookahead", "32",
-            "-surfaces", "64",
-            "-extra_hw_frames", "8"
+            "-rc",
+            "vbr",
+            "-spatial_aq",
+            "1",
+            "-b_ref_mode",
+            "0",
+            "-rc-lookahead",
+            "32",
+            "-surfaces",
+            "64",
+            "-extra_hw_frames",
+            "8",
         ]
 
     if codec_family == "av1":
@@ -532,13 +590,18 @@ def get_hwaccel_input_args(high_vram: bool = False) -> list:
     """Get hardware acceleration input arguments for decoding."""
     if high_vram:
         return [
-            "-hwaccel", "cuda",
-            "-hwaccel_output_format", "cuda",
-            "-extra_hw_frames", str(GPU_CONFIG["decode_surfaces"]),
+            "-hwaccel",
+            "cuda",
+            "-hwaccel_output_format",
+            "cuda",
+            "-extra_hw_frames",
+            str(GPU_CONFIG["decode_surfaces"]),
         ]
     return [
-        "-hwaccel", "cuda",
-        "-hwaccel_output_format", "cuda",
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
     ]
 
 
@@ -546,10 +609,8 @@ def get_hwaccel_input_args(high_vram: bool = False) -> list:
 CHUNK_CONFIG = {
     # Max chunk duration in seconds (2 hours)
     "max_chunk_duration": 7200,
-
     # Minimum RAM for chunked mode (GB)
     "min_ram_for_full": 64,
-
     # Enable chunked mode automatically for videos longer than this (hours)
     "auto_chunk_threshold_hours": 12,
 }
@@ -558,6 +619,7 @@ CHUNK_CONFIG = {
 @dataclass
 class RamTestConfig:
     """Configuration for RAM-optimized rendering mode."""
+
     enabled: bool = False
     use_ramdisk: bool = True
     high_vram: bool = False
@@ -580,9 +642,11 @@ class RamTestConfig:
 # Unified Render Mode Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class RenderModeConfig:
     """Unified render mode configuration for TUI hybrid merge."""
+
     mode: str = "standard"  # standard, ramtest, ramdisk, high_vram
     use_ramdisk: bool = False
     high_vram: bool = False
@@ -613,18 +677,15 @@ def get_render_config(mode: str = "standard") -> RenderModeConfig:
             use_ramdisk=True,
             high_vram=True,
             chunk_long_videos=True,
-            enable_memory_tracking=True
+            enable_memory_tracking=True,
         ),
-        "ramdisk": RenderModeConfig(
-            mode="ramdisk",
-            use_ramdisk=True
-        ),
+        "ramdisk": RenderModeConfig(mode="ramdisk", use_ramdisk=True),
         "high_vram": RenderModeConfig(
             mode="high_vram",
             high_vram=True,
             gpu_surfaces=128,
             gpu_extra_frames=16,
-            gpu_lookahead=48
-        )
+            gpu_lookahead=48,
+        ),
     }
     return configs.get(mode, configs["standard"])

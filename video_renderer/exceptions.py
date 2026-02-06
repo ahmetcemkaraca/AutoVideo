@@ -14,13 +14,14 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Severity Levels
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class ErrorSeverity(Enum):
     """Severity levels for error classification."""
+
     DEBUG = "debug"
     INFO = "info"
     WARNING = "warning"
@@ -31,6 +32,7 @@ class ErrorSeverity(Enum):
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Context Data
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class ErrorContext:
@@ -52,6 +54,7 @@ class ErrorContext:
         technical_details: Additional technical information
         recovery_possible: Whether error is recoverable
     """
+
     severity: ErrorSeverity = ErrorSeverity.ERROR
     component: Optional[str] = None
     operation: Optional[str] = None
@@ -69,7 +72,9 @@ class ErrorContext:
     def to_dict(self) -> Dict[str, Any]:
         """Convert context to dictionary for serialization."""
         return {
-            "severity": self.severity.value if isinstance(self.severity, ErrorSeverity) else self.severity,
+            "severity": (
+                self.severity.value if isinstance(self.severity, ErrorSeverity) else self.severity
+            ),
             "component": self.component,
             "operation": self.operation,
             "file_path": str(self.file_path) if self.file_path else None,
@@ -88,6 +93,7 @@ class ErrorContext:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Base Exception Classes
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class VideoRendererError(Exception):
     """
@@ -108,7 +114,7 @@ class VideoRendererError(Exception):
         message: str,
         details: Optional[Dict[str, Any]] = None,
         context: Optional[ErrorContext] = None,
-        original_exception: Optional[Exception] = None
+        original_exception: Optional[Exception] = None,
     ):
         self.message = message
         self.details = details or {}
@@ -168,6 +174,7 @@ class VideoRendererError(Exception):
 # FFmpeg Related Exceptions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class FFmpegError(VideoRendererError):
     """
     Base exception for FFmpeg-related errors.
@@ -183,20 +190,20 @@ class FFmpegError(VideoRendererError):
         exit_code: Optional[int] = None,
         stderr: Optional[str] = None,
         file_path: Optional[Path] = None,
-        **kwargs
+        **kwargs,
     ):
-        context = kwargs.pop('context', ErrorContext())
+        context = kwargs.pop("context", ErrorContext())
         context.command = command
         context.exit_code = exit_code
         context.stderr = stderr
         context.file_path = file_path
         context.operation = "ffmpeg_execution"
 
-        details = kwargs.pop('details', {})
+        details = kwargs.pop("details", {})
         if command:
-            details['command'] = ' '.join(command)
+            details["command"] = " ".join(command)
         if exit_code is not None:
-            details['exit_code'] = exit_code
+            details["exit_code"] = exit_code
 
         super().__init__(message, details=details, context=context, **kwargs)
 
@@ -209,16 +216,18 @@ class FFmpegNotFoundError(FFmpegError):
     """
 
     def __init__(self, ffmpeg_path: Optional[str] = None):
-        message = f"FFmpeg not found at {ffmpeg_path}" if ffmpeg_path else "FFmpeg not found in PATH"
+        message = (
+            f"FFmpeg not found at {ffmpeg_path}" if ffmpeg_path else "FFmpeg not found in PATH"
+        )
 
         context = ErrorContext(
             severity=ErrorSeverity.CRITICAL,
             component="FFmpeg",
             operation="ffmpeg_detection",
             user_action="Install FFmpeg and ensure it's in your system PATH. "
-                       "Visit https://ffmpeg.org/download.html for instructions.",
+            "Visit https://ffmpeg.org/download.html for instructions.",
             recovery_possible=False,
-            technical_details={"ffmpeg_path": ffmpeg_path}
+            technical_details={"ffmpeg_path": ffmpeg_path},
         )
 
         super().__init__(message, context=context)
@@ -235,7 +244,7 @@ class FFmpegCommandError(FFmpegError):
         command: List[str],
         exit_code: int,
         stderr: str,
-        file_path: Optional[Path] = None
+        file_path: Optional[Path] = None,
     ):
         # Parse common FFmpeg errors for user-friendly messages
         user_action = self._parse_ffmpeg_error(stderr)
@@ -249,11 +258,17 @@ class FFmpegCommandError(FFmpegError):
             stderr=stderr,
             file_path=file_path,
             user_action=user_action,
-            recovery_possible=True
+            recovery_possible=True,
         )
 
-        super().__init__(message, command=command, exit_code=exit_code,
-                        stderr=stderr, file_path=file_path, context=context)
+        super().__init__(
+            message,
+            command=command,
+            exit_code=exit_code,
+            stderr=stderr,
+            file_path=file_path,
+            context=context,
+        )
 
     def _parse_ffmpeg_error(self, stderr: str) -> Optional[str]:
         """Parse FFmpeg stderr to provide helpful user actions."""
@@ -295,9 +310,9 @@ class FFmpegTimeoutError(FFmpegError):
             command=command,
             file_path=file_path,
             user_action="The operation may be processing a very large file. "
-                       "Consider increasing timeout or breaking into smaller chunks.",
+            "Consider increasing timeout or breaking into smaller chunks.",
             recovery_possible=True,
-            technical_details={"timeout_seconds": timeout_seconds}
+            technical_details={"timeout_seconds": timeout_seconds},
         )
 
         super().__init__(message, context=context)
@@ -307,13 +322,14 @@ class FFmpegTimeoutError(FFmpegError):
 # Audio Processing Exceptions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class AudioProcessingError(VideoRendererError):
     """
     Base exception for audio processing errors.
     """
 
     def __init__(self, message: str, file_path: Optional[Path] = None, **kwargs):
-        context = kwargs.pop('context', ErrorContext())
+        context = kwargs.pop("context", ErrorContext())
         context.file_path = file_path
         context.operation = "audio_processing"
 
@@ -335,7 +351,7 @@ class AudioValidationError(AudioProcessingError):
             file_path=file_path,
             user_action=f"Remove or replace the corrupted file: {file_path.name}",
             recovery_possible=True,
-            technical_details={"validation_reason": reason}
+            technical_details={"validation_reason": reason},
         )
 
         super().__init__(message, file_path=file_path, context=context)
@@ -356,7 +372,7 @@ class AudioMixingError(AudioProcessingError):
             operation="audio_mixing",
             user_action="Check that all audio files have compatible formats and sample rates.",
             recovery_possible=True,
-            technical_details={"tracks": track_names, "reason": reason}
+            technical_details={"tracks": track_names, "reason": reason},
         )
 
         super().__init__(message, context=context)
@@ -380,8 +396,8 @@ class AudioLoopError(AudioProcessingError):
             technical_details={
                 "target_duration": target_duration,
                 "actual_duration": actual_duration,
-                "duration_diff": abs(target_duration - actual_duration)
-            }
+                "duration_diff": abs(target_duration - actual_duration),
+            },
         )
 
         super().__init__(message, file_path=track_path, context=context)
@@ -391,13 +407,14 @@ class AudioLoopError(AudioProcessingError):
 # Video Processing Exceptions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class VideoProcessingError(VideoRendererError):
     """
     Base exception for video processing errors.
     """
 
     def __init__(self, message: str, file_path: Optional[Path] = None, **kwargs):
-        context = kwargs.pop('context', ErrorContext())
+        context = kwargs.pop("context", ErrorContext())
         context.file_path = file_path
 
         super().__init__(message, context=context, **kwargs)
@@ -408,7 +425,9 @@ class VideoCompatibilityError(VideoProcessingError):
     Raised when video compatibility check fails.
     """
 
-    def __init__(self, file_path: Path, reason: str, current_specs: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, file_path: Path, reason: str, current_specs: Optional[Dict[str, Any]] = None
+    ):
         message = f"Video compatibility check failed: {reason}"
 
         context = ErrorContext(
@@ -420,8 +439,8 @@ class VideoCompatibilityError(VideoProcessingError):
             recovery_possible=True,
             technical_details={
                 "compatibility_reason": reason,
-                "current_specs": current_specs or {}
-            }
+                "current_specs": current_specs or {},
+            },
         )
 
         super().__init__(message, file_path=file_path, context=context)
@@ -442,7 +461,7 @@ class VideoEncodingError(VideoProcessingError):
             file_path=file_path,
             user_action="Try using a different codec or check available hardware encoders with --list-hw.",
             recovery_possible=True,
-            technical_details={"codec": codec, "encoding_reason": reason}
+            technical_details={"codec": codec, "encoding_reason": reason},
         )
 
         super().__init__(message, file_path=file_path, context=context)
@@ -465,8 +484,8 @@ class VideoConcatError(VideoProcessingError):
             technical_details={
                 "intro_path": str(intro_path),
                 "loop_path": str(loop_path),
-                "reason": reason
-            }
+                "reason": reason,
+            },
         )
 
         super().__init__(message, context=context)
@@ -476,18 +495,19 @@ class VideoConcatError(VideoProcessingError):
 # Validation Exceptions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class ValidationError(VideoRendererError):
     """
     Base exception for validation errors.
     """
 
     def __init__(self, message: str, field: Optional[str] = None, **kwargs):
-        context = kwargs.pop('context', ErrorContext())
+        context = kwargs.pop("context", ErrorContext())
         context.operation = "validation"
 
-        details = kwargs.pop('details', {})
+        details = kwargs.pop("details", {})
         if field:
-            details['field'] = field
+            details["field"] = field
 
         super().__init__(message, details=details, context=context, **kwargs)
 
@@ -507,7 +527,7 @@ class FileValidationError(ValidationError):
             file_path=file_path,
             user_action="Check that the file exists and is a valid media file.",
             recovery_possible=False,
-            technical_details={"validation_reason": reason}
+            technical_details={"validation_reason": reason},
         )
 
         super().__init__(message, context=context)
@@ -527,7 +547,10 @@ class ConfigValidationError(ValidationError):
             operation="config_validation",
             user_action="Fix the configuration value and restart.",
             recovery_possible=False,
-            technical_details={"config_path": str(config_path) if config_path else None, "field": field}
+            technical_details={
+                "config_path": str(config_path) if config_path else None,
+                "field": field,
+            },
         )
 
         super().__init__(message, field=field, context=context)
@@ -547,7 +570,7 @@ class DurationValidationError(ValidationError):
             operation="duration_validation",
             user_action=f"Set duration between {min_value} and {max_value} seconds.",
             recovery_possible=False,
-            technical_details={"duration": duration, "min": min_value, "max": max_value}
+            technical_details={"duration": duration, "min": min_value, "max": max_value},
         )
 
         super().__init__(message, context=context)
@@ -557,13 +580,14 @@ class DurationValidationError(ValidationError):
 # State and Persistence Exceptions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class StateError(VideoRendererError):
     """
     Base exception for state management errors.
     """
 
     def __init__(self, message: str, state_path: Optional[Path] = None, **kwargs):
-        context = kwargs.pop('context', ErrorContext())
+        context = kwargs.pop("context", ErrorContext())
         context.operation = "state_management"
         context.file_path = state_path
 
@@ -584,9 +608,9 @@ class StateLoadError(StateError):
             operation="state_load",
             file_path=state_path,
             user_action="The application will start with a fresh state. "
-                       "Previous session data may be lost.",
+            "Previous session data may be lost.",
             recovery_possible=True,
-            technical_details={"load_reason": reason}
+            technical_details={"load_reason": reason},
         )
 
         super().__init__(message, state_path=state_path, context=context)
@@ -607,7 +631,7 @@ class StateSaveError(StateError):
             file_path=state_path,
             user_action="Check disk space and file permissions. State may not persist between sessions.",
             recovery_possible=True,
-            technical_details={"save_reason": reason}
+            technical_details={"save_reason": reason},
         )
 
         super().__init__(message, state_path=state_path, context=context)
@@ -628,7 +652,7 @@ class StateCorruptedError(StateError):
             file_path=state_path,
             user_action="The corrupted state will be backed up and a fresh state created.",
             recovery_possible=True,
-            technical_details={"parse_error": parse_error}
+            technical_details={"parse_error": parse_error},
         )
 
         super().__init__(message, state_path=state_path, context=context)
@@ -638,18 +662,19 @@ class StateCorruptedError(StateError):
 # Batch Processing Exceptions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class BatchProcessingError(VideoRendererError):
     """
     Base exception for batch processing errors.
     """
 
     def __init__(self, message: str, job_id: Optional[str] = None, **kwargs):
-        context = kwargs.pop('context', ErrorContext())
+        context = kwargs.pop("context", ErrorContext())
         context.operation = "batch_processing"
 
-        details = kwargs.pop('details', {})
+        details = kwargs.pop("details", {})
         if job_id:
-            details['job_id'] = job_id
+            details["job_id"] = job_id
 
         super().__init__(message, details=details, context=context, **kwargs)
 
@@ -668,7 +693,7 @@ class BatchJobError(BatchProcessingError):
             operation="job_execution",
             user_action="Retry the job or check the error details for more information.",
             recovery_possible=can_retry,
-            technical_details={"job_id": job_id, "failure_reason": reason, "can_retry": can_retry}
+            technical_details={"job_id": job_id, "failure_reason": reason, "can_retry": can_retry},
         )
 
         super().__init__(message, job_id=job_id, context=context)
@@ -688,7 +713,7 @@ class BatchQueueError(BatchProcessingError):
             operation=operation,
             user_action="Check queue state and try again.",
             recovery_possible=True,
-            technical_details={"queue_operation": operation, "reason": reason}
+            technical_details={"queue_operation": operation, "reason": reason},
         )
 
         super().__init__(message, context=context)
@@ -698,13 +723,14 @@ class BatchQueueError(BatchProcessingError):
 # External Service Exceptions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class ExternalServiceError(VideoRendererError):
     """
     Base exception for external service errors (YouTube, Drive, etc.).
     """
 
     def __init__(self, message: str, service: str, **kwargs):
-        context = kwargs.pop('context', ErrorContext())
+        context = kwargs.pop("context", ErrorContext())
         context.component = service
         context.operation = "external_service"
 
@@ -725,7 +751,7 @@ class YouTubeError(ExternalServiceError):
             operation=operation,
             user_action="Check your internet connection and API credentials.",
             recovery_possible=True,
-            technical_details={"operation": operation, "status_code": status_code}
+            technical_details={"operation": operation, "status_code": status_code},
         )
 
         super().__init__(message, service="YouTube", context=context)
@@ -745,7 +771,7 @@ class DriveError(ExternalServiceError):
             operation=operation,
             user_action="Check your internet connection and API credentials.",
             recovery_possible=True,
-            technical_details={"operation": operation}
+            technical_details={"operation": operation},
         )
 
         super().__init__(message, service="Drive", context=context)
@@ -755,11 +781,12 @@ class DriveError(ExternalServiceError):
 # Utility Functions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def wrap_exception(
     exception: Exception,
     message: str,
     component: Optional[str] = None,
-    operation: Optional[str] = None
+    operation: Optional[str] = None,
 ) -> VideoRendererError:
     """
     Wrap a generic exception in a VideoRendererError.
@@ -777,14 +804,10 @@ def wrap_exception(
         component=component or type(exception).__name__,
         operation=operation,
         original_exception=str(exception),
-        stack_trace=traceback.format_exc()
+        stack_trace=traceback.format_exc(),
     )
 
-    return VideoRendererError(
-        message=message,
-        context=context,
-        original_exception=exception
-    )
+    return VideoRendererError(message=message, context=context, original_exception=exception)
 
 
 def create_error_report(exception: Exception, include_traceback: bool = True) -> Dict[str, Any]:

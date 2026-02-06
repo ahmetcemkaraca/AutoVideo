@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional, Union
 from .logging import LogLevel
 from .error_reporting import ErrorReportingMode, ErrorReportConfig
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Configuration File Locations
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -34,6 +33,7 @@ DEFAULT_CONFIG_PATHS = [
 # ═══════════════════════════════════════════════════════════════════════════════
 # Logging Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class LoggingConfig:
@@ -67,25 +67,25 @@ class LoggingConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
-        data['level'] = self.level.value if isinstance(self.level, LogLevel) else self.level
-        data['log_dir'] = str(self.log_dir) if self.log_dir else None
+        data["level"] = self.level.value if isinstance(self.level, LogLevel) else self.level
+        data["log_dir"] = str(self.log_dir) if self.log_dir else None
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'LoggingConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "LoggingConfig":
         """Create from dictionary."""
         data = data.copy()
 
         # Convert level string to enum
-        if 'level' in data and isinstance(data['level'], str):
+        if "level" in data and isinstance(data["level"], str):
             try:
-                data['level'] = LogLevel[data['level'].upper()]
+                data["level"] = LogLevel[data["level"].upper()]
             except KeyError:
-                data['level'] = LogLevel.INFO
+                data["level"] = LogLevel.INFO
 
         # Convert log_dir to Path
-        if 'log_dir' in data and data['log_dir']:
-            data['log_dir'] = Path(data['log_dir'])
+        if "log_dir" in data and data["log_dir"]:
+            data["log_dir"] = Path(data["log_dir"])
 
         return cls(**data)
 
@@ -99,6 +99,7 @@ class LoggingConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Reporting Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class ErrorReportingExtendedConfig(ErrorReportConfig):
@@ -123,30 +124,30 @@ class ErrorReportingExtendedConfig(ErrorReportConfig):
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
-        data['mode'] = self.mode.value if isinstance(self.mode, ErrorReportingMode) else self.mode
-        data['error_report_path'] = str(self.error_report_path) if self.error_report_path else None
+        data["mode"] = self.mode.value if isinstance(self.mode, ErrorReportingMode) else self.mode
+        data["error_report_path"] = str(self.error_report_path) if self.error_report_path else None
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ErrorReportingExtendedConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "ErrorReportingExtendedConfig":
         """Create from dictionary."""
         data = data.copy()
 
         # Convert mode string to enum
-        if 'mode' in data and isinstance(data['mode'], str):
+        if "mode" in data and isinstance(data["mode"], str):
             # Try to find mode by value (case-insensitive)
-            mode_str = data['mode'].lower()
+            mode_str = data["mode"].lower()
             for mode in ErrorReportingMode:
                 if mode.value == mode_str:
-                    data['mode'] = mode
+                    data["mode"] = mode
                     break
             else:
                 # Default to USER_FRIENDLY if not found
-                data['mode'] = ErrorReportingMode.USER_FRIENDLY
+                data["mode"] = ErrorReportingMode.USER_FRIENDLY
 
         # Convert error_report_path to Path
-        if 'error_report_path' in data and data['error_report_path']:
-            data['error_report_path'] = Path(data['error_report_path'])
+        if "error_report_path" in data and data["error_report_path"]:
+            data["error_report_path"] = Path(data["error_report_path"])
 
         return cls(**data)
 
@@ -154,6 +155,7 @@ class ErrorReportingExtendedConfig(ErrorReportConfig):
 # ═══════════════════════════════════════════════════════════════════════════════
 # Complete Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class VideoRendererConfig:
@@ -171,35 +173,33 @@ class VideoRendererConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
-            'logging': self.logging.to_dict(),
-            'error_reporting': self.error_reporting.to_dict(),
+            "logging": self.logging.to_dict(),
+            "error_reporting": self.error_reporting.to_dict(),
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'VideoRendererConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "VideoRendererConfig":
         """Create from dictionary."""
         return cls(
-            logging=LoggingConfig.from_dict(data.get('logging', {})),
-            error_reporting=ErrorReportingExtendedConfig.from_dict(
-                data.get('error_reporting', {})
-            ),
+            logging=LoggingConfig.from_dict(data.get("logging", {})),
+            error_reporting=ErrorReportingExtendedConfig.from_dict(data.get("error_reporting", {})),
         )
 
     def save(self, path: Path) -> None:
         """Save configuration to file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
-    def load(cls, path: Path) -> 'VideoRendererConfig':
+    def load(cls, path: Path) -> "VideoRendererConfig":
         """Load configuration from file."""
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)
 
     @classmethod
-    def load_default(cls) -> 'VideoRendererConfig':
+    def load_default(cls) -> "VideoRendererConfig":
         """Load configuration from default locations."""
         for config_path in DEFAULT_CONFIG_PATHS:
             if config_path.exists():
@@ -210,6 +210,7 @@ class VideoRendererConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Environment Variable Support
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class EnvironmentConfig:
     """
@@ -237,7 +238,7 @@ class EnvironmentConfig:
         value = cls.get(key)
         if value is None:
             return default
-        return value.lower() in ('true', '1', 'yes', 'on')
+        return value.lower() in ("true", "1", "yes", "on")
 
     @classmethod
     def get_int(cls, key: str, default: int = 0) -> int:
@@ -254,24 +255,24 @@ class EnvironmentConfig:
     def load(cls) -> VideoRendererConfig:
         """Load configuration from environment variables."""
         # Logging configuration
-        log_level_str = cls.get('LOG_LEVEL', 'INFO')
+        log_level_str = cls.get("LOG_LEVEL", "INFO")
         try:
             log_level = LogLevel[log_level_str.upper()]
         except KeyError:
             log_level = LogLevel.INFO
 
-        log_dir = cls.get('LOG_DIR')
-        log_file = cls.get('LOG_FILE', 'video_renderer.log')
-        log_json = cls.get_bool('LOG_JSON', True)
+        log_dir = cls.get("LOG_DIR")
+        log_file = cls.get("LOG_FILE", "video_renderer.log")
+        log_json = cls.get_bool("LOG_JSON", True)
 
         # Error reporting configuration
-        error_mode_str = cls.get('ERROR_MODE', 'user')
+        error_mode_str = cls.get("ERROR_MODE", "user")
         try:
             error_mode = ErrorReportingMode[error_mode_str.upper()]
         except KeyError:
             error_mode = ErrorReportingMode.USER_FRIENDLY
 
-        error_trace = cls.get_bool('ERROR_TRACE', False)
+        error_trace = cls.get_bool("ERROR_TRACE", False)
 
         return VideoRendererConfig(
             logging=LoggingConfig(
@@ -290,6 +291,7 @@ class EnvironmentConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Configuration Presets
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class ConfigPresets:
     """Pre-defined configuration presets for common use cases."""
@@ -365,6 +367,7 @@ class ConfigPresets:
 # Configuration Manager
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class ConfigManager:
     """
     Manages loading and applying configuration.
@@ -384,7 +387,7 @@ class ConfigManager:
         config: Optional[VideoRendererConfig] = None,
         config_path: Optional[Path] = None,
         use_env: bool = True,
-        preset: Optional[str] = None
+        preset: Optional[str] = None,
     ) -> VideoRendererConfig:
         """
         Load configuration from various sources.
@@ -496,7 +499,7 @@ def setup_logging(
     config: Optional[VideoRendererConfig] = None,
     config_path: Optional[Path] = None,
     use_env: bool = True,
-    preset: Optional[str] = None
+    preset: Optional[str] = None,
 ) -> VideoRendererConfig:
     """
     Setup logging with the specified configuration.

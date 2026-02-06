@@ -22,24 +22,25 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import uuid
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Context Variables for Request/Session Tracking
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Context variables for tracking requests/sessions across async/coroutine boundaries
-request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar('request_id', default='')
-session_id_var: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='')
-user_id_var: contextvars.ContextVar[str] = contextvars.ContextVar('user_id', default='')
-component_var: contextvars.ContextVar[str] = contextvars.ContextVar('component', default='')
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="")
+session_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("session_id", default="")
+user_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("user_id", default="")
+component_var: contextvars.ContextVar[str] = contextvars.ContextVar("component", default="")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Log Level Definitions
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class LogLevel(Enum):
     """Log level definitions matching standard logging levels."""
+
     DEBUG = logging.DEBUG
     INFO = logging.INFO
     WARNING = logging.WARNING
@@ -50,6 +51,7 @@ class LogLevel(Enum):
 # ═══════════════════════════════════════════════════════════════════════════════
 # JSON Formatter
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class JSONFormatter(logging.Formatter):
     """
@@ -75,7 +77,7 @@ class JSONFormatter(logging.Formatter):
         self,
         include_context: bool = True,
         include_stack_trace: bool = False,
-        timestamp_format: str = "%Y-%m-%dT%H:%M:%S.%fZ"
+        timestamp_format: str = "%Y-%m-%dT%H:%M:%S.%fZ",
     ):
         super().__init__()
         self.include_context = include_context
@@ -122,7 +124,7 @@ class JSONFormatter(logging.Formatter):
                 log_data["component"] = component
 
         # Add extra fields from record
-        if hasattr(record, 'extra_fields'):
+        if hasattr(record, "extra_fields"):
             log_data.update(record.extra_fields)
 
         # Add exception info if present
@@ -137,7 +139,7 @@ class JSONFormatter(logging.Formatter):
 
         # Add stack trace if requested (for debugging)
         if self.include_stack_trace and not record.exc_info:
-            log_data["stack_trace"] = ''.join(traceback.format_stack())
+            log_data["stack_trace"] = "".join(traceback.format_stack())
 
         return json.dumps(log_data, default=str, ensure_ascii=False)
 
@@ -145,6 +147,7 @@ class JSONFormatter(logging.Formatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 # Console Formatter (Human-readable)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class ConsoleFormatter(logging.Formatter):
     """
@@ -155,20 +158,20 @@ class ConsoleFormatter(logging.Formatter):
 
     # ANSI color codes
     COLORS = {
-        'DEBUG': '\033[36m',      # Cyan
-        'INFO': '\033[32m',       # Green
-        'WARNING': '\033[33m',    # Yellow
-        'ERROR': '\033[31m',      # Red
-        'CRITICAL': '\033[35m',   # Magenta
-        'RESET': '\033[0m',       # Reset
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[35m",  # Magenta
+        "RESET": "\033[0m",  # Reset
     }
 
     SYMBOLS = {
-        'DEBUG': '🔍',
-        'INFO': 'ℹ️',
-        'WARNING': '⚠️',
-        'ERROR': '❌',
-        'CRITICAL': '🔥',
+        "DEBUG": "🔍",
+        "INFO": "ℹ️",
+        "WARNING": "⚠️",
+        "ERROR": "❌",
+        "CRITICAL": "🔥",
     }
 
     def __init__(self, use_colors: bool = True, use_symbols: bool = True):
@@ -183,18 +186,18 @@ class ConsoleFormatter(logging.Formatter):
 
         # Build formatted message
         if self.use_colors and self.use_symbols:
-            color = self.COLORS.get(level, self.COLORS['RESET'])
-            symbol = self.SYMBOLS.get(level, '')
-            reset = self.COLORS['RESET']
+            color = self.COLORS.get(level, self.COLORS["RESET"])
+            symbol = self.SYMBOLS.get(level, "")
+            reset = self.COLORS["RESET"]
             formatted = f"{color}{symbol} [{level}]{reset} {message}"
 
         elif self.use_symbols:
-            symbol = self.SYMBOLS.get(level, '')
+            symbol = self.SYMBOLS.get(level, "")
             formatted = f"{symbol} [{level}] {message}"
 
         elif self.use_colors:
-            color = self.COLORS.get(level, self.COLORS['RESET'])
-            reset = self.COLORS['RESET']
+            color = self.COLORS.get(level, self.COLORS["RESET"])
+            reset = self.COLORS["RESET"]
             formatted = f"{color}[{level}]{reset} {message}"
 
         else:
@@ -215,6 +218,7 @@ class ConsoleFormatter(logging.Formatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 # Video Renderer Logger
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class VideoRendererLogger:
     """
@@ -237,7 +241,7 @@ class VideoRendererLogger:
         enable_console: bool = True,
         enable_json: bool = True,
         max_bytes: int = 10 * 1024 * 1024,  # 10MB
-        backup_count: int = 5
+        backup_count: int = 5,
     ):
         """
         Initialize logger.
@@ -253,8 +257,7 @@ class VideoRendererLogger:
         """
         self.logger = logging.getLogger(name)
         self.logger.setLevel(
-            level.value if isinstance(level, LogLevel) else
-            logging.getLevelName(level)
+            level.value if isinstance(level, LogLevel) else logging.getLevelName(level)
         )
 
         # Clear existing handlers
@@ -271,19 +274,14 @@ class VideoRendererLogger:
             log_file.parent.mkdir(parents=True, exist_ok=True)
 
             file_handler = logging.handlers.RotatingFileHandler(
-                log_file,
-                maxBytes=max_bytes,
-                backupCount=backup_count,
-                encoding='utf-8'
+                log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
             )
 
             if enable_json:
                 file_handler.setFormatter(JSONFormatter())
             else:
                 file_handler.setFormatter(
-                    logging.Formatter(
-                        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-                    )
+                    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
                 )
 
             self.logger.addHandler(file_handler)
@@ -291,10 +289,10 @@ class VideoRendererLogger:
     def _add_context(self, extra: Dict[str, Any]) -> Dict[str, Any]:
         """Add context variables to extra fields."""
         context = {
-            'request_id': request_id_var.get(),
-            'session_id': session_id_var.get(),
-            'user_id': user_id_var.get(),
-            'component': component_var.get(),
+            "request_id": request_id_var.get(),
+            "session_id": session_id_var.get(),
+            "user_id": user_id_var.get(),
+            "component": component_var.get(),
         }
         context.update(extra)
         return context
@@ -304,7 +302,7 @@ class VideoRendererLogger:
         extra_fields = self._add_context(kwargs)
 
         # Create extra dict for LogRecord
-        extra = {'extra_fields': extra_fields}
+        extra = {"extra_fields": extra_fields}
 
         self.logger.log(level, message, extra=extra)
 
@@ -323,27 +321,27 @@ class VideoRendererLogger:
     def error(self, message: str, exception: Optional[Exception] = None, **kwargs):
         """Log error message."""
         if exception:
-            kwargs['exception_type'] = type(exception).__name__
-            kwargs['exception_message'] = str(exception)
+            kwargs["exception_type"] = type(exception).__name__
+            kwargs["exception_message"] = str(exception)
 
         self._log(logging.ERROR, message, **kwargs)
 
     def critical(self, message: str, exception: Optional[Exception] = None, **kwargs):
         """Log critical error message."""
         if exception:
-            kwargs['exception_type'] = type(exception).__name__
-            kwargs['exception_message'] = str(exception)
+            kwargs["exception_type"] = type(exception).__name__
+            kwargs["exception_message"] = str(exception)
 
         self._log(logging.CRITICAL, message, **kwargs)
 
     def exception(self, message: str, **kwargs):
         """Log exception with full traceback."""
-        self.logger.exception(message, extra={'extra_fields': self._add_context(kwargs)})
+        self.logger.exception(message, extra={"extra_fields": self._add_context(kwargs)})
 
     # Convenience methods for common operations
     def ffmpeg_command(self, command: List[str], **kwargs):
         """Log FFmpeg command execution."""
-        self.info("Executing FFmpeg command", command=' '.join(command), **kwargs)
+        self.info("Executing FFmpeg command", command=" ".join(command), **kwargs)
 
     def file_operation(self, operation: str, path: Path, **kwargs):
         """Log file operation."""
@@ -352,10 +350,7 @@ class VideoRendererLogger:
     def progress(self, operation: str, percent: float, **kwargs):
         """Log progress update."""
         self.debug(
-            f"Progress: {operation}",
-            operation=operation,
-            percent=f"{percent:.1f}",
-            **kwargs
+            f"Progress: {operation}", operation=operation, percent=f"{percent:.1f}", **kwargs
         )
 
 
@@ -366,10 +361,10 @@ class VideoRendererLogger:
 # Global logger registry
 _logger_registry: Dict[str, VideoRendererLogger] = {}
 _default_log_config = {
-    'level': LogLevel.INFO,
-    'log_file': None,
-    'enable_console': True,
-    'enable_json': True,
+    "level": LogLevel.INFO,
+    "log_file": None,
+    "enable_console": True,
+    "enable_json": True,
 }
 
 
@@ -380,7 +375,7 @@ def configure_logging(
     enable_console: bool = True,
     enable_json: bool = True,
     max_bytes: int = 10 * 1024 * 1024,
-    backup_count: int = 5
+    backup_count: int = 5,
 ) -> None:
     """
     Configure global logging settings.
@@ -396,13 +391,15 @@ def configure_logging(
     """
     global _default_log_config
 
-    _default_log_config.update({
-        'level': level,
-        'enable_console': enable_console,
-        'enable_json': enable_json,
-        'max_bytes': max_bytes,
-        'backup_count': backup_count,
-    })
+    _default_log_config.update(
+        {
+            "level": level,
+            "enable_console": enable_console,
+            "enable_json": enable_json,
+            "max_bytes": max_bytes,
+            "backup_count": backup_count,
+        }
+    )
 
     if log_dir and log_file:
         log_path = log_dir / log_file
@@ -411,7 +408,7 @@ def configure_logging(
     else:
         log_path = None
 
-    _default_log_config['log_file'] = log_path
+    _default_log_config["log_file"] = log_path
 
 
 def get_logger(name: str) -> VideoRendererLogger:
@@ -425,16 +422,14 @@ def get_logger(name: str) -> VideoRendererLogger:
         VideoRendererLogger instance
     """
     if name not in _logger_registry:
-        _logger_registry[name] = VideoRendererLogger(
-            name=name,
-            **_default_log_config
-        )
+        _logger_registry[name] = VideoRendererLogger(name=name, **_default_log_config)
     return _logger_registry[name]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Context Managers
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class LogContext:
     """
@@ -451,20 +446,20 @@ class LogContext:
         request_id: Optional[str] = None,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        component: Optional[str] = None
+        component: Optional[str] = None,
     ):
         self.tokens = []
         self.context = {
-            'request_id': request_id,
-            'session_id': session_id,
-            'user_id': user_id,
-            'component': component,
+            "request_id": request_id,
+            "session_id": session_id,
+            "user_id": user_id,
+            "component": component,
         }
 
     def __enter__(self):
         for key, value in self.context.items():
             if value is not None:
-                var = globals()[f'{key}_var']
+                var = globals()[f"{key}_var"]
                 self.tokens.append(var.set(value))
         return self
 
@@ -477,7 +472,7 @@ def set_context(
     request_id: Optional[str] = None,
     session_id: Optional[str] = None,
     user_id: Optional[str] = None,
-    component: Optional[str] = None
+    component: Optional[str] = None,
 ) -> None:
     """
     Set logging context variables for the current scope.
@@ -514,11 +509,12 @@ def generate_session_id() -> str:
 # Decorators
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def log_function_call(
     logger: Optional[VideoRendererLogger] = None,
     level: Union[LogLevel, str] = LogLevel.DEBUG,
     include_args: bool = False,
-    include_result: bool = False
+    include_result: bool = False,
 ):
     """
     Decorator to log function calls.
@@ -529,6 +525,7 @@ def log_function_call(
         include_args: Include function arguments in log
         include_result: Include return value in log
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             module_logger = logger or get_logger(func.__module__)
@@ -543,7 +540,7 @@ def log_function_call(
             module_logger._log(
                 level.value if isinstance(level, LogLevel) else logging.getLevelName(level),
                 f"Calling {func_name}",
-                **log_data
+                **log_data,
             )
 
             try:
@@ -554,27 +551,21 @@ def log_function_call(
                         level.value if isinstance(level, LogLevel) else logging.getLevelName(level),
                         f"Completed {func_name}",
                         function=func_name,
-                        result=type(result).__name__
+                        result=type(result).__name__,
                     )
 
                 return result
 
             except Exception as e:
-                module_logger.error(
-                    f"Error in {func_name}",
-                    exception=e,
-                    function=func_name
-                )
+                module_logger.error(f"Error in {func_name}", exception=e, function=func_name)
                 raise
 
         return wrapper
+
     return decorator
 
 
-def log_errors(
-    logger: Optional[VideoRendererLogger] = None,
-    reraise: bool = True
-):
+def log_errors(logger: Optional[VideoRendererLogger] = None, reraise: bool = True):
     """
     Decorator to log exceptions in functions.
 
@@ -582,6 +573,7 @@ def log_errors(
         logger: Logger instance (uses module logger if not provided)
         reraise: Whether to re-raise the exception
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             module_logger = logger or get_logger(func.__module__)
@@ -590,21 +582,20 @@ def log_errors(
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                module_logger.exception(
-                    f"Exception in {func_name}",
-                    function=func_name
-                )
+                module_logger.exception(f"Exception in {func_name}", function=func_name)
                 if reraise:
                     raise
                 return None
 
         return wrapper
+
     return decorator
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Log Analysis Utilities
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def parse_log_file(log_path: Path) -> List[Dict[str, Any]]:
     """
@@ -619,7 +610,7 @@ def parse_log_file(log_path: Path) -> List[Dict[str, Any]]:
     logs = []
 
     try:
-        with open(log_path, 'r', encoding='utf-8') as f:
+        with open(log_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -640,7 +631,7 @@ def filter_logs(
     level: Optional[str] = None,
     component: Optional[str] = None,
     start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
     """
     Filter logs by criteria.
@@ -658,21 +649,21 @@ def filter_logs(
     filtered = logs
 
     if level:
-        filtered = [log for log in filtered if log.get('level') == level]
+        filtered = [log for log in filtered if log.get("level") == level]
 
     if component:
-        filtered = [log for log in filtered if log.get('component') == component]
+        filtered = [log for log in filtered if log.get("component") == component]
 
     if start_time:
         filtered = [
-            log for log in filtered
-            if datetime.fromisoformat(log.get('timestamp', '')) >= start_time
+            log
+            for log in filtered
+            if datetime.fromisoformat(log.get("timestamp", "")) >= start_time
         ]
 
     if end_time:
         filtered = [
-            log for log in filtered
-            if datetime.fromisoformat(log.get('timestamp', '')) <= end_time
+            log for log in filtered if datetime.fromisoformat(log.get("timestamp", "")) <= end_time
         ]
 
     return filtered
@@ -689,21 +680,21 @@ def get_error_summary(log_path: Path) -> Dict[str, Any]:
         Dictionary with error summary
     """
     logs = parse_log_file(log_path)
-    error_logs = [log for log in logs if log.get('level') in ('ERROR', 'CRITICAL')]
+    error_logs = [log for log in logs if log.get("level") in ("ERROR", "CRITICAL")]
 
     summary = {
-        'total_errors': len(error_logs),
-        'by_level': {},
-        'by_component': {},
-        'recent_errors': error_logs[-10:] if error_logs else []
+        "total_errors": len(error_logs),
+        "by_level": {},
+        "by_component": {},
+        "recent_errors": error_logs[-10:] if error_logs else [],
     }
 
     for log in error_logs:
-        level = log.get('level', 'UNKNOWN')
-        component = log.get('component', 'unknown')
+        level = log.get("level", "UNKNOWN")
+        component = log.get("component", "unknown")
 
-        summary['by_level'][level] = summary['by_level'].get(level, 0) + 1
-        summary['by_component'][component] = summary['by_component'].get(component, 0) + 1
+        summary["by_level"][level] = summary["by_level"].get(level, 0) + 1
+        summary["by_component"][component] = summary["by_component"].get(component, 0) + 1
 
     return summary
 
@@ -713,4 +704,4 @@ def get_error_summary(log_path: Path) -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Create default logger
-default_logger = get_logger('video_renderer')
+default_logger = get_logger("video_renderer")

@@ -15,7 +15,6 @@ from textual.containers import Container, Vertical, Horizontal
 from config import detect_available_encoders, get_best_encoder, get_render_config
 from ..ffmpeg import get_duration
 
-
 DURATION_PRESETS = {
     "3 saat": "3:00:00",
     "6 saat": "6:00:00",
@@ -51,7 +50,7 @@ class SettingsScreen(Screen):
             "standard": "",
             "ramtest": " [RAM]",
             "ramdisk": " [RAMDisk]",
-            "high_vram": " [HighVRAM]"
+            "high_vram": " [HighVRAM]",
         }.get(self.app_mode, "")
 
         yield Container(
@@ -93,12 +92,12 @@ class SettingsScreen(Screen):
                         "RAM Disk Kullan (tmpfs)",
                         value=self.mode_config.use_ramdisk,
                         id="use_ramdisk",
-                        classes="mode-option"
+                        classes="mode-option",
                     )
                     yield Static(
                         "Temp dosyalari RAM disk'te saklar (daha hizli, daha az disk I/O)",
                         id="ramdisk_hint",
-                        classes="subtitle"
+                        classes="subtitle",
                     )
 
                 # High VRAM option
@@ -107,12 +106,12 @@ class SettingsScreen(Screen):
                         "High VRAM Modu (8GB+ GPU)",
                         value=self.mode_config.high_vram,
                         id="high_vram",
-                        classes="mode-option"
+                        classes="mode-option",
                     )
                     yield Static(
                         "Yuksek GPU bellek optimizasyonu ( daha iyi encoder performansi)",
                         id="vram_hint",
-                        classes="subtitle"
+                        classes="subtitle",
                     )
 
                 # Chunk long videos option
@@ -121,12 +120,12 @@ class SettingsScreen(Screen):
                         "Uzun Videolari Parcalara Bol (Chunking)",
                         value=self.mode_config.chunk_long_videos,
                         id="chunk_videos",
-                        classes="mode-option"
+                        classes="mode-option",
                     )
                     yield Static(
                         "Bellek dusukse uzun videolari 2 saatlik parcalar halinde isler",
                         id="chunk_hint",
-                        classes="subtitle"
+                        classes="subtitle",
                     )
 
         elif self.app_mode == "high_vram" and self.mode_config:
@@ -135,12 +134,12 @@ class SettingsScreen(Screen):
                 yield Static(
                     f"GPU Bellek Optimizasyonu Aktif ({self.mode_config.high_vram})",
                     id="vram_status",
-                    classes="info-text"
+                    classes="info-text",
                 )
                 yield Static(
                     "Encoder performansini artirmak icin GPU buffer boyutlari artirildi",
                     id="vram_status_hint",
-                    classes="subtitle"
+                    classes="subtitle",
                 )
 
         # Drive Upload Settings
@@ -149,10 +148,16 @@ class SettingsScreen(Screen):
             yield Horizontal(
                 Button("Upload Aktif Et", id="toggle_upload", variant="error"),
                 Label("Devre Disi", id="upload_status_label", classes="status-label"),
-                classes="upload-row"
+                classes="upload-row",
             )
-            yield Input(placeholder="Drive Folder ID (Opsiyonel)", id="drive_folder_id", classes="hidden")
-            yield Static("Varsayilan klasor ID'si. Bos birakilirsa root'a yuklenir.", id="drive_hint", classes="subtitle hidden")
+            yield Input(
+                placeholder="Drive Folder ID (Opsiyonel)", id="drive_folder_id", classes="hidden"
+            )
+            yield Static(
+                "Varsayilan klasor ID'si. Bos birakilirsa root'a yuklenir.",
+                id="drive_hint",
+                classes="subtitle hidden",
+            )
 
         # Output filename
         with Container(classes="panel"):
@@ -177,7 +182,7 @@ class SettingsScreen(Screen):
             yield Button("🚀 Render Baslat", id="start", classes="-primary")
 
         yield Footer()
-    
+
     def on_mount(self) -> None:
         """Called when screen is mounted."""
         self._detect_codecs()
@@ -191,11 +196,17 @@ class SettingsScreen(Screen):
             try:
                 # Set checkbox values from mode_config
                 if self.app_mode == "ramtest":
-                    if hasattr(self, 'query_one'):
+                    if hasattr(self, "query_one"):
                         try:
-                            self.query_one("#use_ramdisk", Checkbox).value = self.mode_config.use_ramdisk
-                            self.query_one("#high_vram", Checkbox).value = self.mode_config.high_vram
-                            self.query_one("#chunk_videos", Checkbox).value = self.mode_config.chunk_long_videos
+                            self.query_one("#use_ramdisk", Checkbox).value = (
+                                self.mode_config.use_ramdisk
+                            )
+                            self.query_one("#high_vram", Checkbox).value = (
+                                self.mode_config.high_vram
+                            )
+                            self.query_one("#chunk_videos", Checkbox).value = (
+                                self.mode_config.chunk_long_videos
+                            )
                         except Exception:
                             pass  # Checkboxes might not exist in all modes
             except Exception:
@@ -220,7 +231,9 @@ class SettingsScreen(Screen):
         """Update the summary panel."""
         app = self.app
 
-        if getattr(app, "render_mode", "intro_loop") == "single" and getattr(app, "single_video_path", None):
+        if getattr(app, "render_mode", "intro_loop") == "single" and getattr(
+            app, "single_video_path", None
+        ):
             try:
                 self.query_one("#summary_intro", Static).update(
                     f"Video: {app.single_video_path.name}"
@@ -229,29 +242,25 @@ class SettingsScreen(Screen):
             except Exception:
                 pass
         else:
-            if hasattr(app, 'intro_path') and app.intro_path:
+            if hasattr(app, "intro_path") and app.intro_path:
                 try:
-                    self.query_one("#summary_intro", Static).update(
-                        f"Intro: {app.intro_path.name}"
-                    )
+                    self.query_one("#summary_intro", Static).update(f"Intro: {app.intro_path.name}")
                 except Exception:
                     pass
-            if hasattr(app, 'loop_path') and app.loop_path:
+            if hasattr(app, "loop_path") and app.loop_path:
                 try:
-                    self.query_one("#summary_loop", Static).update(
-                        f"Loop: {app.loop_path.name}"
-                    )
+                    self.query_one("#summary_loop", Static).update(f"Loop: {app.loop_path.name}")
                 except Exception:
                     pass
 
         try:
-            self.query_one("#summary_codec", Static).update(
-                f"Codec: {self.selected_codec.upper()}"
-            )
+            self.query_one("#summary_codec", Static).update(f"Codec: {self.selected_codec.upper()}")
         except Exception:
             pass
 
-        if getattr(app, "render_mode", "intro_loop") == "single" and getattr(app, "single_video_path", None):
+        if getattr(app, "render_mode", "intro_loop") == "single" and getattr(
+            app, "single_video_path", None
+        ):
             try:
                 video_seconds = int(get_duration(app.single_video_path))
                 h = video_seconds // 3600
@@ -268,13 +277,11 @@ class SettingsScreen(Screen):
                 pass
         else:
             try:
-                self.query_one("#summary_duration", Static).update(
-                    f"Sure: {self.duration_str}"
-                )
+                self.query_one("#summary_duration", Static).update(f"Sure: {self.duration_str}")
             except Exception:
                 pass
 
-        if hasattr(app, 'chosen_tracks'):
+        if hasattr(app, "chosen_tracks"):
             try:
                 self.query_one("#summary_tracks", Static).update(
                     f"Track: {len(app.chosen_tracks)} adet"
@@ -282,11 +289,9 @@ class SettingsScreen(Screen):
             except Exception:
                 pass
 
-        if hasattr(app, 'chosen_bgs'):
+        if hasattr(app, "chosen_bgs"):
             try:
-                self.query_one("#summary_bgs", Static).update(
-                    f"BG: {len(app.chosen_bgs)} adet"
-                )
+                self.query_one("#summary_bgs", Static).update(f"BG: {len(app.chosen_bgs)} adet")
             except Exception:
                 pass
 
@@ -303,7 +308,7 @@ class SettingsScreen(Screen):
             "standard": "Mod: Standard",
             "ramtest": "Mod: RAM-Optimized",
             "ramdisk": "Mod: RAM Disk",
-            "high_vram": "Mod: High VRAM"
+            "high_vram": "Mod: High VRAM",
         }.get(self.app_mode, f"Mod: {self.app_mode}")
         try:
             self.query_one("#summary_mode", Static).update(mode_text)
@@ -315,9 +320,11 @@ class SettingsScreen(Screen):
         import time
 
         app = self.app
-        if getattr(app, "render_mode", "intro_loop") == "single" and getattr(app, "single_video_path", None):
+        if getattr(app, "render_mode", "intro_loop") == "single" and getattr(
+            app, "single_video_path", None
+        ):
             base_name = app.single_video_path.stem
-        elif hasattr(app, 'intro_path') and app.intro_path:
+        elif hasattr(app, "intro_path") and app.intro_path:
             base_name = app.intro_path.stem
         else:
             base_name = "output"
@@ -327,7 +334,7 @@ class SettingsScreen(Screen):
             "standard": "",
             "ramtest": "_ram",
             "ramdisk": "_ramdisk",
-            "high_vram": "_vram"
+            "high_vram": "_vram",
         }.get(self.app_mode, "")
 
         timestamp = time.strftime("%Y%m%d")
@@ -384,7 +391,7 @@ class SettingsScreen(Screen):
                 self.mode_config.chunk_long_videos = event.value
 
             # Update app config
-            if hasattr(self.app, 'ramtest_config'):
+            if hasattr(self.app, "ramtest_config"):
                 self.app.ramtest_config.use_ramdisk = self.mode_config.use_ramdisk
                 self.app.ramtest_config.high_vram = self.mode_config.high_vram
                 self.app.ramtest_config.chunk_long_videos = self.mode_config.chunk_long_videos
@@ -401,12 +408,12 @@ class SettingsScreen(Screen):
     def _toggle_upload(self) -> None:
         """Toggle upload state."""
         self.enable_upload = not self.enable_upload
-        
+
         btn = self.query_one("#toggle_upload", Button)
         lbl = self.query_one("#upload_status_label", Label)
         inp = self.query_one("#drive_folder_id", Input)
         hint = self.query_one("#drive_hint", Static)
-        
+
         if self.enable_upload:
             btn.variant = "success"
             btn.label = "Upload Devre Disi Birak"
@@ -421,13 +428,15 @@ class SettingsScreen(Screen):
             lbl.remove_class("-active")
             inp.add_class("hidden")
             hint.add_class("hidden")
-        
+
         self._update_summary()
-    
+
     def _start_render(self) -> None:
         """Start the render process."""
         # Parse duration (or use video duration for single mode)
-        if getattr(self.app, "render_mode", "intro_loop") == "single" and getattr(self.app, "single_video_path", None):
+        if getattr(self.app, "render_mode", "intro_loop") == "single" and getattr(
+            self.app, "single_video_path", None
+        ):
             try:
                 total_seconds = int(get_duration(self.app.single_video_path))
             except Exception:
@@ -437,20 +446,22 @@ class SettingsScreen(Screen):
         if total_seconds <= 0:
             self.notify("Gecersiz sure!", severity="error")
             return
-        
+
         # Get codec config
         codec_config = get_best_encoder(self.selected_codec)
-        
+
         # Determine output path
         if not self.output_name:
             self._generate_default_filename()
-        
+
         out_path = Path.cwd() / self.output_name
-        
+
         # Store all settings in app
         self.app.codec_family = self.selected_codec
         self.app.codec_config = codec_config
-        if getattr(self.app, "render_mode", "intro_loop") == "single" and getattr(self.app, "single_video_path", None):
+        if getattr(self.app, "render_mode", "intro_loop") == "single" and getattr(
+            self.app, "single_video_path", None
+        ):
             h = total_seconds // 3600
             m = (total_seconds % 3600) // 60
             s = total_seconds % 60
@@ -458,21 +469,22 @@ class SettingsScreen(Screen):
         self.app.duration_str = self.duration_str
         self.app.total_seconds = total_seconds
         self.app.out_path = out_path
-        
+
         # Save upload settings
         self.app.enable_upload = self.enable_upload
         self.app.drive_folder_id = self.drive_folder_id
-        
+
         # Go to render screen
         self.app.push_screen("render")
-            
+
     def _parse_duration(self, dur_str: str) -> int:
         """Parse duration string to seconds."""
         if dur_str == "random_8_10":
             import random
+
             # 8 hours = 28800, 10 hours = 36000
             return random.randint(28800, 36000)
-            
+
         try:
             parts = dur_str.strip().split(":")
             if len(parts) == 3:
@@ -485,7 +497,7 @@ class SettingsScreen(Screen):
                 return int(parts[0]) * 3600
         except Exception:
             return 0
-    
+
     def action_go_back(self) -> None:
         """Go back."""
         self.app.pop_screen()

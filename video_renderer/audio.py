@@ -18,14 +18,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .ffmpeg import FFmpegRunner, FFmpegProgress, get_duration, write_concat_list
 import json
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Audio Utilities
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 # Custom exception for audio processing errors
 class AudioProcessingError(Exception):
     """Raised when audio processing fails."""
+
     pass
 
 
@@ -40,6 +41,7 @@ def get_duration_safe(path: Path) -> Optional[float]:
         Duration in seconds, or None if failed
     """
     import subprocess
+
     try:
         return get_duration(path)
     except subprocess.TimeoutExpired:
@@ -133,7 +135,7 @@ class AudioProcessor:
         if self._ffmpeg_version is None:
             self._ffmpeg_version = get_ffmpeg_version()
         return self._ffmpeg_version
-    
+
     def _get_audio_channels(self, file_path: Path) -> int:
         """
         Detect audio channel count from file.
@@ -149,8 +151,15 @@ class AudioProcessor:
 
         try:
             cmd = [
-                "ffprobe", "-v", "quiet", "-show_streams",
-                "-select_streams", "a", "-of", "json", str(file_path)
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_streams",
+                "-select_streams",
+                "a",
+                "-of",
+                "json",
+                str(file_path),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
             data = json.loads(result.stdout)
@@ -176,18 +185,18 @@ class AudioProcessor:
         import subprocess
         import json
 
-        metadata = {
-            "title": "",
-            "artist": "",
-            "album": "",
-            "cover_data": None
-        }
+        metadata = {"title": "", "artist": "", "album": "", "cover_data": None}
 
         try:
             cmd = [
-                "ffprobe", "-v", "quiet",
-                "-show_format", "-show_streams",
-                "-of", "json", str(track)
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_format",
+                "-show_streams",
+                "-of",
+                "json",
+                str(track),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
             data = json.loads(result.stdout)
@@ -204,11 +213,17 @@ class AudioProcessor:
                     # Extract cover art
                     try:
                         cover_cmd = [
-                            "ffmpeg", "-y", "-i", str(track),
-                            "-map", f"0:{stream.get('index')}",
-                            "-c:v", "copy",
-                            "-frames:v", "1",
-                            str(self.tmp_dir / "cover.jpg")
+                            "ffmpeg",
+                            "-y",
+                            "-i",
+                            str(track),
+                            "-map",
+                            f"0:{stream.get('index')}",
+                            "-c:v",
+                            "copy",
+                            "-frames:v",
+                            "1",
+                            str(self.tmp_dir / "cover.jpg"),
                         ]
                         subprocess.run(cover_cmd, capture_output=True, check=True, timeout=30)
 
@@ -265,14 +280,22 @@ class AudioProcessor:
                     with open(cover_path, "wb") as f:
                         f.write(metadata["cover_data"])
 
-                    cmd.extend([
-                        "-i", str(cover_path),
-                        "-map", "1:v:0",
-                        "-c:v", "copy",
-                        "-id3v2_version", "3",
-                        "-metadata:s:v", "title=Album cover",
-                        "-metadata:s:v", "comment=Cover (front)"
-                    ])
+                    cmd.extend(
+                        [
+                            "-i",
+                            str(cover_path),
+                            "-map",
+                            "1:v:0",
+                            "-c:v",
+                            "copy",
+                            "-id3v2_version",
+                            "3",
+                            "-metadata:s:v",
+                            "title=Album cover",
+                            "-metadata:s:v",
+                            "comment=Cover (front)",
+                        ]
+                    )
                 except Exception:
                     pass
 
@@ -282,6 +305,7 @@ class AudioProcessor:
 
             # Replace original with metadata-tagged file
             import shutil
+
             shutil.move(str(temp_output), str(audio_file))
 
             # Clean up temp cover if it exists
@@ -295,7 +319,9 @@ class AudioProcessor:
             print(f"[DEBUG] Failed to apply metadata to {audio_file.name}: {e}")
             return False
 
-    def validate_and_convert_track(self, track: Path, use_cache: bool = True, preserve_metadata: bool = True) -> Tuple[Path, bool, str]:
+    def validate_and_convert_track(
+        self, track: Path, use_cache: bool = True, preserve_metadata: bool = True
+    ) -> Tuple[Path, bool, str]:
         """
         OPTIMIZED: Validate and convert a single audio track.
 
@@ -342,15 +368,24 @@ class AudioProcessor:
 
         # Optimized FFmpeg command for audio validation
         cmd = [
-            "ffmpeg", "-y", "-hide_banner",
-            "-err_detect", "ignore_err",  # Ignore minor errors
-            "-i", str(track),
-            "-c:a", self.INTERMEDIATE_CODEC,
-            "-ar", str(self.SAMPLE_RATE),
-            "-ac", str(channels),  # Preserve original channels (mono/stereo)
-            "-map_metadata", "-1",  # Strip metadata for faster processing
-            "-f", self.INTERMEDIATE_FORMAT,
-            str(output)
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-err_detect",
+            "ignore_err",  # Ignore minor errors
+            "-i",
+            str(track),
+            "-c:a",
+            self.INTERMEDIATE_CODEC,
+            "-ar",
+            str(self.SAMPLE_RATE),
+            "-ac",
+            str(channels),  # Preserve original channels (mono/stereo)
+            "-map_metadata",
+            "-1",  # Strip metadata for faster processing
+            "-f",
+            self.INTERMEDIATE_FORMAT,
+            str(output),
         ]
 
         try:
@@ -360,7 +395,7 @@ class AudioProcessor:
                 capture_output=True,
                 text=True,
                 timeout=120,  # 2 min timeout per file
-                check=False  # We'll handle errors manually
+                check=False,  # We'll handle errors manually
             )
 
             if result.returncode != 0:
@@ -387,12 +422,12 @@ class AudioProcessor:
             return track, False, f"Zaman asimi: {track.name}"
         except Exception as e:
             return track, False, f"Hata: {track.name} - {e}"
-    
+
     def validate_tracks(
         self,
         tracks: List[Path],
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
-        parallel: bool = True
+        parallel: bool = True,
     ) -> Tuple[List[Path], List[Tuple[Path, str]]]:
         """
         OPTIMIZED: Validate and convert all tracks.
@@ -420,7 +455,7 @@ class AudioProcessor:
     def _validate_tracks_sequential(
         self,
         tracks: List[Path],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None
+        progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> Tuple[List[Path], List[Tuple[Path, str]]]:
         """Sequential track validation (memory-efficient)."""
         valid = []
@@ -442,7 +477,7 @@ class AudioProcessor:
     def _validate_tracks_parallel(
         self,
         tracks: List[Path],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None
+        progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> Tuple[List[Path], List[Tuple[Path, str]]]:
         """Parallel track validation (performance-optimized)."""
         valid = []
@@ -452,8 +487,7 @@ class AudioProcessor:
         with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
             # Submit all tasks
             future_to_track = {
-                executor.submit(self.validate_and_convert_track, track): track
-                for track in tracks
+                executor.submit(self.validate_and_convert_track, track): track for track in tracks
             }
 
             # Process results as they complete
@@ -474,7 +508,7 @@ class AudioProcessor:
                     invalid.append((track, f"Unexpected error: {e}"))
 
         return valid, invalid
-    
+
     def _trim_silence(self, track: Path, output: Path) -> bool:
         """
         Trim silence from the beginning and end of an audio track.
@@ -494,32 +528,34 @@ class AudioProcessor:
         try:
             # Detect silence at the beginning
             detect_cmd = [
-                "ffmpeg", "-y", "-i", str(track),
-                "-af", "silencedetect=noise=0.0001:duration=0.1",
-                "-f", "null", "-"
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(track),
+                "-af",
+                "silencedetect=noise=0.0001:duration=0.1",
+                "-f",
+                "null",
+                "-",
             ]
 
             result = subprocess.run(
-                detect_cmd,
-                capture_output=True,
-                text=True,
-                timeout=60,
-                check=False
+                detect_cmd, capture_output=True, text=True, timeout=60, check=False
             )
 
             # Parse silence detection output
             silence_start = None
             silence_end = None
 
-            for line in result.stderr.split('\n'):
-                if 'silence_start' in line:
+            for line in result.stderr.split("\n"):
+                if "silence_start" in line:
                     try:
-                        silence_start = float(line.split('silence_start:')[1].split()[0])
+                        silence_start = float(line.split("silence_start:")[1].split()[0])
                     except (IndexError, ValueError):
                         pass
-                elif 'silence_end' in line:
+                elif "silence_end" in line:
                     try:
-                        silence_end = float(line.split('silence_end:')[1].split()[0])
+                        silence_end = float(line.split("silence_end:")[1].split()[0])
                     except (IndexError, ValueError):
                         pass
 
@@ -527,17 +563,24 @@ class AudioProcessor:
             if silence_start is not None and silence_start > 0.1:
                 # Trim silence from start
                 trim_cmd = [
-                    "ffmpeg", "-y", "-i", str(track),
-                    "-af", f"atrim={silence_start}:",
-                    "-c:a", self.INTERMEDIATE_CODEC,
-                    "-ar", str(self.SAMPLE_RATE),
-                    str(output)
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(track),
+                    "-af",
+                    f"atrim={silence_start}:",
+                    "-c:a",
+                    self.INTERMEDIATE_CODEC,
+                    "-ar",
+                    str(self.SAMPLE_RATE),
+                    str(output),
                 ]
                 subprocess.run(trim_cmd, capture_output=True, check=True, timeout=120)
                 return True
 
             # No significant silence detected, just copy the file
             import shutil
+
             shutil.copy2(track, output)
             return False
 
@@ -545,6 +588,7 @@ class AudioProcessor:
             print(f"[WARN] Failed to trim silence from {track.name}: {e}")
             # Fallback: just copy the file
             import shutil
+
             shutil.copy2(track, output)
             return False
 
@@ -554,7 +598,7 @@ class AudioProcessor:
         total_seconds: int,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
         pre_validated: bool = False,
-        trim_silence: bool = True
+        trim_silence: bool = True,
     ) -> Path:
         """
         OPTIMIZED: Create a looped music track from multiple tracks.
@@ -597,7 +641,9 @@ class AudioProcessor:
         durations = [get_duration_safe(t) for t in tracks]
         if None in durations:
             corrupted = [tracks[i].name for i, d in enumerate(durations) if d is None]
-            raise AudioProcessingError(f"Bazi track'lerin suresi hesaplanamadi: {', '.join(corrupted)}")
+            raise AudioProcessingError(
+                f"Bazi track'lerin suresi hesaplanamadi: {', '.join(corrupted)}"
+            )
 
         total_track_duration = sum(durations)
 
@@ -607,8 +653,10 @@ class AudioProcessor:
         # Calculate how many times we need to repeat the track list
         repeat_count = int(total_seconds / total_track_duration) + 1
 
-        print(f"[AUDIO] Looping {len(tracks)} tracks ({total_track_duration:.1f}s total) "
-              f"{repeat_count} times for {total_seconds}s target")
+        print(
+            f"[AUDIO] Looping {len(tracks)} tracks ({total_track_duration:.1f}s total) "
+            f"{repeat_count} times for {total_seconds}s target"
+        )
 
         # Create a repeated concat list (memory-efficient)
         music_list = self.tmp_dir / "music_list.txt"
@@ -622,61 +670,71 @@ class AudioProcessor:
 
         # Optimized FFmpeg command with threading
         cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(music_list),
-            "-t", str(total_seconds),
-            "-threads", str(self._max_workers),  # Optimal threading
-            "-c:a", "copy",  # Copy since already in correct format
-            "-f", self.INTERMEDIATE_FORMAT,
-            str(output)
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(music_list),
+            "-t",
+            str(total_seconds),
+            "-threads",
+            str(self._max_workers),  # Optimal threading
+            "-c:a",
+            "copy",  # Copy since already in correct format
+            "-f",
+            self.INTERMEDIATE_FORMAT,
+            str(output),
         ]
 
         self.runner.run(cmd, capture_progress=bool(progress_callback))
         return output
-    
-    def apply_gain(
-        self,
-        source: Path,
-        gain_db: float,
-        output_name: Optional[str] = None
-    ) -> Path:
+
+    def apply_gain(self, source: Path, gain_db: float, output_name: Optional[str] = None) -> Path:
         """
         Apply gain adjustment to an audio file.
-        
+
         Args:
             source: Source audio path
             gain_db: Gain in decibels (negative to reduce volume)
             output_name: Optional output filename
-            
+
         Returns:
             Path to processed audio file
         """
         if output_name is None:
             safe_name = re.sub(r"[^a-zA-Z0-9_.+-]+", "_", source.stem)
             output_name = f"{safe_name}_gain.{self.INTERMEDIATE_FORMAT}"
-        
+
         output = self.tmp_dir / output_name
-        
+
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(source),
-            "-filter:a", f"volume={gain_db}dB",
-            "-c:a", self.INTERMEDIATE_CODEC,
-            "-ar", str(self.SAMPLE_RATE),
-            "-f", self.INTERMEDIATE_FORMAT,
-            str(output)
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(source),
+            "-filter:a",
+            f"volume={gain_db}dB",
+            "-c:a",
+            self.INTERMEDIATE_CODEC,
+            "-ar",
+            str(self.SAMPLE_RATE),
+            "-f",
+            self.INTERMEDIATE_FORMAT,
+            str(output),
         ]
-        
+
         self.runner.run_simple(cmd)
         return output
-    
+
     def mix_tracks(
         self,
         main_track: Path,
         background_tracks: List[Path],
         total_seconds: int,
-        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None
+        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
     ) -> Path:
         """
         OPTIMIZED: Mix main track with background tracks.
@@ -743,39 +801,39 @@ class AudioProcessor:
                 f"normalize=0"
             )
 
-        cmd.extend([
-            "-filter_complex", filter_complex,
-            "-t", str(total_seconds),
-            "-c:a", self.INTERMEDIATE_CODEC,
-            "-ar", str(self.SAMPLE_RATE),
-            "-f", self.INTERMEDIATE_FORMAT,
-            str(output)
-        ])
+        cmd.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-t",
+                str(total_seconds),
+                "-c:a",
+                self.INTERMEDIATE_CODEC,
+                "-ar",
+                str(self.SAMPLE_RATE),
+                "-f",
+                self.INTERMEDIATE_FORMAT,
+                str(output),
+            ]
+        )
 
         self.runner.run(cmd, capture_progress=bool(progress_callback))
         return output
-    
-    def process_backgrounds(
-        self,
-        backgrounds: List[Tuple[Path, float]]
-    ) -> List[Path]:
+
+    def process_backgrounds(self, backgrounds: List[Tuple[Path, float]]) -> List[Path]:
         """
         Process background audio files with gain adjustment.
-        
+
         Args:
             backgrounds: List of (path, gain_db) tuples
-            
+
         Returns:
             List of processed background audio paths
         """
         processed = []
         for path, gain_db in backgrounds:
             safe_name = re.sub(r"[^a-zA-Z0-9_.+-]+", "_", path.stem)
-            output = self.apply_gain(
-                path,
-                gain_db,
-                f"{safe_name}_bg.{self.INTERMEDIATE_FORMAT}"
-            )
+            output = self.apply_gain(path, gain_db, f"{safe_name}_bg.{self.INTERMEDIATE_FORMAT}")
             processed.append(output)
         return processed
 
@@ -783,31 +841,31 @@ class AudioProcessor:
         self,
         tracks: List[Path],
         archive_dir: Path,
-        progress_callback: Optional[Callable[[str, int, int], None]] = None
+        progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> List[Path]:
         """
         Convert tracks to standard HQ format (MP3 320k 48kHz) and archive originals.
-        
+
         Skips files that are already in the correct format to prevent re-processing.
-        
+
         Args:
             tracks: List of track paths
             archive_dir: Directory to move original files
             progress_callback: Callback(name, current, total)
-            
+
         Returns:
             List of new track paths (same names but updated content/ext if needed)
         """
         import shutil
         import subprocess
-        
+
         archive_dir.mkdir(parents=True, exist_ok=True)
         results = []
-        
+
         for i, track in enumerate(tracks):
             if progress_callback:
                 progress_callback(track.name, i + 1, len(tracks))
-            
+
             # ═══════════════════════════════════════════════════════════════════
             # FIX: Check if file is ALREADY a valid standardized MP3
             # This prevents re-processing and the "mp31" double-extension bug
@@ -817,14 +875,20 @@ class AudioProcessor:
                 try:
                     # Probe the file to check its specs
                     probe_cmd = [
-                        "ffprobe", "-v", "quiet", "-print_format", "json",
-                        "-show_streams", str(track)
+                        "ffprobe",
+                        "-v",
+                        "quiet",
+                        "-print_format",
+                        "json",
+                        "-show_streams",
+                        str(track),
                     ]
                     probe_result = subprocess.run(
                         probe_cmd, capture_output=True, text=True, timeout=10
                     )
                     if probe_result.returncode == 0:
                         import json
+
                         probe_data = json.loads(probe_result.stdout)
                         for stream in probe_data.get("streams", []):
                             if stream.get("codec_name") == "mp3":
@@ -836,46 +900,55 @@ class AudioProcessor:
                                     break
                 except Exception:
                     pass  # If probe fails, we'll re-encode
-            
+
             if is_already_valid:
                 # Skip conversion, use original file
                 results.append(track)
                 continue
-            
+
             # Temp output - use unique temp name to avoid conflicts
             tmp_std = self.tmp_dir / f"std_{track.stem}.mp3"
-            
+
             cmd = [
-                "ffmpeg", "-y", "-hide_banner",
-                "-i", str(track),
-                "-c:a", "libmp3lame",
-                "-b:a", "320k",
-                "-ar", "48000",
-                "-ac", "2",
-                str(tmp_std)
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-i",
+                str(track),
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                "320k",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                str(tmp_std),
             ]
-            
+
             try:
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
+                subprocess.run(
+                    cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+
                 # Archive original
                 archive_path = archive_dir / track.name
                 if archive_path.exists():
-                     timestamp = "_" + str(int(self.tmp_dir.stat().st_mtime))
-                     archive_path = archive_dir / f"{track.stem}_archived{track.suffix}"
-                
+                    timestamp = "_" + str(int(self.tmp_dir.stat().st_mtime))
+                    archive_path = archive_dir / f"{track.stem}_archived{track.suffix}"
+
                 shutil.move(str(track), str(archive_path))
-                
+
                 # Move new file to original location (always .mp3)
                 new_track_path = track.with_suffix(".mp3")
                 shutil.move(str(tmp_std), str(new_track_path))
                 results.append(new_track_path)
-                
+
             except Exception as e:
                 print(f"Error standardizing {track.name}: {e}")
                 # Fallback to keep original
                 results.append(track)
-                
+
         return results
 
 
@@ -883,13 +956,14 @@ class AudioProcessor:
 # Final Muxer
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def mux_video_audio(
     runner: FFmpegRunner,
     video: Path,
     audio: Path,
     output: Path,
     audio_bitrate: str = "192k",
-    progress_callback: Optional[Callable[[FFmpegProgress], None]] = None
+    progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
 ) -> Path:
     """
     OPTIMIZED: Mux video and audio into final output.
@@ -919,26 +993,43 @@ def mux_video_audio(
 
     # Optimal thread count for muxing (I/O bound operation)
     import os
+
     threads = min(4, os.cpu_count() or 4)
 
     cmd = [
-        "ffmpeg", "-y",
-        "-threads", str(threads),
-        "-i", str(video),
-        "-stream_loop", "-1",  # Loop audio if shorter than video
-        "-i", str(audio),
-        "-map", "0:v:0",  # Use video from first input
-        "-map", "1:a:0",  # Use audio from second input
-        "-c:v", "copy",
-        "-c:a", "aac",
-        "-b:a", audio_bitrate,
-        "-profile:a", "aac_low",  # AAC-LC for compatibility
-        "-ac", "2",  # Stereo
-        "-t", str(video_duration),  # Use video duration, not -shortest
-        "-movflags", "+faststart",
-        "-max_muxing_queue_size", "4096",  # Large queue for 48hr+ videos
-        "-flush_packets", "1",  # Optimize packet flushing
-        str(output)
+        "ffmpeg",
+        "-y",
+        "-threads",
+        str(threads),
+        "-i",
+        str(video),
+        "-stream_loop",
+        "-1",  # Loop audio if shorter than video
+        "-i",
+        str(audio),
+        "-map",
+        "0:v:0",  # Use video from first input
+        "-map",
+        "1:a:0",  # Use audio from second input
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        audio_bitrate,
+        "-profile:a",
+        "aac_low",  # AAC-LC for compatibility
+        "-ac",
+        "2",  # Stereo
+        "-t",
+        str(video_duration),  # Use video duration, not -shortest
+        "-movflags",
+        "+faststart",
+        "-max_muxing_queue_size",
+        "4096",  # Large queue for 48hr+ videos
+        "-flush_packets",
+        "1",  # Optimize packet flushing
+        str(output),
     ]
 
     runner.run(cmd, capture_progress=bool(progress_callback))

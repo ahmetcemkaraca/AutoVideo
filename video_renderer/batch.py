@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 class JobStatus(Enum):
     """Render job status."""
+
     PENDING = "pending"
     CONFIGURING = "configuring"
     QUEUED = "queued"
@@ -54,6 +55,7 @@ class RenderJob:
     Note: This class is mutable for performance reasons.
     The BatchQueue returns copies to prevent external modification.
     """
+
     id: int
     intro_path: Optional[Path] = None
     loop_path: Optional[Path] = None
@@ -130,11 +132,7 @@ class RenderJob:
         Create a deep copy of this job.
         Used to prevent external modification of internal state.
         """
-        return replace(
-            self,
-            tracks=self.tracks.copy(),
-            backgrounds=self.backgrounds.copy()
-        )
+        return replace(self, tracks=self.tracks.copy(), backgrounds=self.backgrounds.copy())
 
 
 class BatchQueue:
@@ -178,7 +176,7 @@ class BatchQueue:
         queue_file: Optional[Path] = None,
         max_queue_size: Optional[int] = None,
         memory_limit_gb: Optional[int] = None,
-        enable_locking: bool = True
+        enable_locking: bool = True,
     ):
         """
         Initialize batch queue.
@@ -208,7 +206,7 @@ class BatchQueue:
             state_file=self._queue_file,
             version=self.STATE_VERSION,
             auto_save=False,  # We'll save explicitly
-            enable_locking=enable_locking
+            enable_locking=enable_locking,
         )
 
         # Load existing queue
@@ -223,13 +221,15 @@ class BatchQueue:
         """
         try:
             import psutil
-            available_gb = psutil.virtual_memory().available / (1024 ** 3)
+
+            available_gb = psutil.virtual_memory().available / (1024**3)
             # Reserve memory for system
             limit = max(1, int(available_gb - self.SYSTEM_RESERVED_GB))
             return limit
         except ImportError:
             # Fallback if psutil not available
             import os
+
             # Rough estimate: assume 8GB if we can't detect
             return max(1, 8 - self.SYSTEM_RESERVED_GB)
 
@@ -491,7 +491,8 @@ class BatchQueue:
         with self._lock:
             initial = len(self._jobs)
             self._jobs = [
-                j for j in self._jobs
+                j
+                for j in self._jobs
                 if j.status not in (JobStatus.COMPLETE, JobStatus.ERROR, JobStatus.CANCELLED)
             ]
             self._save()
@@ -513,7 +514,7 @@ class BatchQueue:
         self,
         on_complete: Optional[Callable[[RenderJob], None]] = None,
         on_error: Optional[Callable[[RenderJob, str], None]] = None,
-        on_progress: Optional[Callable[[RenderJob, float], None]] = None
+        on_progress: Optional[Callable[[RenderJob, float], None]] = None,
     ) -> None:
         """
         Set event callbacks.
@@ -547,6 +548,7 @@ def parse_duration(dur_str: str) -> int:
     """Parse duration string to seconds."""
     if dur_str == "random_8_10":
         import random
+
         return random.randint(28800, 36000)
 
     try:
@@ -570,6 +572,7 @@ class BatchPair:
 
     Immutable for thread-safety.
     """
+
     name: str
     intro: Path
     loop: Path
@@ -613,6 +616,7 @@ class SmartBatchDetector:
         # Get all video files
         videos = []
         from config import VIDEO_EXTENSIONS
+
         for ext in VIDEO_EXTENSIONS:
             videos.extend(list(self.directory.glob(f"*{ext}")))
 
@@ -630,7 +634,7 @@ class SmartBatchDetector:
             # Try suffix patterns first (most common)
             suffix_match = re.search(f"([_-]?{type_key})$", name, re.IGNORECASE)
             if suffix_match:
-                return name[:suffix_match.start()]
+                return name[: suffix_match.start()]
 
             # Try prefix patterns (intro_{name}, loop-{name})
             prefix_match = re.search(f"^{type_key}[_-]?(.*)$", name, re.IGNORECASE)
