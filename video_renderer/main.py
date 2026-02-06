@@ -81,7 +81,7 @@ def list_video_files(base: Path) -> List[Tuple[Path, VideoInfo]]:
         try:
             info = probe_video(p)
             files.append((p, info))
-        except Exception as e:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
             # Print warning why this file failed
             # Use minimal print to avoid circular imports or messy logs
             print(f"UYARI: {p.name} okunamadi (ffprobe hatasi): {e}")
@@ -164,7 +164,7 @@ def run_resume() -> int:
     
     try:
         session = json.loads(session_json.read_text(encoding="utf-8"))
-    except Exception as e:
+    except (json.JSONDecodeError, OSError, IOError) as e:
         print_error(f"Session dosyasi okunamadi: {e}")
         return 2
     
