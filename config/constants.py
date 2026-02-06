@@ -90,10 +90,22 @@ class CodecConfig:
     profile: Optional[str] = None
     level: Optional[str] = None
     extra_args: List[str] = None
+    codec_family: str = "h264"  # Default codec family
 
     def __post_init__(self):
         if self.extra_args is None:
             self.extra_args = []
+
+        # Auto-detect codec_family from encoder if not explicitly set
+        if self.codec_family == "h264":
+            # Default, already set
+            pass
+        elif "av1" in self.encoder.lower():
+            self.codec_family = "av1"
+        elif "h265" in self.encoder.lower() or "hevc" in self.encoder.lower():
+            self.codec_family = "h265"
+        elif "h264" in self.encoder.lower():
+            self.codec_family = "h264"
 
     def to_ffmpeg_args(self) -> List[str]:
         """Convert config to FFmpeg arguments."""
