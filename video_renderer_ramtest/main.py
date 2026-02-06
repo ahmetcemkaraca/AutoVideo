@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 from . import __version__
-from .config import (
-    RenderConfig, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS,
+from config import (
+    RendererConfig as RenderConfig, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS,
     get_best_encoder, detect_available_encoders, CODECS
 )
 from .ffmpeg import FFmpegRunner, probe_video, get_duration, VideoInfo

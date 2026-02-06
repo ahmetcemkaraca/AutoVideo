@@ -613,7 +613,7 @@ class SmartBatchDetector:
 
         # Get all video files
         videos = []
-        from .config import VIDEO_EXTENSIONS
+        from config import VIDEO_EXTENSIONS
         for ext in VIDEO_EXTENSIONS:
             videos.extend(list(self.directory.glob(f"*{ext}")))
 

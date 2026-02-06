@@ -23,7 +23,7 @@ from .screens import (
     SmartBatchScreen,
 )
 from .ffmpeg import VideoInfo
-from .config import CodecConfig
+from config import CodecConfig
 
 
 class VideoRendererApp(App):

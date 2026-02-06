@@ -12,7 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Static, Button, Footer, Input, RadioSet, RadioButton, Label, Checkbox
 from textual.containers import Container, Vertical, Horizontal
 
-from ..config import detect_available_encoders, get_best_encoder, get_render_config
+from config import detect_available_encoders, get_best_encoder, get_render_config
 from ..ffmpeg import get_duration
 
 

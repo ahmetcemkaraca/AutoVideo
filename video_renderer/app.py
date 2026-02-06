@@ -5,6 +5,11 @@ Video Renderer TUI Application.
 
 Main Textual application for video rendering.
 Supports multiple render modes: standard, ramtest, ramdisk, high_vram.
+
+Resource Management:
+- Uses ResourceManager for process tracking and cleanup
+- Graceful shutdown on signals (SIGTERM, SIGINT)
+- Automatic temp file cleanup
 """
 
 from pathlib import Path
@@ -26,6 +31,7 @@ from .screens import (
 )
 from .ffmpeg import VideoInfo
 from config import CodecConfig, RamTestConfig, get_render_config
+from .resource_manager import ResourceManager
 
 
 @dataclass
@@ -40,7 +46,15 @@ class RenderModeConfig:
 
 
 class VideoRendererApp(App):
-    """Main Video Renderer TUI Application with Unified Mode Support."""
+    """
+    Main Video Renderer TUI Application with Unified Mode Support.
+
+    Features:
+    - Unified state management via StateManager (in BatchQueue)
+    - Resource tracking and cleanup via ResourceManager
+    - Graceful shutdown on termination signals
+    - Support for multiple render modes
+    """
 
     TITLE = "Video Renderer v2.0"
     SUB_TITLE = "FFmpeg Video Processing"
@@ -63,8 +77,16 @@ class VideoRendererApp(App):
         "smart_batch": SmartBatchScreen,
     }
 
-    def __init__(self, mode: Literal["standard", "ramtest", "ramdisk", "high_vram"] = "standard", *args, **kwargs):
+    def __init__(
+        self,
+        mode: Literal["standard", "ramtest", "ramdisk", "high_vram"] = "standard",
+        *args,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
+
+        # Resource Manager for cleanup and graceful shutdown
+        self.resource_manager = ResourceManager(enable_signals=True)
 
         # Unified mode configuration
         self.mode = mode
@@ -95,7 +117,7 @@ class VideoRendererApp(App):
         self.session: Optional[Dict[str, Any]] = None
         self.render_result: Optional[Dict[str, Any]] = None
 
-        # Batch mode
+        # Batch mode (uses StateManager internally)
         from .batch import BatchQueue
         self.queue = BatchQueue()
         self.batch_job_id: Optional[int] = None
@@ -110,8 +132,6 @@ class VideoRendererApp(App):
 
     def _init_mode_config(self, mode: str) -> RenderModeConfig:
         """Initialize mode-specific configuration using factory function."""
-        from config import get_render_config
-
         # Get base config from factory
         base_config = get_render_config(mode)
 
@@ -175,16 +195,29 @@ class VideoRendererApp(App):
         self.push_screen("home")
 
     def action_quit(self) -> None:
-        """Quit the application."""
+        """
+        Quit the application with proper cleanup.
+
+        ResourceManager handles:
+        - Terminating all FFmpeg processes
+        - Cleaning up temporary files
+        - Invoking custom cleanup callbacks
+        """
         # Cleanup ramtest temp files if enabled
         if self.mode_config.use_ramdisk:
             from config import cleanup_ramdisk
             cleanup_ramdisk()
+
+        # ResourceManager cleanup is automatic via atexit and signal handlers
+        # But we can call it explicitly here for immediate cleanup
+        self.resource_manager.cleanup()
+
         self.exit()
 
 
 def run_tui(mode: Literal["standard", "ramtest", "ramdisk", "high_vram"] = "standard") -> int:
-    """Run the TUI application.
+    """
+    Run the TUI application.
 
     Args:
         mode: Render mode - standard, ramtest, ramdisk, or high_vram

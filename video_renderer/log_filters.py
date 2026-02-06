@@ -9,7 +9,7 @@ information such as API keys, tokens, and passwords from log output.
 
 import re
 import logging
-from typing import Pattern, List
+from typing import Pattern, List, Optional
 
 
 class SensitiveDataFilter(logging.Filter):

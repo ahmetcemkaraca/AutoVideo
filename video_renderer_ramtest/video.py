@@ -10,8 +10,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional, Callable, Tuple
 
-from .config import (
-    RenderConfig, CodecConfig, ColorConfig, COLOR_BT709,
+from config import (
+    RendererConfig as RenderConfig, CodecConfig, ColorConfig, COLOR_BT709,
     DEFAULT_WIDTH, DEFAULT_HEIGHT
 )
 from .ffmpeg import FFmpegRunner, FFmpegProgress, probe_video, get_duration, write_concat_list

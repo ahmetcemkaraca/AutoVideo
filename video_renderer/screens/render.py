@@ -128,7 +128,7 @@ class RenderScreen(Screen):
 
         # Log mode configuration
         if self.mode_config and self.app_mode in ["ramtest", "ramdisk", "high_vram"]:
-            from ..config import get_ramdisk_path
+            from config import get_ramdisk_path
 
             if self.app_mode == "high_vram":
                 self._log("✓ High VRAM modu aktif")
@@ -292,7 +292,7 @@ class RenderScreen(Screen):
                 out_path = Path(session["out"])
             
             if not codec_config:
-                from ..config import get_best_encoder
+                from config import get_best_encoder
                 codec_config = get_best_encoder(codec_family)
             
             runner = FFmpegRunner(run_log)

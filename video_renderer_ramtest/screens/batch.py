@@ -18,7 +18,7 @@ from ..ffmpeg import FFmpegRunner, get_duration
 from ..audio import AudioProcessor, mux_video_audio
 from ..video import VideoEncoder
 from ..video import VideoEncoder
-from ..config import get_best_encoder
+from config import get_best_encoder
 from ..drive import DriveUploader
 import threading
 
