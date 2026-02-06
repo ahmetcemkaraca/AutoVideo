@@ -25,7 +25,7 @@ from .screens import (
     SmartBatchScreen,
 )
 from .ffmpeg import VideoInfo
-from .config import CodecConfig, RamTestConfig
+from .config import CodecConfig, RamTestConfig, get_render_config
 
 
 @dataclass
@@ -109,28 +109,22 @@ class VideoRendererApp(App):
             self._setup_ramtest_mode()
 
     def _init_mode_config(self, mode: str) -> RenderModeConfig:
-        """Initialize mode-specific configuration."""
-        configs = {
-            "standard": RenderModeConfig(mode="standard"),
-            "ramtest": RenderModeConfig(
-                mode="ramtest",
-                enabled=True,
-                use_ramdisk=self._check_ramdisk(),
-                high_vram=self._check_vram(),
-                chunk_long_videos=self._check_ram()
-            ),
-            "ramdisk": RenderModeConfig(
-                mode="ramdisk",
-                enabled=True,
-                use_ramdisk=True
-            ),
-            "high_vram": RenderModeConfig(
-                mode="high_vram",
-                enabled=True,
-                high_vram=True
-            )
-        }
-        return configs.get(mode, configs["standard"])
+        """Initialize mode-specific configuration using factory function."""
+        from .config import get_render_config
+
+        # Get base config from factory
+        base_config = get_render_config(mode)
+
+        # Override with runtime detection for ramtest mode
+        if mode == "ramtest":
+            base_config.enabled = True
+            base_config.use_ramdisk = self._check_ramdisk()
+            base_config.high_vram = self._check_vram()
+            base_config.chunk_long_videos = self._check_ram()
+        elif mode in ("ramdisk", "high_vram"):
+            base_config.enabled = True
+
+        return base_config
 
     def _check_vram(self) -> bool:
         """Check if high VRAM is available (8GB+)."""
