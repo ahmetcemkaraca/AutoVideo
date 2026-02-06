@@ -269,7 +269,7 @@ def detect_available_encoders(use_cache: bool = True, force_refresh: bool = Fals
         import re as _re
         listed_encoders = [
             enc for enc in encoders
-            if _re.search(rf'\b{re.escape(enc)}\b', output)
+            if _re.search(rf'\b{_re.escape(enc)}\b', output)
         ]
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return encoders
