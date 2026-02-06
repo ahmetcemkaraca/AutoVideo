@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import List, Optional, Callable, Tuple, Dict, Set
 import subprocess
 
-from .config import (
-    RenderConfig, CodecConfig, ColorConfig, COLOR_BT709,
+from config import (
+    RendererConfig as RenderConfig, CodecConfig, ColorConfig, COLOR_BT709,
     DEFAULT_WIDTH, DEFAULT_HEIGHT, get_nvenc_extra_args, get_hwaccel_input_args,
     ALLOWED_FPS
 )
@@ -80,6 +80,38 @@ class VideoEncoder:
         elif 'videotoolbox' in enc:
             return 'videotoolbox'
         return 'none'
+
+    def _detect_vaapi_device(self) -> Optional[str]:
+        """
+        Detect available VAAPI device on Linux systems.
+
+        Returns:
+            Device path (e.g., '/dev/dri/renderD128') or None if not found
+        """
+        import sys
+        import platform
+
+        # Only attempt VAAPI on Linux
+        if sys.platform != "linux" and platform.system() != "Linux":
+            return None
+
+        # Common VAAPI device paths in order of preference
+        possible_devices = [
+            "/dev/dri/renderD128",  # Most common
+            "/dev/dri/renderD129",
+            "/dev/dri/renderD130",
+            "/dev/dri/card0",
+            "/dev/dri/card1",
+        ]
+
+        for device in possible_devices:
+            try:
+                if Path(device).exists() and Path(device).is_char_device():
+                    return device
+            except (OSError, PermissionError):
+                continue
+
+        return None
 
     def _parse_fps(self, fps_str: str) -> float:
         """Parse fps string (e.g., '60/1', '30000/1001') to float."""
@@ -337,12 +369,21 @@ class VideoEncoder:
                     "-hwaccel_output_format", "qsv"
                 ])
             elif self._accel_type == 'vaapi':
-                # VAAPI (Linux AMD/Intel) optimizations
-                cmd.extend([
-                    "-hwaccel", "vaapi",
-                    "-hwaccel_output_format", "vaapi",
-                    "-vaapi_device", "/dev/dri/renderD128"
-                ])
+                # VAAPI (Linux AMD/Intel) optimizations with dynamic device detection
+                vaapi_device = self._detect_vaapi_device()
+                if vaapi_device:
+                    cmd.extend([
+                        "-hwaccel", "vaapi",
+                        "-hwaccel_output_format", "vaapi",
+                        "-vaapi_device", vaapi_device
+                    ])
+                else:
+                    # No VAAPI device found, skip hardware acceleration
+                    import logging
+                    logging.getLogger(__name__).warning("No VAAPI device found, falling back to software encoding")
+                    # Force software encoding by setting acceleration to none
+                    self._use_gpu = False
+                    self._accel_type = 'none'
 
         # Input file
         cmd.extend(["-i", str(source)])

@@ -25,7 +25,7 @@ from .screens import (
     SmartBatchScreen,
 )
 from .ffmpeg import VideoInfo
-from .config import CodecConfig, RamTestConfig, get_render_config
+from config import CodecConfig, RamTestConfig, get_render_config
 
 
 @dataclass
@@ -110,7 +110,7 @@ class VideoRendererApp(App):
 
     def _init_mode_config(self, mode: str) -> RenderModeConfig:
         """Initialize mode-specific configuration using factory function."""
-        from .config import get_render_config
+        from config import get_render_config
 
         # Get base config from factory
         base_config = get_render_config(mode)
@@ -152,7 +152,7 @@ class VideoRendererApp(App):
     def _check_ramdisk(self) -> bool:
         """Check if RAM disk is available."""
         try:
-            from .config import get_ramdisk_path
+            from config import get_ramdisk_path
             return get_ramdisk_path() is not None
         except Exception:
             return False
@@ -178,7 +178,7 @@ class VideoRendererApp(App):
         """Quit the application."""
         # Cleanup ramtest temp files if enabled
         if self.mode_config.use_ramdisk:
-            from .config import cleanup_ramdisk
+            from config import cleanup_ramdisk
             cleanup_ramdisk()
         self.exit()
 

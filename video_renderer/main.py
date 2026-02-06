@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 from . import __version__
-from .config import (
-    RenderConfig, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS,
+from config import (
+    RendererConfig as RenderConfig, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS,
     get_best_encoder, detect_available_encoders, CODECS
 )
 from .ffmpeg import FFmpegRunner, probe_video, get_duration, VideoInfo
@@ -453,14 +453,14 @@ def run_batch() -> int:
         
         # Get shared settings for all batches
         console.print("\n[header]Tüm renderlar için ortak ayarlar:[/]\n")
-        
+
         # Codec selection
-        from .config import CODEC_CONFIGS
-        codec_names = list(CODEC_CONFIGS.keys())
-        codec_display = [f"{name} ({CODEC_CONFIGS[name].description})" for name in codec_names]
+        from config import CODECS
+        codec_names = list(CODECS.keys())
+        codec_display = [f"{name} ({CODECS[name].name})" for name in codec_names]
         codec_idx = ask_choice("Codec seçin", codec_display, 1)
         codec_family = codec_names[codec_idx - 1]
-        codec_config = CODEC_CONFIGS[codec_family]
+        codec_config = CODECS[codec_family]
         
         # Duration
         console.print()
@@ -1706,7 +1706,7 @@ Ornekler:
     # Print mode info
     if mode != "standard":
         print(mode_info)
-        from .config import RamTestConfig, get_ramdisk_path
+        from config import RamTestConfig, get_ramdisk_path
         ramtest_cfg = RamTestConfig(enabled=True, use_ramdisk=(mode in ["ramtest", "ramdisk"]))
         print(f"  - RAM Disk: {ramtest_cfg.use_ramdisk}")
         print(f"  - High VRAM: {ramtest_cfg.high_vram}")

@@ -77,6 +77,27 @@ def parse_background_gain_db(path: Path) -> float:
 # Audio Processor
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+def get_ffmpeg_version() -> Tuple[int, int, int]:
+    """
+    Get FFmpeg version as (major, minor, patch).
+
+    Returns:
+        Tuple of (major, minor, patch) version numbers
+        Defaults to (4, 4, 0) if version cannot be determined
+    """
+    try:
+        cmd = ["ffmpeg", "-version"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        match = re.search(r"ffmpeg version (\d+)\.(\d+)\.(\d+)", result.stdout)
+        if match:
+            return tuple(map(int, match.groups()))
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    # Assume modern version if we can't detect
+    return (4, 4, 0)
+
+
 class AudioProcessor:
     """
     OPTIMIZED audio processor with:
@@ -99,6 +120,19 @@ class AudioProcessor:
         self._max_workers = max_workers or min(4, os.cpu_count() or 4)
         # Cache for validated files to avoid re-processing
         self._validated_cache: Set[str] = set()
+        # FFmpeg version cache
+        self._ffmpeg_version: Optional[Tuple[int, int, int]] = None
+
+    def _get_ffmpeg_version(self) -> Tuple[int, int, int]:
+        """
+        Get FFmpeg version with caching.
+
+        Returns:
+            Tuple of (major, minor, patch) version numbers
+        """
+        if self._ffmpeg_version is None:
+            self._ffmpeg_version = get_ffmpeg_version()
+        return self._ffmpeg_version
     
     def _get_audio_channels(self, file_path: Path) -> int:
         """
@@ -679,20 +713,35 @@ class AudioProcessor:
         for bg in background_tracks:
             cmd.extend(["-stream_loop", "-1", "-i", str(bg)])
 
-        # Optimized amix filter configuration
+        # Optimized amix filter configuration with FFmpeg version compatibility
         # Key fixes:
         # - weights=1 for all inputs (equal weight, gain already applied to BGs)
         # - normalize=0 (don't divide by N)
         # - dropout_transition=0 (don't fade out)
+        # - Compatible with FFmpeg < 4.4 (no weights parameter support)
         input_count = 1 + len(background_tracks)
-        weights = " ".join(["1"] * input_count)
-        filter_complex = (
-            f"amix=inputs={input_count}:"
-            f"duration=first:"  # Use main track duration
-            f"dropout_transition=0:"  # Don't fade out
-            f"weights='{weights}':"  # Equal weights
-            f"normalize=0"  # CRITICAL: Don't normalize
-        )
+
+        # Check FFmpeg version for weights parameter support
+        ffmpeg_version = self._get_ffmpeg_version()
+        if ffmpeg_version >= (4, 4, 0):
+            # Modern FFmpeg with weights support
+            weights = " ".join(["1"] * input_count)
+            filter_complex = (
+                f"amix=inputs={input_count}:"
+                f"duration=first:"
+                f"dropout_transition=0:"
+                f"weights='{weights}':"
+                f"normalize=0"
+            )
+        else:
+            # Older FFmpeg without weights - use simpler amix
+            # Background tracks should already have gain applied via apply_gain()
+            filter_complex = (
+                f"amix=inputs={input_count}:"
+                f"duration=first:"
+                f"dropout_transition=0:"
+                f"normalize=0"
+            )
 
         cmd.extend([
             "-filter_complex", filter_complex,

@@ -10,6 +10,11 @@ Thread-Safe Implementation:
 - File I/O uses atomic write patterns with temp files
 - Callbacks are invoked outside of critical sections
 - Job objects are returned as copies to prevent external modification
+
+State Management:
+- Uses unified StateManager for persistence
+- Cross-process file locking for concurrent access
+- Automatic stale lock cleanup
 """
 
 import json
@@ -24,6 +29,8 @@ from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
 import contextlib
 import logging
+
+from .state_manager import StateManager
 
 logger = logging.getLogger(__name__)
 
@@ -130,77 +137,20 @@ class RenderJob:
         )
 
 
-class FileWriteLock:
-    """
-    Cross-process file lock for preventing concurrent writes.
-
-    Uses platform-specific locking mechanisms:
-    - Windows: msvcrt.locking
-    - Unix: fcntl.flock
-    """
-
-    def __init__(self, file_path: Path, timeout: float = 10.0):
-        self.file_path = file_path
-        self.timeout = timeout
-        self._lock_file: Optional[Path] = None
-        self._fd = None
-
-    def __enter__(self):
-        """Acquire file lock with stale lock cleanup."""
-        import os
-        import platform
-
-        # Create lock file in same directory as target
-        lock_path = self.file_path.parent / f"{self.file_path.name}.lock"
-        self._lock_file = lock_path
-
-        start_time = time.time()
-        while True:
-            try:
-                # Check for stale lock (older than 5 minutes) before acquiring
-                if os.path.exists(lock_path):
-                    lock_age = time.time() - os.path.getmtime(lock_path)
-                    if lock_age > 300:  # 5 minutes = 300 seconds
-                        print(f"[WARN] Removing stale lock file: {lock_path} (age: {lock_age:.0f}s)")
-                        try:
-                            os.remove(lock_path)
-                        except OSError:
-                            pass  # Lock was just removed by another process
-
-                # Try to create lock file exclusively
-                self._fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                # Write PID for debugging
-                os.write(self._fd, str(os.getpid()).encode())
-                return self
-            except FileExistsError:
-                if time.time() - start_time > self.timeout:
-                    raise TimeoutError(f"Could not acquire lock on {self.file_path} after {self.timeout}s")
-                time.sleep(0.05)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Release file lock."""
-        import os
-        if self._fd is not None:
-            try:
-                os.close(self._fd)
-            except:
-                pass
-        if self._lock_file and self._lock_file.exists():
-            try:
-                self._lock_file.unlink()
-            except:
-                pass
-
-
 class BatchQueue:
     """
-    Thread-safe queue of render jobs with memory management.
+    Thread-safe queue of render jobs with unified state management.
 
     Thread-Safety Guarantees:
     - All state modifications are protected by threading.Lock
-    - File I/O uses atomic write patterns
+    - Uses StateManager for atomic file persistence
     - Callbacks are invoked outside critical sections
     - Returned job objects are copies to prevent external modification
+
+    State Management:
+    - Uses StateManager for persistence
+    - Cross-process file locking for concurrent access
+    - Automatic stale lock cleanup
 
     Memory Management:
     - Max queue size limits concurrent jobs
@@ -220,12 +170,25 @@ class BatchQueue:
     # Default max concurrent jobs
     DEFAULT_MAX_QUEUE_SIZE = 5
 
+    # State format version
+    STATE_VERSION = "1.0"
+
     def __init__(
         self,
         queue_file: Optional[Path] = None,
         max_queue_size: Optional[int] = None,
-        memory_limit_gb: Optional[int] = None
+        memory_limit_gb: Optional[int] = None,
+        enable_locking: bool = True
     ):
+        """
+        Initialize batch queue.
+
+        Args:
+            queue_file: Path to queue state file
+            max_queue_size: Maximum concurrent jobs
+            memory_limit_gb: Memory limit in GB
+            enable_locking: Enable cross-process file locking
+        """
         self._jobs: List[RenderJob] = []
         self._current_job_id: Optional[int] = None
         self._queue_file = queue_file or Path.cwd() / "tmp" / "batch_queue.json"
@@ -239,6 +202,14 @@ class BatchQueue:
         # Memory management
         self._max_queue_size = max_queue_size or self.DEFAULT_MAX_QUEUE_SIZE
         self._memory_limit = memory_limit_gb or self._get_memory_limit()
+
+        # Initialize StateManager for unified state persistence
+        self.state = StateManager(
+            state_file=self._queue_file,
+            version=self.STATE_VERSION,
+            auto_save=False,  # We'll save explicitly
+            enable_locking=enable_locking
+        )
 
         # Load existing queue
         self._load()
@@ -264,63 +235,36 @@ class BatchQueue:
 
     def _load(self) -> None:
         """
-        Load queue from file.
+        Load queue from StateManager.
 
-        Thread-safe: Uses file locking to prevent concurrent read/write.
+        Thread-safe: StateManager handles file locking.
         """
-        if not self._queue_file.exists():
+        if not self.state.load():
+            # No existing state, start fresh
+            self._jobs = []
+            self._next_id = 1
             return
 
-        try:
-            with FileWriteLock(self._queue_file):
-                data = json.loads(self._queue_file.read_text(encoding="utf-8"))
-                self._jobs = [RenderJob.from_dict(j) for j in data.get("jobs", [])]
-                self._next_id = data.get("next_id", 1)
+        # Parse jobs from state
+        jobs_data = self.state.get("jobs", [])
+        self._jobs = [RenderJob.from_dict(j) for j in jobs_data]
+        self._next_id = self.state.get("next_id", 1)
 
-                # Find max id to prevent conflicts
-                if self._jobs:
-                    self._next_id = max(j.id for j in self._jobs) + 1
-        except json.JSONDecodeError:
-            logger.warning(f"Could not parse queue file {self._queue_file}, starting fresh")
-            self._jobs = []
-            self._next_id = 1
-        except Exception as e:
-            logger.error(f"Error loading queue: {e}")
-            self._jobs = []
-            self._next_id = 1
+        # Find max id to prevent conflicts
+        if self._jobs:
+            self._next_id = max(j.id for j in self._jobs) + 1
 
     def _save(self) -> None:
         """
-        Save queue to file using atomic write.
+        Save queue to StateManager.
 
-        Thread-safe: Uses temp file + atomic rename.
+        Thread-safe: StateManager handles atomic writes.
         """
-        self._queue_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write to temp file first
         data = {
             "jobs": [j.to_dict() for j in self._jobs],
             "next_id": self._next_id,
         }
-        json_str = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-
-        # Write to temp file
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.tmp',
-            dir=self._queue_file.parent,
-            delete=False,
-            encoding='utf-8'
-        ) as tmp:
-            tmp.write(json_str)
-            tmp_path = Path(tmp.name)
-
-        # Atomic rename
-        try:
-            tmp_path.replace(self._queue_file)
-        except Exception:
-            tmp_path.unlink(missing_ok=True)
-            raise
+        self.state.update(data)
 
     def _invoke_callback_safe(self, callback: Callable, *args) -> None:
         """
@@ -668,7 +612,7 @@ class SmartBatchDetector:
 
         # Get all video files
         videos = []
-        from .config import VIDEO_EXTENSIONS
+        from config import VIDEO_EXTENSIONS
         for ext in VIDEO_EXTENSIONS:
             videos.extend(list(self.directory.glob(f"*{ext}")))
 
@@ -679,7 +623,7 @@ class SmartBatchDetector:
 
             Supported patterns:
             - Suffix: {name}_intro, {name}-intro, {name}intro
-            - Prefix: intro_{name}, intro-{name}
+            - Prefix: intro_{name}, loop-{name}
             - Standalone: intro, loop (returns "Video")
             - Wrapped: _intro_, -loop- (returns "Video")
             """
