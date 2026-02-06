@@ -283,7 +283,7 @@ def detect_available_encoders(use_cache: bool = True, force_refresh: bool = Fals
             ]
             result = subprocess.run(
                 test_cmd,
-                capture_output=True, text=True, timeout=3,  # Faster timeout
+                capture_output=True, text=True, timeout=5,  # Increased from 3 to reduce false negatives
                 check=False
             )
             # Check for success indicators (returncode 0 and no errors in stderr)
