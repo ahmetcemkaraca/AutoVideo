@@ -220,6 +220,7 @@ class FFmpegRunner:
         Improvements:
         - Retry mechanism with exponential backoff
         - Automatic hardware → software fallback on GPU errors
+        - Enhanced error reporting with both HW and SW error details
         - Memory-efficient streaming output handling
         - Thread-safe progress callbacks
 
@@ -231,41 +232,42 @@ class FFmpegRunner:
             CompletedProcess result
 
         Raises:
-            subprocess.CalledProcessError: If command fails after all retries
+            RuntimeError: If both hardware and software encoding fail
         """
         self._log_command(cmd)
 
         if not capture_progress or not self._progress_callback:
             return subprocess.run(cmd, check=True)
 
-        # Retry loop with exponential backoff
-        for attempt in range(self._max_retries):
-            try:
-                return self._run_once(cmd, capture_progress)
-            except subprocess.CalledProcessError as e:
-                # Check if this is a hardware failure that merits fallback
-                is_hw_failure, reason = self._detect_hardware_failure(self._stderr_buffer)
+        # First attempt: Hardware encoding
+        hw_stderr = None
+        try:
+            return self._run_once(cmd, capture_progress)
+        except subprocess.CalledProcessError as e:
+            hw_stderr = e.stderr or "\n".join(self._stderr_buffer)
+            # Check if this is a hardware failure that merits fallback
+            is_hw_failure, reason = self._detect_hardware_failure(self._stderr_buffer)
 
-                if is_hw_failure and attempt < self._max_retries - 1:
-                    # Try software fallback
-                    fallback_cmd = self._build_fallback_command(cmd)
-                    if fallback_cmd:
-                        print(f"[WARN] {reason}. Falling back to software encoding...")
-                        try:
-                            return self._run_once(fallback_cmd, capture_progress)
-                        except subprocess.CalledProcessError:
-                            pass  # Fall through to retry
+            if is_hw_failure:
+                # Second attempt: Software fallback
+                fallback_cmd = self._build_fallback_command(cmd)
+                if fallback_cmd:
+                    print(f"[WARN] {reason}. Falling back to software encoding...")
+                    try:
+                        return self._run_once(fallback_cmd, capture_progress)
+                    except subprocess.CalledProcessError as e2:
+                        # Third attempt: Both failed, raise with detailed error
+                        sw_stderr = e2.stderr or "\n".join(self._stderr_buffer)
+                        raise RuntimeError(
+                            f"FFmpeg failed with both hardware and software encoding.\n"
+                            f"Hardware error:\n{hw_stderr}\n"
+                            f"Software error:\n{sw_stderr}"
+                        ) from e2
 
-                if attempt == self._max_retries - 1:
-                    # Last attempt failed, raise the exception
-                    raise e
+            # Not a hardware failure or fallback not possible
+            raise
 
-                # Exponential backoff
-                wait_time = 2 ** attempt * 0.5  # 0.5s, 1s, 2s...
-                print(f"[WARN] FFmpeg attempt {attempt + 1} failed. Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-
-        # Shouldn't reach here, but just in case
+        # Shouldn't reach here
         raise subprocess.CalledProcessError(1, cmd)
 
     def _run_once(self, cmd: List[str], capture_progress: bool) -> subprocess.CompletedProcess:
