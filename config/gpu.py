@@ -12,6 +12,18 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List
+from enum import Enum
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Profile Enum
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Profile(str, Enum):
+    """GPU/RAM optimization profiles."""
+    STANDARD = "standard"
+    HIGH_VRAM = "high_vram"
+    ULTRA = "ultra"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -44,6 +56,49 @@ CHUNK_CONFIG = {
     # Enable chunked mode automatically for videos longer than this (hours)
     "auto_chunk_threshold_hours": 12,
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GPU Configuration Class
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class GPUConfig:
+    """GPU/RAM optimization configuration."""
+    profile: Profile = Profile.STANDARD
+
+    def get_surfaces(self) -> int:
+        return {
+            Profile.STANDARD: 64,
+            Profile.HIGH_VRAM: 128,
+            Profile.ULTRA: 256
+        }[self.profile]
+
+    def get_nvenc_args(self, codec_family: str) -> List[str]:
+        surfaces = self.get_surfaces()
+        extra_frames = self._get_extra_frames()
+        lookahead = self._get_lookahead()
+
+        return [
+            "-rc", "vbr",
+            "-surfaces", str(surfaces),
+            "-extra_hw_frames", str(extra_frames),
+            "-rc-lookahead", str(lookahead),
+        ]
+
+    def _get_extra_frames(self) -> int:
+        return {
+            Profile.STANDARD: 8,
+            Profile.HIGH_VRAM: 16,
+            Profile.ULTRA: 32
+        }[self.profile]
+
+    def _get_lookahead(self) -> int:
+        return {
+            Profile.STANDARD: 32,
+            Profile.HIGH_VRAM: 48,
+            Profile.ULTRA: 64
+        }[self.profile]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VideoAutomation Pipeline Configuration",
+  "type": "object",
+  "required": [
+    "work_dir",
+    "styles",
+    "genres"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 2
+    },
+    "format_version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "work_dir": {
+      "type": "string"
+    },
+    "intro_video": {
+      "type": "string"
+    },
+    "loop_video": {
+      "type": "string"
+    },
+    "continuous_mode": {
+      "type": "boolean"
+    },
+    "delay_between_videos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_continuous_iterations": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ]
+    },
+    "styles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "genres": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "youtube": {
+      "type": "object",
+      "properties": {
+        "client_secrets_file": {
+          "type": "string"
+        },
+        "credentials_file": {
+          "type": "string"
+        },
+        "default_category": {
+          "type": "string"
+        },
+        "default_privacy": {
+          "enum": [
+            "public",
+            "private",
+            "unlisted"
+          ]
+        },
+        "max_uploads_per_day": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min_upload_interval": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "render": {
+      "type": "object",
+      "properties": {
+        "codec": {
+          "enum": [
+            "h264",
+            "h265",
+            "vp9",
+            "av1"
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fps": {
+          "enum": [
+            24,
+            25,
+            30,
+            50,
+            60
+          ]
+        },
+        "target_duration": {
+          "type": "string",
+          "pattern": "^\\d{1,2}:\\d{2}:\\d{2}$"
+        }
+      }
+    },
+    "log_level": {
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ]
+    },
+    "enable_metrics": {
+      "type": "boolean"
+    },
+    "metrics_port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    }
+  }
+}

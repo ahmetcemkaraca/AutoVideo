@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VideoLivestream Configuration",
+  "type": "object",
+  "properties": {
+    "content_dir": {
+      "type": "string"
+    },
+    "min_duration_minutes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_duration_minutes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "stream": {
+      "type": "object",
+      "properties": {
+        "rtmp_url": {
+          "type": "string"
+        },
+        "stream_key": {
+          "type": "string"
+        },
+        "video_bitrate": {
+          "type": "string"
+        },
+        "audio_bitrate": {
+          "type": "string"
+        },
+        "resolution": {
+          "type": "string"
+        },
+        "fps": {
+          "type": "integer"
+        },
+        "preset": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

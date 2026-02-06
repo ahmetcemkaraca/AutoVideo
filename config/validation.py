@@ -232,4 +232,4 @@ _init_schemas()
 
 
 # Re-export for convenience
-from .base import ConfigValidationError as ValidationError
+from .base import ConfigValidationError
