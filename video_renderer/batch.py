@@ -146,7 +146,7 @@ class FileWriteLock:
         self._fd = None
 
     def __enter__(self):
-        """Acquire file lock."""
+        """Acquire file lock with stale lock cleanup."""
         import os
         import platform
 
@@ -157,6 +157,16 @@ class FileWriteLock:
         start_time = time.time()
         while True:
             try:
+                # Check for stale lock (older than 5 minutes) before acquiring
+                if os.path.exists(lock_path):
+                    lock_age = time.time() - os.path.getmtime(lock_path)
+                    if lock_age > 300:  # 5 minutes = 300 seconds
+                        print(f"[WARN] Removing stale lock file: {lock_path} (age: {lock_age:.0f}s)")
+                        try:
+                            os.remove(lock_path)
+                        except OSError:
+                            pass  # Lock was just removed by another process
+
                 # Try to create lock file exclusively
                 self._fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 # Write PID for debugging
