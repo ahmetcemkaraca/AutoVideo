@@ -25,6 +25,12 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
+# Import security modules
+from video_renderer.credential_crypto import (
+    check_file_permissions,
+    validate_client_secrets,
+)
+
 logger = logging.getLogger(__name__)
 
 # Scopes required for uploading
@@ -99,8 +105,12 @@ class DriveUploader:
                     # Load credentials
                     self.creds = None
 
-                    # Load existing token
+                    # Load existing token (with security check)
                     if self.token_path.exists():
+                        # Check file permissions before loading
+                        if not check_file_permissions(self.token_path):
+                            logger.warning(f"Insecure permissions on {self.token_path}")
+
                         with open(self.token_path, "rb") as token:
                             try:
                                 self.creds = pickle.load(token)
@@ -123,6 +133,16 @@ class DriveUploader:
                                     "Download from Google Cloud Console and save as credentials.json"
                                 )
 
+                            # Validate client secrets format
+                            if not validate_client_secrets(self.credentials_path):
+                                raise DriveUploadError(
+                                    f"Invalid credentials.json format: '{self.credentials_path}'"
+                                )
+
+                            # Check credentials file permissions
+                            if not check_file_permissions(self.credentials_path):
+                                logger.warning(f"Insecure permissions on {self.credentials_path}")
+
                             try:
                                 # Generate cryptographically secure state parameter
                                 state = secrets.token_urlsafe(16)
@@ -137,9 +157,12 @@ class DriveUploader:
                             except Exception as e:
                                 raise DriveUploadError(f"Authentication failed: {e}")
 
-                        # Save the token
+                        # Save the token (with secure permissions check)
                         with open(self.token_path, "wb") as token:
                             pickle.dump(self.creds, token)
+
+                        # Verify/set secure permissions on token file
+                        check_file_permissions(self.token_path)
 
                     # Build service
                     self.service = build("drive", "v3", credentials=self.creds)

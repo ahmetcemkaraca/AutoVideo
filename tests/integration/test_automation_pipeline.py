@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch, call
 from VideoAutomation.automation.pipeline import AutomationPipeline, parse_duration_to_seconds
-from VideoAutomation.automation.config import PipelineConfig, YouTubeConfig
+from config import PipelineConfig, YouTubeConfig
 from VideoAutomation.automation.state import StateManager
 
 
@@ -423,7 +423,7 @@ class TestPipelineConfiguration:
 
     def test_load_config_from_file(self, temp_dir):
         """Test loading configuration from file."""
-        from VideoAutomation.automation.config import load_config_from_file
+        from config import load_config_from_file
 
         config_file = temp_dir / "config.json"
 

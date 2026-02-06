@@ -23,7 +23,7 @@ sys.path.insert(0, str(project_root))
 from video_renderer.ffmpeg import FFmpegRunner, PROGRESS_PATTERNS, ERROR_PATTERNS
 from video_renderer.audio import AudioProcessor
 from video_renderer.video import VideoEncoder
-from video_renderer.config import (
+from config import (
     detect_available_encoders, get_best_encoder,
     clear_encoder_cache, CODEC_H264_NVENC
 )

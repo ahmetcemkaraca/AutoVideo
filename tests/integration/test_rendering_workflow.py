@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch, Mock
 from video_renderer.video import VideoEncoder
 from video_renderer.audio import AudioProcessor, mux_video_audio
 from video_renderer.batch import BatchQueue, RenderJob, JobStatus, parse_duration
-from video_renderer.config import CODEC_H264, COLOR_BT709
+from config import CODEC_H264, COLOR_BT709
 from video_renderer.ffmpeg import FFmpegRunner
 
 
@@ -482,7 +482,7 @@ class TestErrorHandling:
 ])
 def test_codec_selection(codec, expected_encoder):
     """Test codec selection for different formats."""
-    from video_renderer.config import CODECS
+    from config import CODECS
 
     if codec in CODECS:
         config = CODECS[codec]

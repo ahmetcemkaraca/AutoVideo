@@ -18,7 +18,7 @@ from unittest.mock import patch, MagicMock, Mock
 from video_renderer.video import VideoEncoder, encode_parallel
 from video_renderer.audio import AudioProcessor
 from video_renderer.batch import BatchQueue, RenderJob
-from video_renderer.config import CODEC_H264, COLOR_BT709
+from config import CODEC_H264, COLOR_BT709
 from video_renderer.ffmpeg import FFmpegRunner
 
 

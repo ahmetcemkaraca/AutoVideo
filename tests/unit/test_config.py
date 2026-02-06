@@ -15,7 +15,7 @@ Tests cover:
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
-from video_renderer.config import (
+from config import (
     CodecConfig,
     ColorConfig,
     CODEC_AV1,
