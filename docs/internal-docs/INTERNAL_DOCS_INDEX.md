@@ -114,6 +114,20 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
   - Mixing and looping logic
   - Format conversion
 
+### Validation System
+
+- **[validation/architecture.md](validation/architecture.md)**
+  - Validation module architecture
+  - API reference for validators
+  - Integration points
+  - Extending validation checks
+
+- **[validation/troubleshooting.md](validation/troubleshooting.md)**
+  - Common validation errors and solutions
+  - Platform-specific issues
+  - FFmpeg/ffprobe requirements
+  - Debugging validation failures
+
 ### Batch Queue
 
 - **[batchqueue-thread-safety.md](batchqueue-thread-safety.md)**
@@ -224,9 +238,9 @@ Located in [`../adr/`](../adr/):
 - `video_renderer/config.py` - Codec and render configuration
 
 **Core Processing:**
-- `video_renderer/video.py` - Video encoding
-- `video_renderer/audio.py` - Audio processing
-- `video_renderer/ffmpeg.py` - FFmpeg execution
+- `video_renderer/video.py` - Video encoding and validation
+- `video_renderer/audio.py` - Audio processing and validation
+- `video_renderer/ffmpeg.py` - FFmpeg execution and probing
 
 **Batch Processing:**
 - `video_renderer/batch.py` - Batch queue management
@@ -239,6 +253,12 @@ Located in [`../adr/`](../adr/):
 - `video_renderer/security.py` - Input validation
 - `video_renderer/credential_crypto.py` - Credential management
 - `video_renderer/audit.py` - Audit logging
+
+**Validation:**
+- `video_renderer/video.py` - VideoEncoder.check_compatibility()
+- `video_renderer/audio.py` - AudioProcessor.validate_and_convert_track()
+- `config/validation.py` - Config validation and JSON schemas
+- `VideoAutomation/automation/validation.py` - Production readiness checks
 
 **Logging:**
 - `video_renderer/logging.py` - Logging utilities
@@ -268,6 +288,26 @@ safe_path = validate_path(user_input, base_dir=Path.cwd())
 from video_renderer.audit import log_security_event
 
 log_security_event("FILE_ACCESS", {"file": "video.mp4"})
+```
+
+**Video Validation:**
+```python
+from video_renderer.video import VideoEncoder
+from video_renderer.ffmpeg import FFmpegRunner
+
+runner = FFmpegRunner()
+encoder = VideoEncoder(runner, codec_config, width=1920, height=1080)
+is_compat, reason = encoder.check_compatibility(Path("video.mp4"))
+if not is_compat:
+    print(f"Incompatible: {reason}")
+```
+
+**Audio Validation:**
+```python
+from video_renderer.audio import AudioProcessor
+
+processor = AudioProcessor(runner, tmp_dir)
+valid, invalid = processor.validate_tracks(tracks, parallel=True)
 ```
 
 ---
@@ -433,5 +473,5 @@ Each document should include:
 
 ---
 
-**Last Updated:** 2025-02-06
+**Last Updated:** 2026-02-06
 **Maintained By:** Development Team

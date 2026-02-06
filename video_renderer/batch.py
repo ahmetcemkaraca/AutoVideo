@@ -256,15 +256,37 @@ class BatchQueue:
 
     def _save(self) -> None:
         """
-        Save queue to StateManager.
+        Save queue to StateManager with validation.
 
-        Thread-safe: StateManager handles atomic writes.
+        Thread-safe: StateManager handles atomic writes with validation.
+        Fixed: Add validation to prevent corrupting queue file with invalid data.
         """
+        # Validate data before saving
+        if not isinstance(self._jobs, list):
+            logger.error("Invalid jobs type for save, expected list")
+            raise ValueError("Jobs must be a list")
+
+        if not isinstance(self._next_id, int) or self._next_id < 1:
+            logger.error(f"Invalid next_id for save: {self._next_id}")
+            raise ValueError(f"next_id must be a positive integer, got {self._next_id}")
+
+        # Validate each job before serialization
+        for job in self._jobs:
+            if not hasattr(job, 'id') or not isinstance(job.id, int):
+                logger.error(f"Invalid job in queue: {job}")
+                raise ValueError(f"All jobs must have valid id attribute")
+
         data = {
             "jobs": [j.to_dict() for j in self._jobs],
             "next_id": self._next_id,
         }
-        self.state.update(data)
+
+        # StateManager will handle atomic write with temp file and rename
+        try:
+            self.state.update(data, save=True)  # Explicitly save since auto_save=False
+        except Exception as e:
+            logger.error(f"Failed to save batch queue: {e}")
+            raise
 
     def _invoke_callback_safe(self, callback: Callable, *args) -> None:
         """
@@ -560,7 +582,8 @@ def parse_duration(dur_str: str) -> int:
             m, s = map(int, parts)
             return m * 60 + s
         else:
-            return int(parts[0]) * 3600
+            # Single number - treat as seconds, not hours
+            return int(parts[0])
     except Exception:
         return 0
 

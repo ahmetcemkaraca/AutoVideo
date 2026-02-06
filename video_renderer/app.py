@@ -28,8 +28,18 @@ from .screens import (
     CompleteScreen,
     BatchScreen,
     SmartBatchScreen,
+    ValidationScreen,
 )
 from .ffmpeg import VideoInfo
+
+# Fix: Ensure project root is in Python path for config imports
+# This resolves the issue where files import from root `config/` which may not be in Python path
+import sys
+from pathlib import Path
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
 from config import CodecConfig, RamTestConfig, get_render_config
 from .resource_manager import ResourceManager
 
@@ -76,6 +86,7 @@ class VideoRendererApp(App):
         "complete": CompleteScreen,
         "batch": BatchScreen,
         "smart_batch": SmartBatchScreen,
+        "validation": ValidationScreen,
     }
 
     def __init__(
@@ -127,6 +138,9 @@ class VideoRendererApp(App):
         # Drive integration
         self.drive_folder_id: Optional[str] = None
         self.enable_upload: bool = False
+
+        # Validation control
+        self.skip_validation: bool = False
 
         # Mode-specific features
         if mode == "ramtest":

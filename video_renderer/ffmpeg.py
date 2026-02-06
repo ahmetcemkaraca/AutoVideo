@@ -307,7 +307,35 @@ class FFmpegRunner:
         self._stderr_buffer.clear()
 
         # FFmpeg writes progress to stderr
-        for line in iter(process.stderr.readline, ""):
+        # Fixed: Add timeout mechanism to prevent indefinite hangs
+        import time as time_module
+        start_time = time_module.time()
+        read_timeout = 300  # 5 minutes timeout for reads
+
+        while True:
+            # Check if process has terminated
+            if process.poll() is not None:
+                # Process ended, read remaining output
+                for line in process.stderr.readlines():
+                    self._stderr_buffer.append(line)
+                    if progress := self._parse_progress_line(line):
+                        with self._callback_lock:
+                            if self._progress_callback:
+                                self._progress_callback(progress)
+                break
+
+            # Read line with timeout check
+            line = process.stderr.readline()
+            if not line:
+                # No data available but process still running
+                if time_module.time() - start_time > read_timeout:
+                    process.kill()
+                    raise subprocess.TimeoutExpired(
+                        cmd, read_timeout, stderr="\n".join(self._stderr_buffer)
+                    )
+                time_module.sleep(0.1)
+                continue
+
             # Only keep recent lines in memory (circular buffer)
             self._stderr_buffer.append(line)
 

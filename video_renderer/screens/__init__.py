@@ -13,6 +13,19 @@ from .complete import CompleteScreen
 from .batch import BatchScreen
 from .smart_batch import SmartBatchScreen
 
+# Import from validation_screen (file validation display)
+from .validation_screen import (
+    ValidationScreen as FileValidationScreen,
+    ValidationReport,
+    ValidationResult as FileValidationResult,
+)
+
+# Import from validation (pre/post-render validation display)
+from .validation import (
+    ValidationScreen as RenderValidationScreen,
+    show_validation_result,
+)
+
 __all__ = [
     "HomeScreen",
     "VideoSelectScreen",
@@ -22,4 +35,11 @@ __all__ = [
     "CompleteScreen",
     "BatchScreen",
     "SmartBatchScreen",
+    # File validation (validation_screen.py)
+    "FileValidationScreen",
+    "ValidationReport",
+    "FileValidationResult",
+    # Render validation (validation.py)
+    "RenderValidationScreen",
+    "show_validation_result",
 ]

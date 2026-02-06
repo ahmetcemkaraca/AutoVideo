@@ -17,6 +17,11 @@ Welcome to the AutoVideo documentation. This index helps you find the informatio
 - [Configuration](../README.md#configuration) - Configure AutoVideo for your needs
 - [Troubleshooting](../README.md#troubleshooting) - Common issues and solutions
 
+### Validation System
+- [Video Validation Guide](video-validation.md) - Complete validation system documentation
+- [Validation Architecture](internal-docs/validation/architecture.md) - Developer documentation for validation
+- [Validation Troubleshooting](internal-docs/validation/troubleshooting.md) - Common validation errors and solutions
+
 ### VideoAutomation Pipeline
 - [VideoAutomation README](../VideoAutomation/README.md) - Automated video generation guide
 - [YouTube Setup](../VideoAutomation/README.md#youtube-api-kurulumu) - Configure YouTube API
@@ -34,6 +39,7 @@ Welcome to the AutoVideo documentation. This index helps you find the informatio
 
 ### API Reference
 - [Video Renderer API](internal-docs/api/video-renderer-api.md) - Complete API documentation
+- [Validation API Reference](internal-docs/validation/architecture.md#api-reference) - Validation system API
 
 ### Guides
 - [Contributing Guide](internal-docs/guides/contributing-guide.md) - How to contribute
@@ -90,6 +96,7 @@ docs/
 ### For Users
 - [How to install](../README.md#installation)
 - [Basic usage](../README.md#usage)
+- [Video validation](video-validation.md)
 - [Troubleshooting](../README.md#troubleshooting)
 
 ### For Developers

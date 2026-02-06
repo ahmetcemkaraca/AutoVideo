@@ -25,6 +25,7 @@ from ..ffmpeg import FFmpegRunner, FFmpegProgress, get_duration
 from ..audio import AudioProcessor, mux_video_audio
 from ..video import VideoEncoder
 from ..config import get_render_config
+from ..validator import PreRenderValidator, PostRenderValidator
 
 
 class RenderStep:
@@ -306,6 +307,72 @@ class RenderScreen(Screen):
 
                 codec_config = get_best_encoder(codec_family)
 
+            # ═══════════════════════════════════════════════════════════════════
+            # PRE-RENDER VALIDATION
+            # ═══════════════════════════════════════════════════════════════════
+
+            # Check if validation should be skipped
+            skip_validation = getattr(app, "skip_validation", False)
+            if not skip_validation:
+                self.call_from_thread(self._log, "Doğrulama yapılıyor...")
+
+                pre_validator = PreRenderValidator(
+                    target_width=getattr(codec_config, "width", 1920),
+                    target_height=getattr(codec_config, "height", 1080),
+                    target_fps=getattr(codec_config, "fps", 60)
+                )
+
+                pre_result = pre_validator.validate_render_specs(
+                    intro_path=intro_path,
+                    loop_path=loop_path,
+                    single_path=single_video_path,
+                    tracks=chosen_tracks,
+                    target_duration=total_seconds,
+                    output_dir=out_path.parent
+                )
+
+                # Log validation results
+                if pre_result.errors:
+                    self.call_from_thread(self._log, f"✗ Doğrulama hatası: {len(pre_result.errors)} hata")
+                    for error in pre_result.errors:
+                        self.call_from_thread(self._log, f"  - {error.message}")
+                elif pre_result.warnings:
+                    self.call_from_thread(self._log, f"⚠ Doğrulama uyarısı: {len(pre_result.warnings)} uyarı")
+
+                # Show validation screen if issues found
+                if not pre_result.valid:
+                    from ..screens.validation import show_validation_result
+
+                    # Show red notification for validation failure
+                    self.call_from_thread(
+                        app.notify,
+                        f"❌ Doğrulama başarısız: {len(pre_result.errors)} hata tespit edildi",
+                        title="Doğrulama Hatası",
+                        severity="error",
+                        timeout=5
+                    )
+
+                    self.call_from_thread(show_validation_result, app, pre_result)
+
+                    # Wait for user decision
+                    if worker.is_cancelled:
+                        return
+
+                    # Check if user chose to continue anyway
+                    if not getattr(app, "skip_validation", False):
+                        # User chose to retry or go back
+                        return
+                elif pre_result.warnings:
+                    # Show warnings but allow continue
+                    self.call_from_thread(
+                        app.notify,
+                        f"⚠️ Doğrulama uyarısı: {len(pre_result.warnings)} uyarı tespit edildi",
+                        title="Doğrulama Uyarısı",
+                        severity="warning",
+                        timeout=3
+                    )
+                    self.call_from_thread(self._log, "⚠️ Uyarılarla devam ediliyor...")
+
             runner = FFmpegRunner(run_log)
 
             # Define output paths
@@ -478,17 +545,69 @@ class RenderScreen(Screen):
             self.call_from_thread(self._update_step_status, "mux", "complete", 100)
 
             # ═══════════════════════════════════════════════════════════════════
+            # POST-RENDER VALIDATION
+            # ═══════════════════════════════════════════════════════════════════
+
+            self.call_from_thread(self._log, "Çıktı doğrulanıyor...")
+
+            post_validator = PostRenderValidator()
+
+            target_specs = {
+                "codec": codec_family if codec_family else "h264",
+                "width": getattr(codec_config, "width", 1920) if codec_config else 1920,
+                "height": getattr(codec_config, "height", 1080) if codec_config else 1080,
+                "fps": getattr(codec_config, "fps", 60) if codec_config else 60,
+            }
+
+            post_result = post_validator.validate_output(
+                output_path=out_path,
+                target_duration=total_seconds,
+                target_specs=target_specs
+            )
+
+            if not post_result.valid:
+                self.call_from_thread(self._log, f"✗ Çıktı doğrulaması başarısız")
+                # Show red notification for post-render validation failure
+                self.call_from_thread(
+                    app.notify,
+                    f"❌ Çıktı doğrulaması başarısız: {len(post_result.errors)} hata tespit edildi",
+                    title="Çıktı Doğrulama Hatası",
+                    severity="error",
+                    timeout=5
+                )
+                from ..screens.validation import show_validation_result
+                self.call_from_thread(show_validation_result, app, post_result)
+            elif post_result.warnings:
+                self.call_from_thread(self._log, f"⚠️ Çıktı doğrulaması: {len(post_result.warnings)} uyarı")
+                # Show warning notification
+                self.call_from_thread(
+                    app.notify,
+                    f"⚠️ Çıktı doğrulaması uyarısı: {len(post_result.warnings)} uyarı tespit edildi",
+                    title="Çıktı Doğrulama Uyarısı",
+                    severity="warning",
+                    timeout=3
+                )
+            else:
+                self.call_from_thread(self._log, "✓ Çıktı doğrulaması başarılı")
+
+            # ═══════════════════════════════════════════════════════════════════
             # COMPLETE
             # ═══════════════════════════════════════════════════════════════════
 
             self.call_from_thread(self._log, "✓ Render tamamlandi!")
             self.call_from_thread(self._update_status, "Tamamlandi!")
 
-            # Store result
+            # Store result with validation info
             app.render_result = {
                 "success": True,
                 "output": out_path,
                 "duration": get_duration(out_path) if out_path.exists() else 0,
+                "validation": {
+                    "pre_render": skip_validation,
+                    "post_render": post_result.valid,
+                    "issues": len(post_result.issues),
+                    "post_result": post_result,  # Store full validation result for export
+                }
             }
 
             # Go to complete screen

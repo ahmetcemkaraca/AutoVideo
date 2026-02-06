@@ -53,6 +53,8 @@ from .constants import (
 
 from .gpu import (
     GPUConfig,
+    GPU_CONFIG,
+    CHUNK_CONFIG,
     RamTestConfig,
     RenderModeConfig,
     get_render_config,
@@ -137,6 +139,8 @@ __all__ = [
 
     # GPU/RAM
     "GPUConfig",
+    "GPU_CONFIG",
+    "CHUNK_CONFIG",
     "RamTestConfig",
     "RenderModeConfig",
     "get_render_config",

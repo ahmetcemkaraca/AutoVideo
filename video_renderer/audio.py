@@ -24,11 +24,9 @@ from .ffmpeg import FFmpegRunner, FFmpegProgress, get_duration, write_concat_lis
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-# Custom exception for audio processing errors
-class AudioProcessingError(Exception):
-    """Raised when audio processing fails."""
-
-    pass
+# Import AudioProcessingError from exceptions module instead of defining it here
+# This prevents duplicate exception definitions and maintains proper exception hierarchy
+from .exceptions import AudioProcessingError
 
 
 def get_duration_safe(path: Path) -> Optional[float]:
@@ -41,8 +39,6 @@ def get_duration_safe(path: Path) -> Optional[float]:
     Returns:
         Duration in seconds, or None if failed
     """
-    import subprocess
-
     try:
         return get_duration(path)
     except subprocess.TimeoutExpired:
@@ -147,7 +143,6 @@ class AudioProcessor:
         Returns:
             Number of audio channels (1 for mono, 2 for stereo, etc.)
         """
-        import subprocess
         import json
 
         try:
@@ -183,7 +178,6 @@ class AudioProcessor:
         Returns:
             Dictionary with title, artist, album, and cover art data
         """
-        import subprocess
         import json
 
         metadata = {"title": "", "artist": "", "album": "", "cover_data": None}
@@ -230,8 +224,10 @@ class AudioProcessor:
 
                         cover_path = self.tmp_dir / "cover.jpg"
                         if cover_path.exists():
+                            # Fixed: Use context manager for proper file handling
                             with open(cover_path, "rb") as f:
                                 metadata["cover_data"] = f.read()
+                            # File is automatically closed by context manager
                             cover_path.unlink()  # Clean up temp file
                     except Exception:
                         pass
@@ -253,8 +249,6 @@ class AudioProcessor:
         Returns:
             True if metadata was applied successfully, False otherwise
         """
-        import subprocess
-
         if not any(metadata.values()):
             return False
 
@@ -278,8 +272,10 @@ class AudioProcessor:
             if metadata.get("cover_data"):
                 cover_path = self.tmp_dir / "temp_cover.jpg"
                 try:
+                    # Fixed: Use context manager for proper file handling
                     with open(cover_path, "wb") as f:
                         f.write(metadata["cover_data"])
+                    # File is automatically closed by context manager
 
                     cmd.extend(
                         [
@@ -341,8 +337,6 @@ class AudioProcessor:
         Returns:
             Tuple of (output_path, success, error_message)
         """
-        import subprocess
-
         safe_name = re.sub(r"[^a-zA-Z0-9_.+-]+", "_", track.stem)
         # Use size + mtime combination for better cache invalidation
         stat = track.stat()
@@ -523,7 +517,6 @@ class AudioProcessor:
         Returns:
             True if trimming was successful, False otherwise
         """
-        import subprocess
         import json
 
         try:

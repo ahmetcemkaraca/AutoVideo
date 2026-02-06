@@ -13,6 +13,10 @@ from typing import Set, Dict, List, Optional
 import subprocess
 import shutil
 import os
+import logging
+
+# Module-level logger for config module
+logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # File Extensions
@@ -466,19 +470,51 @@ class RenderConfig:
 
 
 def get_ramdisk_path() -> Optional[Path]:
-    """Get RAM disk path if available and has sufficient space."""
+    """
+    Get RAM disk path if available and has sufficient space.
+
+    Fixed: Add path validation to prevent directory traversal attacks.
+    Only returns paths within allowed base directories.
+
+    Returns:
+        Path to RAM disk if available and valid, None otherwise
+    """
+    # Define allowed base directories for security
+    # This prevents directory traversal attacks
+    allowed_bases = {
+        Path("/dev/shm"),           # Linux tmpfs
+        Path("/tmp"),               # System temp
+        Path("/var/tmp"),           # System temp
+    }
 
     # Linux tmpfs
-    shm_path = Path("/dev/shm")
+    shm_path = Path("/dev/shm").resolve()  # Resolve to prevent path traversal
+
+    # Validate that resolved path is within allowed bases
+    is_allowed = any(
+        str(shm_path).startswith(str(base)) for base in allowed_bases
+    )
+
+    if not is_allowed:
+        logger.warning("RAM disk path not in allowed base directories")
+        return None
+
     if shm_path.exists() and shm_path.is_dir():
         # Check available space (need at least 10GB for temp files)
         try:
             stat = os.statvfs(str(shm_path))
             free_gb = (stat.f_bavail * stat.f_frsize) / (1024**3)
             if free_gb >= 10:
-                return shm_path / "video_render_tmp"
-        except Exception:
-            pass
+                # Additional validation: ensure subdirectory creation is safe
+                output_path = shm_path / "video_render_tmp"
+                # Resolve to check for any symlink tricks
+                resolved_output = output_path.resolve()
+                if not str(resolved_output).startswith(str(shm_path)):
+                    logger.warning("Potential path traversal detected in RAM disk subdirectory")
+                    return None
+                return output_path
+        except Exception as e:
+            logger.warning(f"Failed to check RAM disk: {e}")
 
     # Fallback to regular temp
     return None

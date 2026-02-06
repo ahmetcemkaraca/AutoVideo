@@ -9,8 +9,15 @@ import sys
 import time
 import traceback
 import random
+import subprocess
 from pathlib import Path
 from typing import List, Tuple, Optional
+
+# Fix: Ensure project root is in Python path for config imports
+# This resolves the issue where files import from root `config/` which may not be in Python path
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from . import __version__
 from config import (

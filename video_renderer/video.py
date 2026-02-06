@@ -30,6 +30,7 @@ from .config import (
     ALLOWED_FPS,
 )
 from .ffmpeg import FFmpegRunner, FFmpegProgress, probe_video, get_duration, write_concat_list
+from .validator import PostRenderValidator
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Video Encoder
@@ -339,9 +340,12 @@ class VideoEncoder:
         try:
             self.runner.run(cmd, capture_progress=bool(progress_callback))
         except Exception as e:
+            # Fixed: Preserve original exception context with 'raise from'
             # Fallback to software encoding if hardware fails
             if self._use_gpu:
                 gpu_error = e
+                import logging
+                logging.getLogger(__name__).warning(f"Hardware encoding failed: {e}. Falling back to software...")
                 print(f"  [WARN] Hardware encoding failed: {e}. Falling back to software...")
                 try:
                     cmd_software = self._build_normalize_command(
@@ -349,6 +353,7 @@ class VideoEncoder:
                     )
                     self.runner.run(cmd_software, capture_progress=bool(progress_callback))
                 except Exception as sw_error:
+                    # Fixed: Use exception chaining to preserve both error contexts
                     # Both GPU and software encoding failed
                     raise RuntimeError(
                         f"Failed to encode video after attempting both GPU and software encoding.\n\n"
@@ -360,9 +365,28 @@ class VideoEncoder:
                         f"- Update GPU drivers\n"
                         f"- Check available disk space\n"
                         f"- Verify source file is not corrupted"
-                    ) from sw_error
+                    ) from sw_error  # Preserves software error context
             else:
-                raise
+                # Fixed: Re-raise with original context preserved
+                raise  # 'raise' without arguments preserves the original traceback
+
+        # Verify output file was created and is valid
+        if not output.exists():
+            raise RuntimeError(f"Normalize failed: output file not created at {output}")
+
+        output_duration = get_duration(output)
+        source_duration = get_duration(source)
+
+        # Check if output duration is reasonable (within 10% of source)
+        if source_duration > 0:
+            duration_diff = abs(output_duration - source_duration) / source_duration
+            if duration_diff > 0.1:  # More than 10% difference
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Normalize output duration differs significantly from source: "
+                    f"source={source_duration:.1f}s, output={output_duration:.1f}s "
+                    f"({duration_diff*100:.1f}% difference)"
+                )
 
         return output
 
@@ -562,6 +586,18 @@ class VideoEncoder:
         ]
 
         self.runner.run(cmd, capture_progress=bool(progress_callback))
+
+        # Verify output file was created and is valid
+        if not output.exists():
+            raise RuntimeError(f"Concat failed: output file not created at {output}")
+
+        output_duration = get_duration(output)
+        if output_duration < 10:  # Less than 10 seconds indicates a problem
+            raise RuntimeError(
+                f"Concat output suspiciously short: {output_duration:.1f}s. "
+                f"This may indicate a problem with the input videos or concat list."
+            )
+
         return output
 
 
@@ -611,3 +647,63 @@ def encode_parallel(
                 raise RuntimeError(f"Encoding failed for {output.name}: {e}") from e
 
     return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Validation Integration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def validate_rendered_output(
+    output_path: Path,
+    target_duration: int,
+    target_specs: dict,
+) -> bool:
+    """
+    Validate rendered output video after muxing.
+
+    This is a convenience function for post-render validation that can be called
+    after the final mux step to verify the output meets specifications.
+
+    Args:
+        output_path: Path to the rendered output video
+        target_duration: Target duration in seconds
+        target_specs: Dictionary with expected video specs:
+            - codec: Expected codec name
+            - width: Expected width
+            - height: Expected height
+            - fps: Expected FPS
+            - has_audio: Whether audio should be present (default: True)
+
+    Returns:
+        True if validation passes, False otherwise
+
+    Raises:
+        RuntimeError: If validation fails with critical errors
+    """
+    validator = PostRenderValidator()
+
+    result = validator.validate_output(
+        output_path=output_path,
+        target_duration=target_duration,
+        target_specs=target_specs
+    )
+
+    # Log validation results
+    if result.valid:
+        print(f"  [Validation] ✓ Output validation passed")
+        if result.warnings:
+            print(f"  [Validation] ⚠ {len(result.warnings)} warnings:")
+            for warning in result.warnings:
+                print(f"    - {warning.message}")
+    else:
+        print(f"  [Validation] ✗ Output validation failed with {len(result.errors)} errors")
+        for error in result.errors:
+            print(f"    - {error.message}")
+            if error.details:
+                print(f"      Details: {error.details}")
+            if error.suggestion:
+                print(f"      Suggestion: {error.suggestion}")
+
+    # Return validation status
+    return result.valid

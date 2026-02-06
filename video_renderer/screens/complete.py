@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Complete Screen - Render completion summary.
+Complete Screen - Render completion summary with validation report export.
 """
 
 from pathlib import Path
+from datetime import datetime
+import json
 
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -17,6 +19,7 @@ class CompleteScreen(Screen):
 
     BINDINGS = [
         ("n", "new_render", "Yeni Render"),
+        ("e", "export_report", "Rapor Dışa Aktar"),
         ("q", "quit", "Cikis"),
     ]
 
@@ -24,6 +27,19 @@ class CompleteScreen(Screen):
         result = getattr(self.app, "render_result", {})
         output_path = result.get("output", Path("output.mp4"))
         duration = result.get("duration", 0)
+        validation = result.get("validation", {})
+        post_result = validation.get("post_result")
+
+        # Determine validation status
+        validation_status = "✓ Başarılı"
+        validation_class = "success-text"
+        if post_result:
+            if not post_result.valid:
+                validation_status = "✗ Başarısız"
+                validation_class = "error-text"
+            elif post_result.warnings:
+                validation_status = "⚠️ Uyarılarla"
+                validation_class = "warning-text"
 
         yield Container(
             Static("🎉 Render Tamamlandi!", classes="title success-text"),
@@ -40,7 +56,20 @@ class CompleteScreen(Screen):
                 size_mb = output_path.stat().st_size / (1024 * 1024)
                 yield Static(f"💾 Boyut: {size_mb:.1f} MB", classes="info-text")
 
+            # Show validation status
+            yield Static(f"🔍 Doğrulama: {validation_status}", classes=f"info-text {validation_class}")
+
+            if post_result and post_result.issues:
+                issues_count = len(post_result.issues)
+                errors_count = len(post_result.errors)
+                warnings_count = len(post_result.warnings)
+                yield Static(
+                    f"   - {errors_count} hata, {warnings_count} uyarı (toplam {issues_count})",
+                    classes="subtitle"
+                )
+
         with Horizontal(classes="action-bar"):
+            yield Button("📄 Rapor Dışa Aktar", id="export", classes="-secondary")
             yield Button("🆕 Yeni Render", id="new", classes="-primary")
             yield Button("🚪 Cikis", id="quit", classes="-secondary")
 
@@ -54,7 +83,9 @@ class CompleteScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
-        if event.button.id == "new":
+        if event.button.id == "export":
+            self.action_export_report()
+        elif event.button.id == "new":
             # Clear session and start fresh
             session_path = Path.cwd() / "tmp" / "last_session.json"
             session_path.unlink(missing_ok=True)
@@ -82,6 +113,63 @@ class CompleteScreen(Screen):
 
         elif event.button.id == "quit":
             self.app.exit()
+
+    def action_export_report(self) -> None:
+        """Export validation report to JSON file."""
+        try:
+            result = getattr(self.app, "render_result", {})
+            validation = result.get("validation", {})
+            post_result = validation.get("post_result")
+
+            if not post_result:
+                self.app.notify(
+                    "Dışa aktarılacak doğrulama verisi bulunamadı",
+                    title="Hata",
+                    severity="error"
+                )
+                return
+
+            # Create reports directory
+            reports_dir = Path.cwd() / "reports"
+            reports_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = result.get("output", Path("output.mp4"))
+            filename = f"validation_{output_path.stem}_{timestamp}.json"
+            report_file = reports_dir / filename
+
+            # Export validation result
+            report_data = {
+                "timestamp": datetime.now().isoformat(),
+                "render_result": {
+                    "output": str(result.get("output", "")),
+                    "duration": result.get("duration", 0),
+                },
+                "validation": {
+                    "pre_render": validation.get("pre_render", False),
+                    "post_render": validation.get("post_render", False),
+                    "issues_count": validation.get("issues", 0),
+                },
+                "validation_result": post_result.to_dict() if hasattr(post_result, "to_dict") else {}
+            }
+
+            with open(report_file, "w", encoding="utf-8") as f:
+                json.dump(report_data, f, indent=2, ensure_ascii=False)
+
+            self.app.notify(
+                f"Rapor kaydedildi: {report_file.name}",
+                title="Başarılı",
+                severity="information",
+                timeout=5
+            )
+
+        except Exception as e:
+            self.app.notify(
+                f"Rapor dışa aktarılamadı: {str(e)}",
+                title="Hata",
+                severity="error"
+            )
 
     def action_new_render(self) -> None:
         """Start new render."""

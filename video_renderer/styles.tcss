@@ -415,3 +415,28 @@ Select:focus {
     background: $surface;
     margin-top: 1;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Validation Screen Status Styles
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.status-pass {
+    background: $success;
+    color: $surface-dark;
+    text-style: bold;
+    padding: 1 2;
+}
+
+.status-fail {
+    background: $error;
+    color: white;
+    text-style: bold;
+    padding: 1 2;
+}
+
+.status-warning {
+    background: $warning;
+    color: $surface-dark;
+    text-style: bold;
+    padding: 1 2;
+}
