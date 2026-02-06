@@ -22,7 +22,7 @@ project_root = Path(__file__).parent.absolute()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from livestream.config import GlobalConfig, DEFAULT_CONFIG, generate_playlists
+from config import GlobalConfig, DEFAULT_LIVESTREAM_CONFIG as DEFAULT_CONFIG, generate_playlists
 from livestream.scheduler import LivestreamScheduler, print_banner, print_video_sets
 from livestream.state import StateManager
 

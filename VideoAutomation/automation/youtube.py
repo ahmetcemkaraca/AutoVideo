@@ -26,6 +26,15 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
+# Import security modules
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from video_renderer.credential_crypto import (
+    check_file_permissions,
+    validate_client_secrets,
+    setup_secure_logging
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,8 +116,12 @@ class YouTubeUploader:
         """
         creds = None
         
-        # Load existing credentials
+        # Load existing credentials (with security check)
         if os.path.exists(self.credentials_file):
+            # Check file permissions before loading
+            if not check_file_permissions(Path(self.credentials_file)):
+                logger.warning(f"Insecure permissions on {self.credentials_file}")
+
             try:
                 creds = Credentials.from_authorized_user_file(self.credentials_file, SCOPES)
             except Exception:
@@ -129,6 +142,16 @@ class YouTubeUploader:
                         "Download from Google Cloud Console -> Credentials"
                     )
 
+                # Validate client secrets format
+                if not validate_client_secrets(Path(self.client_secrets_file)):
+                    raise ValidationError(
+                        f"Invalid client_secrets.json format: {self.client_secrets_file}"
+                    )
+
+                # Check client secrets permissions
+                if not check_file_permissions(Path(self.client_secrets_file)):
+                    logger.warning(f"Insecure permissions on {self.client_secrets_file}")
+
                 # Generate cryptographically secure state parameter for CSRF protection
                 state = secrets.token_urlsafe(16)
 
@@ -137,9 +160,12 @@ class YouTubeUploader:
                 )
                 creds = flow.run_local_server(port=8080)
 
-            # Save credentials for next run
+            # Save credentials for next run (with secure permissions)
             with open(self.credentials_file, "w") as f:
                 f.write(creds.to_json())
+
+            # Set secure permissions on credentials file
+            check_file_permissions(Path(self.credentials_file))
         
         self._credentials = creds
         self.youtube = build("youtube", "v3", credentials=creds)

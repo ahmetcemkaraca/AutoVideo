@@ -156,14 +156,14 @@ def mock_ffmpeg_runner():
 @pytest.fixture
 def codec_config():
     """Get a sample codec configuration."""
-    from video_renderer.config import CODEC_H264
+    from config import CODEC_H264
     return CODEC_H264
 
 
 @pytest.fixture
 def color_config():
     """Get a sample color configuration."""
-    from video_renderer.config import COLOR_BT709
+    from config import COLOR_BT709
     return COLOR_BT709
 
 
@@ -328,7 +328,7 @@ def mock_youtube_credentials(temp_dir):
 @pytest.fixture
 def pipeline_config(work_dir, mock_youtube_credentials):
     """Create a PipelineConfig for testing."""
-    from VideoAutomation.automation.config import PipelineConfig, YouTubeConfig
+    from config import PipelineConfig, YouTubeConfig
 
     config = PipelineConfig(
         work_dir=work_dir,

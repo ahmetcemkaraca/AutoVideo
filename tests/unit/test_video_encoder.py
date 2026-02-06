@@ -16,7 +16,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch, call
 from video_renderer.video import VideoEncoder, encode_parallel
-from video_renderer.config import CodecConfig, ColorConfig, CODEC_H264, CODEC_H265, COLOR_BT709
+from config import CodecConfig, ColorConfig, CODEC_H264, CODEC_H265, COLOR_BT709
 from video_renderer.ffmpeg import FFmpegProgress, VideoInfo
 
 

@@ -45,7 +45,7 @@ from .errors import (
 from video_renderer.ffmpeg import FFmpegRunner
 from video_renderer.video import VideoEncoder
 from video_renderer.audio import AudioProcessor, mux_video_audio
-from video_renderer.config import get_best_encoder, COLOR_BT709
+from config import get_best_encoder, COLOR_BT709
 
 logger = logging.getLogger(__name__)
 

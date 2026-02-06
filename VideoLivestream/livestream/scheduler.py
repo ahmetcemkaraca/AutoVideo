@@ -15,7 +15,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from rich.table import Table
 from rich import box
 
-from .config import GlobalConfig, VideoSet, PlaylistConfig
+from config import GlobalConfig, VideoSet, PlaylistConfig
 from .state import StateManager
 from .mixer import AudioMixer, create_looped_concat_file, build_segment_stream_args
 from .streamer import StreamManager, StreamStatus
