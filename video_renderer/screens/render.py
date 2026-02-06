@@ -36,7 +36,7 @@ class RenderStep:
 
 
 class RenderScreen(Screen):
-    """Screen showing render progress."""
+    """Screen showing render progress with unified mode support."""
 
     BINDINGS = [
         ("escape", "cancel", "Iptal"),
@@ -56,8 +56,12 @@ class RenderScreen(Screen):
         self.error_message: Optional[str] = None
         self.render_worker: Optional[Worker] = None
 
-        # Ramtest mode support
-        self.ramtest_mode = getattr(self.app, "ramtest_mode", False)
+        # Unified mode support
+        self.app_mode = getattr(self.app, "mode", "standard")
+        self.mode_config = getattr(self.app, "mode_config", None)
+
+        # Legacy ramtest_mode support (backward compatibility)
+        self.ramtest_mode = self.app_mode in ["ramtest", "ramdisk"]
         self.ramtest_config = getattr(self.app, "ramtest_config", None)
 
         # Memory tracking
@@ -65,16 +69,25 @@ class RenderScreen(Screen):
         self._last_memory_update = 0
 
     def compose(self) -> ComposeResult:
-        mode_indicator = " [RAM]" if self.ramtest_mode else ""
+        # Mode indicator
+        mode_indicators = {
+            "standard": "",
+            "ramtest": " [RAM]",
+            "ramdisk": " [RAMDisk]",
+            "high_vram": " [VRAM]"
+        }
+        mode_indicator = mode_indicators.get(self.app_mode, "")
+
         yield Container(
             Static(f"🎬 Render Islemi{mode_indicator}", classes="title"),
             Static("", id="status_text", classes="subtitle"),
             classes="container",
         )
 
-        # Memory info panel (only in ramtest mode)
-        if self.ramtest_mode:
-            with Container(classes="panel"):
+        # Memory info panel (for ramtest, ramdisk, high_vram modes)
+        if self.app_mode in ["ramtest", "ramdisk", "high_vram"]:
+            panel_class = "memory-panel" if self.app_mode == "high_vram" else "panel"
+            with Container(classes=panel_class):
                 yield Static("💾 Memory Usage", classes="panel-title")
                 yield Static("RAM: --- | VRAM: ---", id="memory_info", classes="info-text")
 
@@ -98,16 +111,36 @@ class RenderScreen(Screen):
         """Start render when mounted."""
         self.is_running = True
 
-        mode_text = " (RAM-Optimized)" if self.ramtest_mode else ""
+        # Mode-specific startup message
+        mode_messages = {
+            "standard": "",
+            "ramtest": " (RAM-Optimized)",
+            "ramdisk": " (RAM Disk)",
+            "high_vram": " (High VRAM)"
+        }
+        mode_text = mode_messages.get(self.app_mode, "")
         self._update_status(f"Render baslatiliyor{mode_text}...")
 
-        if self.ramtest_mode and self.ramtest_config:
+        # Log mode configuration
+        if self.mode_config and self.app_mode in ["ramtest", "ramdisk", "high_vram"]:
             from ..config import get_ramdisk_path
-            ramdisk = get_ramdisk_path()
-            if ramdisk:
-                self._log(f"✓ RAM Disk aktif: {ramdisk}")
+
+            if self.app_mode == "high_vram":
+                self._log("✓ High VRAM modu aktif")
+                self._log(f"  - GPU buffer artirildi")
             else:
-                self._log("ℹ️  RAM Disk mevcut degil (disk kullaniliyor)")
+                if self.mode_config.use_ramdisk:
+                    ramdisk = get_ramdisk_path()
+                    if ramdisk:
+                        self._log(f"✓ RAM Disk aktif: {ramdisk}")
+                    else:
+                        self._log("ℹ️  RAM Disk mevcut degil (disk kullaniliyor)")
+
+                if self.mode_config.high_vram:
+                    self._log("✓ High VRAM modu aktif")
+
+                if self.mode_config.chunk_long_videos:
+                    self._log("✓ Video parcalama aktif (2 saatlik chunk'lar)")
 
         # Start render in worker thread
         self.render_worker = self.run_worker(self._run_render, thread=True)
@@ -120,8 +153,8 @@ class RenderScreen(Screen):
             pass
 
     def _update_memory_info(self):
-        """Update memory usage information (ramtest mode only)."""
-        if not self.ramtest_mode:
+        """Update memory usage information (for ramtest, ramdisk, high_vram modes)."""
+        if self.app_mode not in ["ramtest", "ramdisk", "high_vram"]:
             return
 
         current_time = time.time()
@@ -140,22 +173,35 @@ class RenderScreen(Screen):
 
             # Try to get GPU memory (nvidia-smi)
             vram_mb = 0
+            vram_percent = 0
             try:
                 import subprocess
-                result = subprocess.run(
+                # Get used memory
+                result_used = subprocess.run(
                     ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
                     capture_output=True, text=True, timeout=1
                 )
-                if result.returncode == 0:
-                    vram_mb = int(result.stdout.strip().split('\n')[0])
-            except:
+                # Get total memory
+                result_total = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=1
+                )
+                if result_used.returncode == 0 and result_total.returncode == 0:
+                    vram_mb = int(result_used.stdout.strip().split('\n')[0])
+                    vram_total_mb = int(result_total.stdout.strip().split('\n')[0])
+                    vram_percent = (vram_mb / vram_total_mb) * 100
+            except Exception:
                 pass
 
-            memory_text = f"RAM: {ram_mb:.0f}MB ({ram_percent:.1f}%) | VRAM: {vram_mb}MB"
+            # Format memory text based on mode
+            if self.app_mode == "high_vram":
+                memory_text = f"RAM: {ram_mb:.0f}MB ({ram_percent:.1f}%) | VRAM: {vram_mb}MB ({vram_percent:.1f}%)"
+            else:
+                memory_text = f"RAM: {ram_mb:.0f}MB ({ram_percent:.1f}%) | VRAM: {vram_mb}MB"
 
             try:
                 self.query_one("#memory_info", Static).update(memory_text)
-            except:
+            except Exception:
                 pass
         except Exception as e:
             pass  # Silently fail memory tracking

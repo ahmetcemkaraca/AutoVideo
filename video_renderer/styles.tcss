@@ -15,6 +15,11 @@ $surface-light: #252540;
 $text: #e0e0e0;
 $muted: #888888;
 
+/* Mode-specific colors */
+$ram-color: #ff6600;
+$ramdisk-color: #ff9900;
+$vram-color: #00ff66;
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    App Container
    ═══════════════════════════════════════════════════════════════════════════════ */
@@ -71,6 +76,24 @@ Footer {
     text-style: bold;
     text-align: center;
     padding: 0 0 1 0;
+}
+
+/* Mode-specific panel styles */
+.mode-panel {
+    background: $surface-light;
+    border: round $ram-color;
+}
+
+.mode-option {
+    padding: 0 1;
+    margin: 0 0;
+}
+
+.memory-panel {
+    background: $surface-light;
+    border: round $vram-color;
+    padding: 1 2;
+    margin: 1 2;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

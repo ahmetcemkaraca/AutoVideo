@@ -1448,7 +1448,7 @@ def run_interactive() -> int:
 def main() -> int:
     """Main entry point with interactive loop."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Video Renderer - Intro+Loop video birlestirme ve ses miksaji",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1458,106 +1458,133 @@ Ornekler:
   python -m video_renderer --version    # Versiyon goster
   python -m video_renderer --list-hw    # HW encoder'lari listele
   python -m video_renderer --resume     # Kaldigi yerden devam et
+  python -m video_renderer --tui        # TUI arayuzunu baslat
+  python -m video_renderer --tui --rm   # TUI + RAM-optimizasyon modu
         """
     )
-    
+
     parser.add_argument(
         "--version", "-v",
         action="version",
         version=f"Video Renderer {__version__}"
     )
-    
+
     parser.add_argument(
         "--list-hw",
         action="store_true",
         help="Kullanilabilir hardware encoder'lari listele"
     )
-    
+
     parser.add_argument(
         "--resume", "-r",
         action="store_true",
         help="Son session'dan kaldigi yerden devam et"
     )
-    
+
     parser.add_argument(
         "--no-loop",
         action="store_true",
         help="Hata durumunda donguye girmeden cik"
     )
-    
+
     parser.add_argument(
         "--tui",
         action="store_true",
         help="Yeni Textual TUI arayuzunu kullan"
     )
-    
+
     parser.add_argument(
         "--batch",
         action="store_true",
         help="Smart Batch modu - Otomatik intro/loop ciftlerini tespit et ve sirali render yap"
     )
 
-    parser.add_argument(
+    # Unified render mode flags
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--rm", "--ramtest",
         action="store_true",
-        help="RAM-optimizasyon modu (Ramtest) - tmpfs ve yüksek VRAM优化"
+        dest="ramtest",
+        help="RAM-optimizasyon modu (Ramtest) - tmpfs ve yüksek VRAM optimize"
     )
-    
+    mode_group.add_argument(
+        "--ramdisk",
+        action="store_true",
+        help="RAM Disk modu - Sadece RAM disk kullanimi"
+    )
+    mode_group.add_argument(
+        "--high-vram",
+        action="store_true",
+        help="High VRAM modu - Yüksek GPU bellek optimizasyonu"
+    )
+
     args = parser.parse_args()
 
-    # Set ramtest mode globally if flag is set
-    import sys
-    if args.rm:
-        sys.modules['video_renderer'].RAMTEST_MODE = True
-        from .config import RamTestConfig
-        # Configure ramtest
-        ramtest_cfg = RamTestConfig(enabled=True, use_ramdisk=True, high_vram=True)
-        print("[RAMTEST] RAM-optimizasyon modu aktif:")
+    # Determine unified mode
+    mode: str = "standard"
+    mode_info = ""
+
+    if args.ramtest:
+        mode = "ramtest"
+        mode_info = "[RAMTEST] RAM-optimizasyon modu aktif"
+    elif args.ramdisk:
+        mode = "ramdisk"
+        mode_info = "[RAMDISK] RAM disk modu aktif"
+    elif args.high_vram:
+        mode = "high_vram"
+        mode_info = "[HIGHVRAM] Yüksek VRAM modu aktif"
+
+    # Print mode info
+    if mode != "standard":
+        print(mode_info)
+        from .config import RamTestConfig, get_ramdisk_path
+        ramtest_cfg = RamTestConfig(enabled=True, use_ramdisk=(mode in ["ramtest", "ramdisk"]))
         print(f"  - RAM Disk: {ramtest_cfg.use_ramdisk}")
         print(f"  - High VRAM: {ramtest_cfg.high_vram}")
-        from .config import get_ramdisk_path
-        ramdisk = get_ramdisk_path()
-        if ramdisk:
-            print(f"  - RAM Disk Path: {ramdisk}")
-        else:
-            print(f"  - RAM Disk: Not available (using disk tmp)")
+        if ramtest_cfg.use_ramdisk:
+            ramdisk = get_ramdisk_path()
+            if ramdisk:
+                print(f"  - RAM Disk Path: {ramdisk}")
+            else:
+                print(f"  - RAM Disk: Not available (using disk tmp)")
 
+    # List hardware encoders
     if args.list_hw:
         print_header()
         console.print("[header]Hardware Encoders:[/]\n")
-        
+
         encoders = detect_available_encoders()
         for name, available in encoders.items():
             status = "[success]✓ Mevcut[/]" if available else "[muted]✗ Yok[/]"
             console.print(f"  {name}: {status}")
-        
+
         return 0
-    
+
     # Launch Textual TUI if requested
     if args.tui:
         from .app import run_tui
-        return run_tui(ramtest_mode=args.rm)
-    
+        return run_tui(mode=mode)
+
     # Smart Batch mode
     if args.batch:
         return run_batch()
-    
+
     # Direct resume mode
     if args.resume:
         result = run_resume()
         if result == 0 or args.no_loop:
             return result
         # Fall through to main loop on error
-    
+
     # Main application loop
     base = Path.cwd()
     tmp_dir = base / "tmp"
     session_json = tmp_dir / "last_session.json"
-    
+
     while True:
         try:
             print_header()
-            
+
             # Check for existing session on startup
             if session_json.exists():
                 try:
@@ -1565,7 +1592,7 @@ Ornekler:
                     console.print()
                     print_info(f"Onceki session bulundu: {session.get('ts', 'unknown')}")
                     print_info(f"Hedef: {Path(session.get('out', '')).name}")
-                    
+
                     choice = ask_choice(
                         "Ne yapmak istersiniz?",
                         [
@@ -1575,7 +1602,7 @@ Ornekler:
                         ],
                         1
                     )
-                    
+
                     if choice == 1:
                         result = run_resume()
                         if result == 0:
@@ -1592,7 +1619,7 @@ Ornekler:
                         else:
                             # Error occurred - will be handled below
                             raise Exception("Resume sirasinda hata olustu")
-                    
+
                     elif choice == 2:
                         # Delete old session and start fresh
                         session_json.unlink(missing_ok=True)
@@ -1601,16 +1628,16 @@ Ornekler:
                             f.unlink(missing_ok=True)
                         for f in tmp_dir.glob("*.w64"):
                             f.unlink(missing_ok=True)
-                    
+
                     elif choice == 3:
                         return 0
-                        
+
                 except json.JSONDecodeError:
                     session_json.unlink(missing_ok=True)
-            
+
             # Run interactive wizard
             result = run_interactive()
-            
+
             if result == 0:
                 # Success
                 console.print()
@@ -1622,27 +1649,27 @@ Ornekler:
                 if next_choice == 2:
                     return 0
                 continue
-            
+
             elif result == 130:
                 # Ctrl+C
                 return 130
-            
+
             else:
                 # Error occurred
                 raise Exception(f"Render hatasi (kod: {result})")
-        
+
         except KeyboardInterrupt:
             console.print()
             print_warning("Kullanici tarafindan iptal edildi.")
             return 130
-        
+
         except Exception as e:
             console.print()
             print_error(f"Hata: {e}")
-            
+
             if args.no_loop:
                 return 4
-            
+
             # Offer options instead of exiting
             console.print()
             choice = ask_choice(
@@ -1654,7 +1681,7 @@ Ornekler:
                 ],
                 1
             )
-            
+
             if choice == 1:
                 continue  # Will check for session and resume
             elif choice == 2:
