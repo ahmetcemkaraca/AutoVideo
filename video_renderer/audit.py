@@ -17,6 +17,16 @@ import threading
 
 logger = logging.getLogger(__name__)
 
+# Import sensitive data filter
+try:
+    from video_renderer.log_filters import SensitiveDataFilter
+except ImportError:
+    # Fallback if log_filters is not available
+    class SensitiveDataFilter(logging.Filter):
+        """Fallback filter implementation."""
+        def filter(self, record):
+            return True
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Audit Event Types
@@ -109,17 +119,20 @@ class AuditLogger:
         self,
         log_dir: Optional[Path] = None,
         app_name: str = "video_renderer",
-        enable_console: bool = True
+        enable_console: bool = True,
+        enable_sensitive_filter: bool = True
     ):
         """
         Args:
             log_dir: Log dizini
             app_name: Uygulama adı
             enable_console: Konsol loglaması açık mı
+            enable_sensitive_filter: Hassas veri filtresi açık mı
         """
         self.log_dir = Path(log_dir) if log_dir else Path.cwd() / "logs"
         self.app_name = app_name
         self.enable_console = enable_console
+        self.enable_sensitive_filter = enable_sensitive_filter
         self._lock = threading.Lock()
 
         # Log dizinini oluştur
@@ -128,6 +141,14 @@ class AuditLogger:
         # Log dosyaları
         self.audit_log_file = self.log_dir / f"{app_name}_audit.log"
         self.security_log_file = self.log_dir / f"{app_name}_security.log"
+
+        # Setup sensitive data filter
+        self._sensitive_filter = None
+        if enable_sensitive_filter:
+            try:
+                self._sensitive_filter = SensitiveDataFilter()
+            except Exception:
+                self._sensitive_filter = None
 
     def log_event(
         self,
@@ -163,6 +184,21 @@ class AuditLogger:
         )
 
         with self._lock:
+            # Sanitize details if sensitive data filter is enabled
+            sanitized_details = details
+            if self._sensitive_filter:
+                # Convert details to string for filtering
+                details_str = json.dumps(details, ensure_ascii=False)
+                # Apply filter
+                sanitized_details_str = self._sensitive_filter._redact(details_str)
+                try:
+                    sanitized_details = json.loads(sanitized_details_str)
+                except json.JSONDecodeError:
+                    sanitized_details = details
+
+            # Update event with sanitized details
+            event.details = sanitized_details
+
             # JSON formatında logla
             log_line = json.dumps(event.to_dict(), ensure_ascii=False)
 
