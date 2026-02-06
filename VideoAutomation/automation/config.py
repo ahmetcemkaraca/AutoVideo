@@ -33,59 +33,31 @@ def get_env_optional(key: str, default: str = "") -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
-class JamendoConfig:
-    """Jamendo API configuration."""
-    api_key: str = ""
-    base_url: str = "https://api.jamendo.com/v3.0"
-    
-    # Search preferences
-    default_limit: int = 15
-    default_format: str = "mp32"  # mp31 (96kbps), mp32 (VBR ~192kbps)
-    
-    # Genres and moods to search
-    genres: List[str] = field(default_factory=lambda: [
-        "ambient", "classical", "electronic", "jazz", "lounge",
-        "chillout", "newage", "relaxing"
-    ])
-    
-    moods: List[str] = field(default_factory=lambda: [
-        "relaxing", "calm", "peaceful", "meditative", "sleep"
-    ])
-    
-    @classmethod
-    def from_env(cls) -> "JamendoConfig":
-        return cls(
-            api_key=get_env("JAMENDO_API_KEY", ""),
-        )
-
-
-@dataclass
 class YouTubeConfig:
     """YouTube API configuration."""
     client_secrets_file: str = "client_secrets.json"
     credentials_file: str = "youtube_credentials.json"
-    
+
     # Upload settings
     default_category: str = "10"  # Music category
     default_privacy: str = "public"  # public, private, unlisted
-    
+
     # Video metadata templates
-    title_template: str = "{duration} {mood} Music | {genre} | Relaxing Background"
-    description_template: str = """🎵 {duration} of {mood} {genre} music for relaxation, study, sleep, and meditation.
+    title_template: str = "{duration} {style} Music | {genre} | Relaxing Background"
+    description_template: str = """🎵 {duration} of {style} {genre} music for relaxation, study, sleep, and meditation.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎹 Music: Royalty-free from Jamendo
 📺 Subscribe for more relaxing content!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 #relaxingmusic #{genre} #ambient #sleepmusic #studymusic #meditation
 """
-    
+
     default_tags: List[str] = field(default_factory=lambda: [
         "relaxing music", "ambient", "sleep music", "study music",
         "meditation music", "peaceful", "calming", "background music"
     ])
-    
+
     @classmethod
     def from_env(cls) -> "YouTubeConfig":
         return cls(
@@ -106,22 +78,29 @@ class PipelineConfig:
     music_dir: Optional[Path] = None
     output_dir: Optional[Path] = None
     state_file: Optional[Path] = None
-    
+
     # Video settings
     intro_video: Optional[Path] = None
     loop_video: Optional[Path] = None
     target_duration: str = "08:00:00"  # HH:MM:SS
     codec: str = "av1"
-    
+
     # Pipeline settings
-    tracks_per_video: int = 12  # Number of tracks to download per video
     continuous_mode: bool = False  # Run continuously
     delay_between_videos: int = 300  # Seconds between video generations
-    
-    # API configs
-    jamendo: JamendoConfig = field(default_factory=JamendoConfig)
+
+    # Style and genre options (replaces Jamendo moods/genres)
+    styles: List[str] = field(default_factory=lambda: [
+        "relaxing", "calm", "peaceful", "meditative", "sleep"
+    ])
+    genres: List[str] = field(default_factory=lambda: [
+        "ambient", "classical", "electronic", "jazz", "lounge",
+        "chillout", "newage"
+    ])
+
+    # API config
     youtube: YouTubeConfig = field(default_factory=YouTubeConfig)
-    
+
     def __post_init__(self):
         if self.music_dir is None:
             self.music_dir = self.work_dir / "music"
@@ -129,36 +108,32 @@ class PipelineConfig:
             self.output_dir = self.work_dir / "output"
         if self.state_file is None:
             self.state_file = self.work_dir / "state.json"
-    
+
     @classmethod
     def from_file(cls, path: Path) -> "PipelineConfig":
         """Load config from JSON file."""
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        
+
         config = cls(
             work_dir=Path(data.get("work_dir", ".")),
             target_duration=data.get("target_duration", "08:00:00"),
             codec=data.get("codec", "av1"),
-            tracks_per_video=data.get("tracks_per_video", 12),
             continuous_mode=data.get("continuous_mode", False),
             delay_between_videos=data.get("delay_between_videos", 300),
         )
-        
+
         if "intro_video" in data:
             config.intro_video = Path(data["intro_video"])
         if "loop_video" in data:
             config.loop_video = Path(data["loop_video"])
-        
-        # Jamendo config
-        if "jamendo" in data:
-            j = data["jamendo"]
-            config.jamendo.api_key = j.get("api_key", "")
-            if "genres" in j:
-                config.jamendo.genres = j["genres"]
-            if "moods" in j:
-                config.jamendo.moods = j["moods"]
-        
+
+        # Style and genre config
+        if "styles" in data:
+            config.styles = data["styles"]
+        if "genres" in data:
+            config.genres = data["genres"]
+
         # YouTube config
         if "youtube" in data:
             y = data["youtube"]
@@ -169,23 +144,19 @@ class PipelineConfig:
                 config.youtube.description_template = y["description_template"]
             if "tags" in y:
                 config.youtube.default_tags = y["tags"]
-        
+
         return config
-    
+
     def save(self, path: Path):
         """Save config to JSON file."""
         data = {
             "work_dir": str(self.work_dir),
             "target_duration": self.target_duration,
             "codec": self.codec,
-            "tracks_per_video": self.tracks_per_video,
             "continuous_mode": self.continuous_mode,
             "delay_between_videos": self.delay_between_videos,
-            "jamendo": {
-                "api_key": self.jamendo.api_key,
-                "genres": self.jamendo.genres,
-                "moods": self.jamendo.moods,
-            },
+            "styles": self.styles,
+            "genres": self.genres,
             "youtube": {
                 "client_secrets_file": self.youtube.client_secrets_file,
                 "title_template": self.youtube.title_template,
@@ -193,12 +164,12 @@ class PipelineConfig:
                 "tags": self.youtube.default_tags,
             }
         }
-        
+
         if self.intro_video:
             data["intro_video"] = str(self.intro_video)
         if self.loop_video:
             data["loop_video"] = str(self.loop_video)
-        
+
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
@@ -213,18 +184,14 @@ DEFAULT_CONFIG_TEMPLATE = """{
   "loop_video": "loop.mp4",
   "target_duration": "08:00:00",
   "codec": "av1",
-  "tracks_per_video": 12,
   "continuous_mode": false,
   "delay_between_videos": 300,
-  "jamendo": {
-    "api_key": "YOUR_JAMENDO_API_KEY",
-    "genres": ["ambient", "classical", "electronic", "jazz", "chillout"],
-    "moods": ["relaxing", "calm", "peaceful"]
-  },
+  "styles": ["relaxing", "calm", "peaceful", "meditative"],
+  "genres": ["ambient", "classical", "electronic", "jazz", "chillout"],
   "youtube": {
     "client_secrets_file": "client_secrets.json",
-    "title_template": "{duration} {mood} Music | {genre} | Relaxing Background",
-    "description_template": "🎵 {duration} of {mood} {genre} music...",
+    "title_template": "{duration} {style} Music | {genre} | Relaxing Background",
+    "description_template": "🎵 {duration} of {style} {genre} music...",
     "tags": ["relaxing music", "ambient", "sleep music", "study music"]
   }
 }

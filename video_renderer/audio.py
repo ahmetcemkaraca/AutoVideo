@@ -177,6 +177,10 @@ class AudioProcessor:
         # Add 1 to ensure we have enough audio to cover the target duration
         repeat_count = int(total_seconds / total_track_duration) + 1
         
+        # DEBUG: Log music loop calculation
+        print(f"[DEBUG AUDIO] total_seconds={total_seconds}, track_duration={total_track_duration:.1f}s, repeat_count={repeat_count}")
+        print(f"[DEBUG AUDIO] Expected: {repeat_count} x {total_track_duration:.1f}s = {repeat_count * total_track_duration:.1f}s (trimmed to {total_seconds}s)")
+        
         # Create a repeated concat list (instead of using buggy -stream_loop)
         music_list = self.tmp_dir / "music_list.txt"
         repeated_tracks = tracks * repeat_count

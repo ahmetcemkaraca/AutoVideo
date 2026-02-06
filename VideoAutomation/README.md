@@ -1,8 +1,8 @@
 # Video Automation Pipeline
 
 Otomatik, kesintisiz video üretim sistemi:
-- 🎵 **Jamendo API** → Royalty-free müzik arama ve indirme
 - 🎬 **Video Renderer** → Intro+loop video oluşturma
+- 🎵 **Local Music** → Kendi müzik dosyalarınızı kullanın
 - 📤 **YouTube API** → Otomatik yükleme
 
 ## Kurulum
@@ -13,21 +13,17 @@ pip install rich requests google-api-python-client google-auth-oauthlib
 
 # Config oluştur
 python run_automation.py --init
+
+# Müzik dosyalarınızı music/ klasörüne ekleyin (MP3, WAV, FLAC)
 ```
 
-## API Kurulumu
+## YouTube API Kurulumu
 
-### 1. Jamendo API Key
-1. https://developer.jamendo.com adresine git
-2. "Apply" ile yeni uygulama oluştur
-3. API key'i `config.json` içine koy
-
-### 2. YouTube API
-1. https://console.cloud.google.com
-2. Yeni proje oluştur
-3. YouTube Data API v3 etkinleştir
+1. https://console.cloud.google.com adresine gidin
+2. Yeni proje oluşturun
+3. YouTube Data API v3'ü etkinleştirin
 4. Credentials → OAuth 2.0 Client ID (Desktop App)
-5. `client_secrets.json` indir ve bu klasöre koy
+5. `client_secrets.json` dosyasını indirin ve bu klasöre koyun
 
 ## Kullanım
 
@@ -58,13 +54,21 @@ VideoAutomation/
 ├── intro.mp4               # Video intro
 ├── loop.mp4                # Video loop
 ├── automation/             # Ana modüller
-│   ├── config.py
-│   ├── jamendo.py
-│   ├── youtube.py
-│   ├── state.py
-│   └── pipeline.py
+│   ├── config.py           # Configuration management
+│   ├── youtube.py          # YouTube upload automation
+│   ├── pipeline.py         # End-to-end automation orchestrator
+│   └── state.py            # State persistence
 ├── video_renderer/         # Render modülü
-├── music/                  # İndirilen müzikler
+├── music/                  # Müzik dosyalarınız (MP3/WAV/FLAC)
 ├── output/                 # Oluşturulan videolar
-└── state.json              # Kullanılan track'ler
+└── state.json              # Durum bilgisi
 ```
+
+## Konfigürasyon
+
+`config.json` dosyası ile şu ayarları yapabilirsiniz:
+- `styles`: Video stil etiketleri (örn: "relaxing", "calm", "meditative")
+- `genres`: Müzik türleri (örn: "ambient", "classical", "jazz")
+- `target_duration`: Hedef video süresi (örn: "08:00:00" = 8 saat)
+- `codec`: Video kodek (av1, h264, h265)
+- `youtube`: YouTube API ayarları ve metadata şablonları

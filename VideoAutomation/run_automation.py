@@ -4,10 +4,9 @@
 Video Automation - CLI Entry Point
 
 Automated video production pipeline:
-1. Search Jamendo for royalty-free music
-2. Download unused tracks
-3. Render video with intro+loop
-4. Upload to YouTube
+1. Use local music files from music directory
+2. Render video with intro+loop
+3. Upload to YouTube
 
 Usage:
     python run_automation.py --config config.json
@@ -33,34 +32,39 @@ def init_config(path: Path):
     if path.exists():
         console.print(f"[yellow]Config file already exists: {path}[/]")
         return
-    
+
     path.write_text(DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
     console.print(f"[green]✓ Created sample config: {path}[/]")
-    console.print("[dim]  Edit this file with your API keys and settings.[/]")
+    console.print("[dim]  Edit this file with your settings and add music files to the music/ directory.[/]")
 
 
 def validate_config(config: PipelineConfig) -> bool:
     """Validate configuration before running."""
     errors = []
-    
-    if not config.jamendo.api_key or config.jamendo.api_key == "YOUR_JAMENDO_API_KEY":
-        errors.append("Jamendo API key is not set")
-    
+
     if not Path(config.youtube.client_secrets_file).exists():
         errors.append(f"YouTube client secrets file not found: {config.youtube.client_secrets_file}")
-    
+
     if config.intro_video and not config.intro_video.exists():
         errors.append(f"Intro video not found: {config.intro_video}")
-    
+
     if config.loop_video and not config.loop_video.exists():
         errors.append(f"Loop video not found: {config.loop_video}")
-    
+
+    # Check music directory
+    if not config.music_dir.exists():
+        errors.append(f"Music directory not found: {config.music_dir}")
+    else:
+        music_files = list(config.music_dir.glob("*.mp3")) + list(config.music_dir.glob("*.wav")) + list(config.music_dir.glob("*.flac"))
+        if not music_files:
+            errors.append(f"No music files found in: {config.music_dir}")
+
     if errors:
         console.print("[bold red]Configuration errors:[/]")
         for err in errors:
             console.print(f"  [red]• {err}[/]")
         return False
-    
+
     return True
 
 
@@ -76,58 +80,58 @@ Examples:
   python run_automation.py --stats                   # Show statistics
         """
     )
-    
+
     parser.add_argument(
         "--config", "-f",
         type=Path,
         default=Path("config.json"),
         help="Path to configuration file"
     )
-    
+
     parser.add_argument(
         "--init",
         action="store_true",
         help="Create sample configuration file"
     )
-    
+
     parser.add_argument(
         "--continuous", "-c",
         action="store_true",
         help="Run continuously (loop forever)"
     )
-    
+
     parser.add_argument(
         "--stats",
         action="store_true",
         help="Show pipeline statistics"
     )
-    
+
     parser.add_argument(
         "--auth-youtube",
         action="store_true",
         help="Authenticate with YouTube (run once to setup)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Handle --init
     if args.init:
         print_banner()
         init_config(args.config)
         return 0
-    
+
     # Load config
     if not args.config.exists():
         console.print(f"[red]Config file not found: {args.config}[/]")
         console.print("[dim]Run with --init to create a sample config file.[/]")
         return 1
-    
+
     try:
         config = PipelineConfig.from_file(args.config)
     except Exception as e:
         console.print(f"[red]Error loading config: {e}[/]")
         return 1
-    
+
     # Handle --stats
     if args.stats:
         print_banner()
@@ -135,18 +139,18 @@ Examples:
         from automation.pipeline import print_stats
         print_stats(state)
         return 0
-    
+
     # Handle --auth-youtube
     if args.auth_youtube:
         print_banner()
         console.print("[cyan]🔐 Authenticating with YouTube...[/]")
-        
+
         from automation.youtube import YouTubeUploader
         uploader = YouTubeUploader(
             config.youtube.client_secrets_file,
             config.youtube.credentials_file
         )
-        
+
         try:
             uploader.authenticate()
             channel = uploader.get_channel_info()
@@ -157,11 +161,11 @@ Examples:
         except Exception as e:
             console.print(f"[red]Authentication failed: {e}[/]")
             return 1
-    
+
     # Validate config
     if not validate_config(config):
         return 1
-    
+
     # Run pipeline
     try:
         run_pipeline(config, continuous=args.continuous)
