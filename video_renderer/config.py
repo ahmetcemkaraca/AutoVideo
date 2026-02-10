@@ -65,14 +65,14 @@ class CodecConfig:
 
 # Software encoders
 CODEC_AV1 = CodecConfig(
-    name="AV1", encoder="libsvtav1", preset="6", crf=28, extra_args=["-g", "240"]
+    name="AV1", encoder="libsvtav1", preset="6", crf=34, extra_args=["-g", "240"]
 )
 
 CODEC_H264 = CodecConfig(
     name="H.264",
     encoder="libx264",
     preset="fast",
-    crf=20,
+    crf=26,  # Increased from 20 for smaller file size
     profile="high",
     level="4.2",
     extra_args=["-g", "240", "-tune", "film"],
@@ -82,7 +82,7 @@ CODEC_H265 = CodecConfig(
     name="H.265",
     encoder="libx265",
     preset="fast",
-    crf=23,
+    crf=28,  # Increased from 23
     extra_args=["-g", "240", "-tag:v", "hvc1"],
 )
 
@@ -91,13 +91,13 @@ CODEC_H264_NVENC = CodecConfig(
     name="H.264 (NVENC)",
     encoder="h264_nvenc",
     preset="p6",  # slower, better quality
-    crf=23,  # actually uses -cq for NVENC
+    crf=29,  # actually uses -cq for NVENC, increased from 23
     profile="high",
     extra_args=[
         "-rc",
         "vbr",
         "-cq",
-        "23",
+        "29",
         "-b:v",
         "0",
         "-spatial_aq",
@@ -117,13 +117,13 @@ CODEC_H265_NVENC = CodecConfig(
     name="H.265 (NVENC)",
     encoder="hevc_nvenc",
     preset="p6",
-    crf=26,
+    crf=32,  # Increased from 26
     profile="main",
     extra_args=[
         "-rc",
         "vbr",
         "-cq",
-        "26",
+        "32",
         "-b:v",
         "0",
         "-tag:v",
@@ -145,12 +145,12 @@ CODEC_AV1_NVENC = CodecConfig(
     name="AV1 (NVENC)",
     encoder="av1_nvenc",
     preset="p6",
-    crf=40,
+    crf=48,  # Increased from 40
     extra_args=[
         "-rc",
         "vbr",
         "-cq",
-        "40",
+        "48",
         "-b:v",
         "0",
         "-spatial_aq",
@@ -613,11 +613,11 @@ def get_nvenc_extra_args(codec_family: str = "av1", high_vram: bool = False) -> 
         ]
 
     if codec_family == "av1":
-        base_args.extend(["-cq", "30", "-b:v", "0"])
+        base_args.extend(["-cq", "48", "-b:v", "0"])
     elif codec_family == "h265":
-        base_args.extend(["-cq", "26", "-b:v", "0", "-tag:v", "hvc1"])
+        base_args.extend(["-cq", "32", "-b:v", "0", "-tag:v", "hvc1"])
     else:  # h264
-        base_args.extend(["-cq", "23", "-b:v", "0"])
+        base_args.extend(["-cq", "29", "-b:v", "0"])
 
     return base_args
 
