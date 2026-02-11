@@ -29,6 +29,10 @@ from rich import box
 
 from .ffmpeg import VideoInfo
 
+class BackNavigation(Exception):
+    """Raised when user wants to go back to previous step."""
+    pass
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Theme & Console
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -188,16 +192,31 @@ def print_video_info_panel(label: str, path: Path, info: VideoInfo):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def ask_text(prompt: str, default: Optional[str] = None) -> str:
+def ask_text(prompt: str, default: Optional[str] = None, allow_back: bool = True) -> str:
     """Ask for text input."""
-    return Prompt.ask(f"[highlight]?[/] {prompt}", default=default, console=console)
+    p_text = f"[highlight]?[/] {prompt}"
+    if allow_back:
+        p_text += " [dim](b=geri)[/]"
+    
+    val = Prompt.ask(p_text, default=default, console=console)
+    if allow_back and val.lower() == "b":
+        raise BackNavigation()
+    return val
 
 
-def ask_int(prompt: str, min_val: int, max_val: int, default: Optional[int] = None) -> int:
+def ask_int(prompt: str, min_val: int, max_val: int, default: Optional[int] = None, allow_back: bool = True) -> int:
     """Ask for integer input within range."""
+    p_text = f"[highlight]?[/] {prompt}"
+    if allow_back:
+        p_text += " [dim](b=geri)[/]"
+
     while True:
         try:
-            value = IntPrompt.ask(f"[highlight]?[/] {prompt}", default=default, console=console)
+            val_str = Prompt.ask(p_text, default=str(default) if default is not None else None, console=console)
+            if allow_back and val_str.lower() == "b":
+                raise BackNavigation()
+            
+            value = int(val_str)
             if value < min_val or value > max_val:
                 console.print(f"[error]Aralik: {min_val}-{max_val}[/]")
                 continue
@@ -211,10 +230,10 @@ def ask_confirm(prompt: str, default: bool = True) -> bool:
     return Confirm.ask(f"[highlight]?[/] {prompt}", default=default, console=console)
 
 
-def ask_choice(prompt: str, options: List[str], default: int = 1) -> int:
+def ask_choice(prompt: str, options: List[str], default: int = 1, allow_back: bool = True) -> int:
     """
     Ask user to choose from options.
-    Returns 1-based index.
+    Returns 1-based index OR raises BackNavigation.
     """
     console.print()
     for i, opt in enumerate(options, start=1):
@@ -223,11 +242,11 @@ def ask_choice(prompt: str, options: List[str], default: int = 1) -> int:
         console.print(f"  [{style}]{marker}[/] [value]{i})[/] {opt}")
     console.print()
 
-    return ask_int(prompt, 1, len(options), default)
+    return ask_int(prompt, 1, len(options), default, allow_back=allow_back)
 
 
 def ask_multiple_choice(
-    prompt: str, options: List[str], min_count: int = 1, max_count: Optional[int] = None
+    prompt: str, options: List[str], min_count: int = 1, max_count: Optional[int] = None, allow_back: bool = True
 ) -> List[int]:
     """
     Ask user to select multiple options.
@@ -244,11 +263,11 @@ def ask_multiple_choice(
     selected: List[int] = []
     used = set()
 
-    count = ask_int(f"Kac adet secilecek? ({min_count}-{max_count})", min_count, max_count)
+    count = ask_int(f"Kac adet secilecek? ({min_count}-{max_count})", min_count, max_count, allow_back=allow_back)
 
     for k in range(count):
         while True:
-            idx = ask_int(f"{k+1}/{count} secim", 1, len(options))
+            idx = ask_int(f"{k+1}/{count} secim", 1, len(options), allow_back=allow_back)
             if idx in used:
                 console.print("[warning]Bu zaten secildi.[/]")
                 continue
@@ -264,9 +283,9 @@ def ask_duration_components(default_hours: int = 8) -> int:
     console.print()
     print_info("Sureyi belirleyin:")
 
-    h = ask_int("Saat", 0, 999, default_hours)
-    m = ask_int("Dakika", 0, 59, 0)
-    s = ask_int("Saniye", 0, 59, 0)
+    h = ask_int("Saat", 0, 999, default_hours, allow_back=True)
+    m = ask_int("Dakika", 0, 59, 0, allow_back=True)
+    s = ask_int("Saniye", 0, 59, 0, allow_back=True)
 
     total = h * 3600 + m * 60 + s
     if total <= 0:

@@ -826,7 +826,7 @@ def configure_render_settings(
     hw_available = any(available_encoders.values())
 
     if config_mode_idx == 1:  # Basit
-        # Force Defaults: 1080p, 60fps, AV1, Lanczos
+        # Force Defaults: 1080p, 60fps, Native Codec (if possible), Lanczos
         print_info("Basit Mod: Otomatik analiz yapiliyor...")
 
         # Check source resolution to avoid unnecessary re-encode/resize
@@ -867,7 +867,27 @@ def configure_render_settings(
         if not smart_res_found:
             print_info("Varsayilan 1080p60 ayarlari uygulaniyor.")
 
-        codec_family = "av1"
+        # Codec Detection (Native/Passthrough attempt)
+        detected_codec = "av1" # Default fallback
+        
+        try:
+            ref_path = single_video_path if mode == "single" else intro_path
+            if ref_path and ref_path.exists():
+                info = probe_video(ref_path)
+                c_name = info.codec.lower()
+                
+                if "av1" in c_name:
+                    detected_codec = "av1"
+                elif "hevc" in c_name or "h265" in c_name:
+                    detected_codec = "h265"
+                elif "h264" in c_name or "avc" in c_name:
+                    detected_codec = "h264"
+                
+                print_info(f"Kaynak codec: {c_name} -> Hedef: {detected_codec}")
+        except Exception as e:
+            print_warning(f"Codec tespit hatasi: {e}")
+
+        codec_family = detected_codec
         # Fallback if AV1 HW invalid? get_best_encoder handles it.
         codec_config = get_best_encoder(codec_family)
         print_info(f"Encoder: {codec_config.name}")
@@ -1505,15 +1525,16 @@ def run_batch_wizard() -> int:
     # To keep "Smart Batch" smart, we usually standardize output format, but input might vary.
     # Let's ask for a common target format first.
     
-    (
-        codec_family,
-        codec_config,
-        target_width,
-        target_height,
-        target_fps,
-        scale_algo,
-        audio_bitrate,
-    ) = configure_render_settings("intro_loop", None, None, None) # Dummy paths for config
+    console.print()
+    settings_mode = ask_choice(
+        "Ayarlar Modu", 
+        ["Otomatik / Native (Her video kendi codec/cozunurlugunu korur)", "Tek Tip (Tum videolari ayni formata cevir)"],
+        1
+    )
+    
+    global_config = None
+    if settings_mode == 2:
+        global_config = configure_render_settings("intro_loop", None, None, None) # Interactive config
 
     # Duration
     console.print()
@@ -1539,17 +1560,49 @@ def run_batch_wizard() -> int:
     for i, pair in enumerate(pairs, 1):
         console.print(f"\n[bold yellow]Is #{i}: {pair.name}[/]")
         
-        # Check Compatibility
-        check_video_compatibility(
-            "intro_loop", 
-            pair.intro, 
-            pair.loop, 
-            None, 
-            codec_config, 
-            target_width, 
-            target_height, 
-            target_fps
-        )
+        # Determine Settings for this job
+        if settings_mode == 1:
+            # Native Mode: Detect from intro
+            try:
+                info = probe_video(pair.intro)
+                
+                # Codec
+                c_name = info.codec.lower()
+                if "av1" in c_name: c_fam = "av1"
+                elif "hevc" in c_name or "h265" in c_name: c_fam = "h265"
+                else: c_fam = "h264"
+                
+                c_conf = get_best_encoder(c_fam)
+                
+                # Resolution/FPS
+                t_w, t_h = info.width, info.height
+                
+                # Parse FPS
+                try:
+                    if "/" in info.fps:
+                        num, den = info.fps.split("/")
+                        t_fps = float(num) / float(den)
+                    else:
+                        t_fps = float(info.fps)
+                except:
+                    t_fps = 30.0
+                
+                s_algo = "lanczos"
+                bitrate = "192k"
+                
+                job_config = (c_fam, c_conf, t_w, t_h, t_fps, s_algo, bitrate)
+                console.print(f"  [cyan]Native Ayarlar:[/][dim] {c_fam.upper()} | {t_w}x{t_h} @ {t_fps:.2f}fps[/]")
+                
+            except Exception as e:
+                print_error(f"Video analiz hatasi: {e}")
+                # Fallback to defaults
+                c_conf = get_best_encoder("h264")
+                job_config = ("h264", c_conf, 1920, 1080, 30.0, "lanczos", "192k")
+        else:
+            # Global Settings
+            job_config = global_config
+
+        (codec_family, codec_config, target_width, target_height, target_fps, scale_algo, audio_bitrate) = job_config
 
         # Random Music Selection
         # User requested random unique music.
@@ -1588,6 +1641,7 @@ def run_batch_wizard() -> int:
 
         jobs.append({
             "pair": pair,
+            "config": job_config,
             "tracks": job_tracks,
             "bgs": job_bgs,
             "out": out_path,
@@ -1604,6 +1658,8 @@ def run_batch_wizard() -> int:
     def process_job(job):
         jid = job["id"]
         pair = job["pair"]
+        (c_fam, c_conf, t_w, t_h, t_fps, s_algo, a_bit) = job["config"]
+        
         # Unique tmp dir for isolation
         job_tmp = tmp_dir / f"batch_job_{jid}"
         job_tmp.mkdir(exist_ok=True)
@@ -1622,12 +1678,12 @@ def run_batch_wizard() -> int:
                 pair.intro,
                 pair.loop,
                 None,
-                codec_config,
-                target_width,
-                target_height,
-                target_fps,
-                scale_algo,
-                audio_bitrate,
+                c_conf,
+                t_w,
+                t_h,
+                t_fps,
+                s_algo,
+                a_bit,
                 total_seconds,
                 job["tracks"],
                 job["bgs"],
