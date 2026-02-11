@@ -30,6 +30,8 @@ from config import (
 )
 from .ffmpeg import FFmpegRunner, probe_video, get_duration, VideoInfo
 from .video import VideoEncoder, encode_parallel
+from .batch import SmartBatchDetector, BatchPair
+from concurrent.futures import ThreadPoolExecutor
 from .audio import AudioProcessor, is_background_file, parse_background_gain_db, mux_video_audio
 from .tui import (
     console,
@@ -1195,7 +1197,7 @@ def configure_drive_upload() -> Tuple[bool, str]:
     drive_enabled = False
     drive_folder_id = ""
 
-    if ask_confirm("Render bitince videoyu Google Drive'a yedeklemek ister misiniz?"):
+    if ask_confirm("Render bitince videoyu Google Drive'a yedeklemek ister misiniz?", default=False):
         drive_enabled = True
         drive_folder_id = ask_text("Drive Klasor ID (Bos = Root)", "")
 
@@ -1277,6 +1279,7 @@ def render_pipeline(
     out_path: Path,
     run_log: Path,
     tmp_dir: Path,
+    suppress_progress: bool = False,
 ) -> Tuple[Path, dict]:
     """
     Execute the render pipeline.
@@ -1294,7 +1297,17 @@ def render_pipeline(
     runner = FFmpegRunner(run_log)
     audio_processor = AudioProcessor(runner, tmp_dir)
 
-    with MultiStepProgress(steps) as progress:
+    audio_processor = AudioProcessor(runner, tmp_dir)
+
+    class DummyProgress:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def update(self, *args, **kwargs): pass
+        def complete_step(self, *args, **kwargs): pass
+
+    progress_ctx = MultiStepProgress(steps) if not suppress_progress else DummyProgress()
+    
+    with progress_ctx as progress:
 
         encoder = VideoEncoder(
             runner=runner,
@@ -1445,6 +1458,209 @@ def render_pipeline(
         pass  # Keep original name if rename fails
 
     return out_path, step_times
+
+
+def run_batch_wizard() -> int:
+    """
+    Interaktif CLI Batch Modu (Wizard).
+    - Otomatik pair tespiti
+    - Random muzik secimi
+    - Background ses secimi
+    - Codec/Resolution kontrolu
+    - Concurrent (es zamanli) render
+    """
+    base = Path.cwd()
+    music_dir = base / "music"
+    tmp_dir = base / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    print_header()
+    console.print("[bold cyan]BATCH RENDER MODU[/]")
+    console.print()
+
+    # 1. Detection
+    print_info("Video dosyalari taraniyor...")
+    detector = SmartBatchDetector(base)
+    pairs = detector.scan()
+
+    if not pairs:
+        print_error("Hicbir intro/loop cifti bulunamadi!")
+        return 1
+
+    console.print(f"[green]{len(pairs)} adet video cifti tespit edildi.[/]")
+    for p in pairs:
+        console.print(f"  - {p.name} ([dim]{p.intro.name} + {p.loop.name}[/])")
+    console.print()
+
+    if not ask_confirm("Bu listeyi islemek istiyor musunuz?", default=True):
+        print_warning("Iptal edildi.")
+        return 0
+
+    # 2. Global Settings
+    # Codec/Duration/Audio selection for ALL or INDIVIDUAL?
+    # User said: "her video için birbirinden farklı karışık müzikler ekleyelim" -> Random per video
+    # "her video özelinde bg sesleri seçebilelim" -> Ask per video
+    
+    # We need common visual settings (Codec/Resolution/FPS) usually, OR per video.
+    # To keep "Smart Batch" smart, we usually standardize output format, but input might vary.
+    # Let's ask for a common target format first.
+    
+    (
+        codec_family,
+        codec_config,
+        target_width,
+        target_height,
+        target_fps,
+        scale_algo,
+        audio_bitrate,
+    ) = configure_render_settings("intro_loop", None, None, None) # Dummy paths for config
+
+    # Duration
+    console.print()
+    total_seconds = ask_duration_components(default_hours=8)
+    dur_str = format_duration(total_seconds)
+
+    # Concurrency
+    console.print()
+    max_workers = ask_choice("Ayni anda kac video islensin?", ["1 (Sirali)", "2 (Es zamanli)", "3 (Es zamanli)"], 3)
+    
+    # Per-Job Configuration
+    jobs = []
+    
+    # Prepare Audio Sources
+    all_tracks, all_bgs = list_audio_files(music_dir)
+    if not all_tracks:
+        print_error("Music klasorunde track yok!")
+        return 1
+
+    console.print()
+    print_info("Isler hazirlaniyor...")
+
+    for i, pair in enumerate(pairs, 1):
+        console.print(f"\n[bold yellow]Is #{i}: {pair.name}[/]")
+        
+        # Check Compatibility
+        check_video_compatibility(
+            "intro_loop", 
+            pair.intro, 
+            pair.loop, 
+            None, 
+            codec_config, 
+            target_width, 
+            target_height, 
+            target_fps
+        )
+
+        # Random Music Selection
+        # User requested random unique music.
+        # We'll pick a random subset of tracks.
+        import random
+        num_tracks = min(len(all_tracks), 10) # Pick up to 10 tracks randomly
+        job_tracks = random.sample(all_tracks, num_tracks)
+        console.print(f"  [cyan]Muzik:[/][dim] {len(job_tracks)} adet rastgele parca secildi.[/]")
+
+        # Background Selection
+        job_bgs = []
+        if all_bgs: 
+            use_bg = ask_choice(
+                f"'{pair.name}' icin background sesi?", 
+                ["Kullanma", "Rastgele Sec", "Listeden Sec"], 
+                2
+            )
+            if use_bg == 2:
+                bg = random.choice(all_bgs)
+                db = parse_background_gain_db(bg)
+                job_bgs.append((bg, db))
+                console.print(f"  [cyan]BG:[/][dim] {bg.name} ({db}dB) secildi.[/]")
+            elif use_bg == 3:
+                # Simple list selection logic here for CLI brevity
+                bg_names = [b.name for b in all_bgs]
+                idx = ask_choice("BG Sec", bg_names, 1)
+                bg = all_bgs[idx-1]
+                default_db = parse_background_gain_db(bg)
+                db = float(ask_text(f"  dB", str(default_db)))
+                job_bgs.append((bg, db))
+        
+        # Output Path
+        out_name = f"{pair.name}_{codec_family}_{dur_str}.mp4"
+        out_path = base / "output" / out_name
+        (base / "output").mkdir(exist_ok=True)
+
+        jobs.append({
+            "pair": pair,
+            "tracks": job_tracks,
+            "bgs": job_bgs,
+            "out": out_path,
+            "id": i
+        })
+
+    console.print()
+    if not ask_confirm(f"{len(jobs)} is kuyruga eklendi. Baslatilsin mi?", default=True):
+        return 0
+
+    # Execution
+    print_info(f"Islem basliyor... (Concurrency: {max_workers})")
+    
+    def process_job(job):
+        jid = job["id"]
+        pair = job["pair"]
+        # Unique tmp dir for isolation
+        job_tmp = tmp_dir / f"batch_job_{jid}"
+        job_tmp.mkdir(exist_ok=True)
+        job_log = job_tmp / "run.log"
+
+        try:
+            print_info(f"[Job {jid}] Basliyor: {pair.name}")
+            
+            # Standardize Audio (Skip prompt for batch, assume yes or use raw if possible)
+            # For batch, we probably shouldn't interactively ask to standardize.
+            # We'll skip standardization to save time/interaction or force it?
+            # Let's just use raw files to avoid complex interactive logic in thread.
+            
+            render_pipeline(
+                "intro_loop",
+                pair.intro,
+                pair.loop,
+                None,
+                codec_config,
+                target_width,
+                target_height,
+                target_fps,
+                scale_algo,
+                audio_bitrate,
+                total_seconds,
+                job["tracks"],
+                job["bgs"],
+                job["out"],
+                job_log,
+                job_tmp,
+                suppress_progress=True # Suppress bar to avoid thread Output mess
+            )
+            print_success(f"[Job {jid}] Tamamlandi: {pair.name}")
+            return True
+        except Exception as e:
+            print_error(f"[Job {jid}] Hata: {e}")
+            with open("batch_errors.log", "a") as f:
+                f.write(f"Job {jid} ({pair.name}) Error: {e}\n")
+            return False
+        finally:
+            # Cleanup job tmp
+            import shutil
+            try:
+                shutil.rmtree(job_tmp)
+            except:
+                pass
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(process_job, jobs))
+
+    success_count = sum(1 for r in results if r)
+    print_success(f"Batch tamamlandi. {success_count}/{len(jobs)} basarili.")
+    return 0
+
+
+def run_batch() -> int:
+    return run_batch_wizard()
 
 
 def handle_post_render_actions(
@@ -1913,10 +2129,14 @@ Ornekler:
                             next_choice = ask_choice(
                                 "Render tamamlandi! Ne yapmak istersiniz?",
                                 ["Yeni render baslat", "Cikis"],
-                                2,
+                                1,
                             )
                             if next_choice == 2:
+                                # Success cleanup
+                                session_json.unlink(missing_ok=True)
                                 return 0
+                            # cleanup for new render
+                            session_json.unlink(missing_ok=True)
                             continue  # Start new render
                         else:
                             # Error occurred - will be handled below
@@ -1944,10 +2164,12 @@ Ornekler:
                 # Success
                 console.print()
                 next_choice = ask_choice(
-                    "Render tamamlandi! Ne yapmak istersiniz?", ["Yeni render baslat", "Cikis"], 2
+                    "Render tamamlandi! Ne yapmak istersiniz?", ["Yeni render baslat", "Cikis"], 1
                 )
                 if next_choice == 2:
+                    session_json.unlink(missing_ok=True)
                     return 0
+                session_json.unlink(missing_ok=True)
                 continue
 
             elif result == 130:

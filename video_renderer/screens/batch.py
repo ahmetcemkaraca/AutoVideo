@@ -38,7 +38,7 @@ class BatchScreen(Screen):
         super().__init__(*args, **kwargs)
         # self.queue = BatchQueue()  <-- Removed, using app.queue
         self.is_processing = False
-        self.process_worker: Optional[Worker] = None
+        self.process_workers: list[Worker] = []
         self.uploader = DriveUploader()
         self.upload_threads: list[threading.Thread] = []
 
@@ -170,7 +170,28 @@ class BatchScreen(Screen):
             return
 
         self.is_processing = True
-        self.process_worker = self.run_worker(self._process_queue, thread=True)
+        self.process_workers = []
+        
+        # Start 3 concurrent workers
+        for i in range(3):
+            w = self.run_worker(self._process_queue, thread=True, group="batch_workers")
+            self.process_workers.append(w)
+
+        # Start monitor
+        self.run_worker(self._monitor_workers, thread=True)
+
+    async def _monitor_workers(self) -> None:
+        """Wait for all workers to finish."""
+        if not self.process_workers:
+            return
+
+        await self.app.workers.wait_for_group("batch_workers")
+        
+        self.is_processing = False
+        self.process_workers.clear()
+        self.call_from_thread(self._update_table)
+        self.call_from_thread(self._update_summary)
+        self.call_from_thread(self.notify, "Kuyruk isleme tamamlandi!")
 
     async def _process_queue(self) -> None:
         """Process all queued jobs sequentially."""
@@ -190,17 +211,19 @@ class BatchScreen(Screen):
             except Exception as e:
                 self.queue.fail_job(job.id, str(e))
 
-        self.is_processing = False
-        self.call_from_thread(self._update_table)
-        self.call_from_thread(self._update_summary)
-        self.call_from_thread(self.notify, "Kuyruk isleme tamamlandi!")
+            except Exception as e:
+                self.queue.fail_job(job.id, str(e))
+
+        # Individual worker finished (monitor handles global completion state)
 
     async def _run_single_job(self, job: RenderJob, worker: Worker) -> None:
         """Run a single render job."""
         self.queue.start_job(job.id)
 
         base = Path.cwd()
-        tmp_dir = base / "tmp"
+        # Unique tmp dir per job to avoid conflicts
+        tmp_dir = base / "tmp" / f"tui_job_{job.id}"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
         run_log = tmp_dir / "run_log.txt"
 
         runner = FFmpegRunner(run_log)
@@ -282,6 +305,13 @@ class BatchScreen(Screen):
         self.queue.complete_job(job.id)
         self.call_from_thread(self._update_table)
         self.call_from_thread(self._update_summary)
+
+        # Cleanup Job Tmp
+        import shutil
+        try:
+            shutil.rmtree(tmp_dir)
+        except:
+            pass
 
         # Trigger Upload (Background)
         if job.upload_enabled and job.output_path and job.output_path.exists():
