@@ -309,6 +309,7 @@ class FFmpegRunner:
         # Run with progress parsing
         process = subprocess.Popen(
             cmd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=True,

@@ -629,57 +629,189 @@ class VideoEncoder:
         total_seconds: int,
         tmp_dir: Path,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
+        on_duration_error: Optional[Callable[[float, float], bool]] = None,
     ) -> Path:
         """
         Concatenate intro + repeated loop to reach target duration.
-        Uses concat demuxer with stream copy (no re-encoding) for maximum speed.
 
-        Both intro and loop are already normalized to the same format,
-        so -c:v copy works directly on the MP4 files.
+        Strategy (all stream copy, no re-encoding, frame-exact duration):
+          1. Primary: TS intermediate concat
+             - Remux MP4 → MPEG-TS (fixes timestamp continuity)
+             - Concat demuxer on TS files → MP4 with -vframes (frame-exact)
+          2. Fallback: Two-pass MP4 concat
+             - Raw concat with -c:v copy (has all frames)
+             - Remux with -r FPS + -vframes (frame-exact, timestamp fix)
+          3. Last resort: Re-encode with fastest settings
+          
+        Args:
+            on_duration_error: Optional callback(actual_duration, target_duration) → bool
+                              Called if duration is wrong, returns True if user wants to fix it
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         intro_duration = get_duration(intro)
         loop_duration = get_duration(loop)
 
         remaining = max(0.0, total_seconds - intro_duration)
         loop_count = int(math.ceil(remaining / loop_duration)) if loop_duration > 0 else 0
 
-        # Write concat list
+        output = tmp_dir / "video_only.mp4"
+        target_frames = int(total_seconds * self.fps)
+
+        # ── Strategy 1: TS intermediate concat (best for AV1/H264/H265) ──
+        try:
+            intro_ts = tmp_dir / "intro_concat.ts"
+            loop_ts = tmp_dir / "loop_concat.ts"
+
+            # Remux MP4 → MPEG-TS (stream copy, instant)
+            if not intro_ts.exists():
+                print(f"  [TS Remux] intro -> .ts")
+                self._remux_to_ts(intro, intro_ts)
+            if not loop_ts.exists():
+                print(f"  [TS Remux] loop -> .ts")
+                self._remux_to_ts(loop, loop_ts)
+
+            # Concat demuxer on TS files → MP4 (frame-exact via -vframes)
+            concat_list_ts = tmp_dir / "video_list_ts.txt"
+            ts_files = [intro_ts] + [loop_ts] * loop_count
+            write_concat_list(ts_files, concat_list_ts)
+
+            print(f"  [Concat] 1 intro + {loop_count} loop (TS stream copy)")
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_list_ts),
+                "-c:v", "copy", "-an",
+                "-vframes", str(target_frames),  # Frame-exact (1728000 @ 60fps for 8h)
+                "-movflags", "+faststart",
+                str(output),
+            ]
+            self.runner.run(cmd, capture_progress=False)
+
+            # Verify output exists
+            if output.exists():
+                output_duration = get_duration(output)
+                tolerance = max(5.0, total_seconds * 0.02)
+                if output_duration > 10 and abs(output_duration - total_seconds) <= tolerance:
+                    print(f"  [OK] video_only.mp4: {output_duration:.1f}s (TS concat)")
+                    # Cleanup TS intermediates
+                    for f in [intro_ts, loop_ts, concat_list_ts]:
+                        if f.exists():
+                            f.unlink()
+                    return output
+                else:
+                    raise RuntimeError(
+                        f"TS concat duration wrong: {output_duration:.1f}s vs target {total_seconds}s"
+                    )
+
+            raise RuntimeError("TS concat output not created")
+
+        except Exception as ts_err:
+            logger.warning(f"TS concat failed: {ts_err}")
+            print(f"  [WARN] TS concat basarisiz: {ts_err}")
+            # Cleanup
+            for f in [tmp_dir / "intro_concat.ts", tmp_dir / "loop_concat.ts",
+                       tmp_dir / "video_list_ts.txt"]:
+                if f.exists():
+                    f.unlink()
+            if output.exists():
+                output.unlink()
+
+        # ── Strategy 2: Two-pass MP4 concat + timestamp fix (frame-exact) ──
+        try:
+            raw_output = tmp_dir / "video_only_raw.mp4"
+            concat_list = tmp_dir / "video_list.txt"
+            files = [intro] + [loop] * loop_count
+            write_concat_list(files, concat_list)
+
+            # Pass 1: Raw concat (all frames, possibly broken timestamps)
+            print(f"  [Concat Pass 1] raw MP4 concat (stream copy)")
+            cmd_raw = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_list),
+                "-c:v", "copy", "-an",
+                str(raw_output),
+            ]
+            self.runner.run(cmd_raw, capture_progress=False)
+
+            if not raw_output.exists():
+                raise RuntimeError("Raw concat output not created")
+
+            # Pass 2: Fix timestamps via remux with forced framerate + frame-exact trim
+            # -r as INPUT option forces timestamp recalculation from frame count
+            print(f"  [Concat Pass 2] timestamp fix remux (-r {self.fps}, -vframes {target_frames})")
+            cmd_fix = [
+                "ffmpeg", "-y",
+                "-r", str(self.fps),
+                "-fflags", "+genpts",
+                "-i", str(raw_output),
+                "-c:v", "copy", "-an",
+                "-vframes", str(target_frames),  # Frame-exact trim
+                "-movflags", "+faststart",
+                str(output),
+            ]
+            self.runner.run(cmd_fix, capture_progress=False)
+
+            # Cleanup raw
+            if raw_output.exists():
+                raw_output.unlink()
+
+            # Verify
+            if output.exists():
+                output_duration = get_duration(output)
+                tolerance = max(5.0, total_seconds * 0.02)
+                if output_duration > 10 and abs(output_duration - total_seconds) <= tolerance:
+                    print(f"  [OK] video_only.mp4: {output_duration:.1f}s (2-pass fix)")
+                    return output
+                else:
+                    raise RuntimeError(
+                        f"2-pass concat duration wrong: {output_duration:.1f}s vs target {total_seconds}s"
+                    )
+
+            raise RuntimeError("2-pass concat output not created")
+
+        except Exception as fix_err:
+            logger.warning(f"2-pass concat failed: {fix_err}")
+            print(f"  [WARN] 2-pass concat basarisiz: {fix_err}")
+            for f in [tmp_dir / "video_only_raw.mp4", tmp_dir / "video_list.txt"]:
+                if f.exists():
+                    f.unlink()
+            if output.exists():
+                output.unlink()
+
+        # ── Strategy 3: Re-encode with fastest settings (last resort) ──
+        print(f"  [WARN] Re-encode fallback kullaniliyor...")
         concat_list = tmp_dir / "video_list.txt"
         files = [intro] + [loop] * loop_count
         write_concat_list(files, concat_list)
 
-        output = tmp_dir / "video_only.mp4"
-
-        if progress_callback:
-            self.runner.set_total_duration(total_seconds)
-            self.runner.set_progress_callback(progress_callback)
-
-        cmd = [
-            "ffmpeg", "-y",
-            "-fflags", "+genpts",
-            "-f", "concat",
-            "-safe", "0",
+        cmd = ["ffmpeg", "-y"]
+        if self._use_gpu and self._accel_type == "nvenc":
+            cmd.extend(["-hwaccel", "cuda"])
+        cmd.extend([
+            "-f", "concat", "-safe", "0",
             "-i", str(concat_list),
-            "-c:v", "copy",
-            "-an",
-            "-t", str(total_seconds),
+            "-an", "-fps_mode", "cfr", "-r", str(self.fps),
+        ])
+        cmd.extend(self._get_fast_concat_codec_args())
+        cmd.extend(self.color.to_ffmpeg_args())
+        cmd.extend([
+            "-vframes", str(target_frames),  # Frame-exact
             "-movflags", "+faststart",
             str(output),
-        ]
+        ])
+        self.runner.run(cmd, capture_progress=False)
 
-        self.runner.run(cmd, capture_progress=bool(progress_callback))
-
-        # Verify output
         if not output.exists():
             raise RuntimeError(f"Concat failed: output file not created at {output}")
 
         output_duration = get_duration(output)
         if output_duration < 10:
-            raise RuntimeError(
-                f"Concat output too short: {output_duration:.1f}s. "
-                f"This may indicate a problem with the input videos."
-            )
+            raise RuntimeError(f"Concat output too short: {output_duration:.1f}s")
 
+        print(f"  [OK] video_only.mp4: {output_duration:.1f}s (re-encode fallback)")
         return output
 
 

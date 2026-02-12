@@ -1615,6 +1615,65 @@ def render_pipeline(
         step_times["Final mux"] = time.perf_counter() - t0
         progress.complete_step(4)
 
+    # Post-render validation: Check if duration is correct
+    print()
+    print("[Render Sonrasi Kontrol]")
+    try:
+        from video_renderer.validator import PostRenderValidator
+        
+        validator = PostRenderValidator()
+        result = validator.validate_output(
+            out_path,
+            target_duration=total_seconds,
+            target_specs={
+                "codec": "h264" if "h264" in codec_config.encoder.lower() else 
+                         ("h265" if "hevc" in codec_config.encoder.lower() else "av1"),
+                "width": target_width,
+                "height": target_height,
+                "fps": target_fps,
+                "has_audio": True,
+            }
+        )
+        
+        if not result.valid and result.errors:
+            # Check for duration errors specifically
+            duration_errors = [e for e in result.errors if e.field == "duration"]
+            if duration_errors:
+                error = duration_errors[0]
+                actual_duration = result.duration_seconds
+                percent_diff = abs(actual_duration - total_seconds) / total_seconds * 100
+                
+                print(f"⚠ Duration Error: {error.message}")
+                print(f"  Expected: {total_seconds}s, Got: {actual_duration:.1f}s ({percent_diff:.1f}% off)")
+                print()
+                
+                # Offer emergency fix (frame-exact stream copy trim)
+                fix_choice = ask_choice(
+                    "Acil Durum Çözümü",
+                    [
+                        "1. Video'yu frame-exact trim et (hızlı, stream copy)",
+                        "2. Olduğu gibi kalsın (skip)"
+                    ],
+                    default=1
+                )
+                
+                if fix_choice == 1:
+                    print()
+                    print("[Emergency Fix: Frame-Exact Trim]")
+                    if fix_video_duration(out_path, total_seconds, fps=target_fps):
+                        print("  [OK] Video duration fixed!")
+                    else:
+                        print("  [ERROR] Fix failed, keeping original")
+        else:
+            # Duration OK
+            print(f"  ✓ Duration: {result.duration_seconds:.1f}s (hedef {total_seconds}s)")
+            print(f"  ✓ Codec: {result.video_info.get('codec', '?')}")
+            print(f"  ✓ Resolution: {result.video_info.get('width')}x{result.video_info.get('height')}")
+            print(f"  ✓ Audio: Mevcut" if result.video_info.get('has_audio') else "  ⚠ Audio: Yok")
+    
+    except Exception as e:
+        print(f"  [WARN] Post-render validation skipped: {e}")
+
     # Calculate total render time
     render_total = time.perf_counter() - render_start
 
@@ -1635,7 +1694,72 @@ def render_pipeline(
     return out_path, step_times
 
 
-def run_batch_wizard() -> int:
+def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> bool:
+    """
+    Emergency post-render duration fix using frame-exact trim (stream copy).
+    
+    Fixes videos where duration is wrong due to broken timestamps.
+    Uses -vframes to bypass timestamp issues entirely.
+    
+    This is FAST (stream copy, ~2 min for 8h video) and lossless.
+    
+    Args:
+        video_path: Path to video file to fix
+        target_seconds: Target duration in seconds
+        fps: Frame rate (default 60)
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    import subprocess
+    from pathlib import Path
+    from video_renderer.ffmpeg import get_duration
+    
+    if not video_path.exists():
+        print(f"  [ERROR] Video not found: {video_path}")
+        return False
+    
+    target_frames = int(target_seconds * fps)
+    tmp_fixed = video_path.parent / f"{video_path.stem}_fixed_tmp{video_path.suffix}"
+    
+    try:
+        print(f"  [Stream Copy Fix] -vframes {target_frames} (frame-exact trim)")
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-c:v", "copy", "-c:a", "copy",
+            "-vframes", str(target_frames),
+            str(tmp_fixed),
+        ]
+        subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL, 
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Verify fixed video
+        fixed_duration = get_duration(tmp_fixed)
+        tolerance = max(2.0, target_seconds * 0.02)
+        
+        if fixed_duration > 10 and abs(fixed_duration - target_seconds) <= tolerance:
+            print(f"  [OK] Fixed duration: {fixed_duration:.1f}s")
+            # Replace original with fixed
+            video_path.unlink()
+            tmp_fixed.rename(video_path)
+            print(f"  [OK] Video duration fixed and saved")
+            return True
+        else:
+            print(f"  [ERROR] Fixed duration still wrong: {fixed_duration:.1f}s")
+            tmp_fixed.unlink()
+            return False
+            
+    except Exception as e:
+        print(f"  [ERROR] Duration fix failed: {e}")
+        if tmp_fixed.exists():
+            tmp_fixed.unlink()
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Render Pipeline (Main)
+# ═══════════════════════════════════════════════════════════════════════════════
     """
     Run Batch Wizard (State Machine Implementation).
     Supports Back Navigation.

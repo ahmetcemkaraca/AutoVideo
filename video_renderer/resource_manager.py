@@ -339,7 +339,11 @@ class ResourceManager:
             import sys
             if sys.platform != "win32":
                 import os
+                # Aggressive tty restoration
                 os.system("stty sane 2>/dev/null")
+                os.system("stty echo 2>/dev/null")
+                os.system("stty -Raw 2>/dev/null")
+                os.system("stty -cbreak 2>/dev/null")
         except Exception:
             pass
 
