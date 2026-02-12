@@ -257,7 +257,12 @@ class FFmpegRunner:
         self._log_command(cmd)
 
         if not capture_progress or not self._progress_callback:
-            return subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL)
+            result = subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL)
+            # Restore terminal echo after FFmpeg (which may corrupt tty settings)
+            import sys, os
+            if sys.platform != "win32":
+                os.system("stty sane 2>/dev/null")
+            return result
 
         # First attempt: Hardware encoding
         hw_stderr = None

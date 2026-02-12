@@ -662,14 +662,34 @@ class VideoValidator:
         # Validate duration
         if "duration_seconds" in specs:
             target_duration = specs["duration_seconds"]
-            if not self.check_duration(video_path, target_duration):
-                result.add_error(
-                    "duration",
-                    f"Duration mismatch: expected {target_duration}s, got {metadata.duration}s",
-                    f"Sure uyusmazligi: beklenen {target_duration}s, elde edilen {metadata.duration}s",
-                    field="duration",
-                    context={"expected": target_duration, "actual": metadata.duration}
-                )
+            actual_duration = metadata.duration
+            
+            # Stricter tolerance: 2% or 2 seconds (whichever is larger)
+            tolerance_seconds = max(2.0, target_duration * 0.02)
+            duration_diff = abs(actual_duration - target_duration)
+            
+            if duration_diff > tolerance_seconds:
+                # Large mismatch (>5%) is a hard error
+                percent_diff = (duration_diff / target_duration) * 100 if target_duration > 0 else 0
+                if percent_diff > 5.0:
+                    result.add_error(
+                        "duration",
+                        f"Duration mismatch: expected {target_duration}s, got {actual_duration}s ({percent_diff:.1f}% off). "
+                        f"Concat or encoding failed.",
+                        f"Sure uyusmazligi: beklenen {target_duration}s, elde edilen {actual_duration}s (%{percent_diff:.1f} farki). "
+                        f"Concat veya encoding basarisiz.",
+                        field="duration",
+                        context={"expected": target_duration, "actual": actual_duration, "percent_diff": percent_diff}
+                    )
+                else:
+                    # Small mismatch (2-5%) is a warning
+                    result.add_warning(
+                        "duration",
+                        f"Duration mismatch: expected {target_duration}s, got {actual_duration}s ({percent_diff:.1f}% off)",
+                        f"Sure uyusmazligi: beklenen {target_duration}s, elde edilen {actual_duration}s (%{percent_diff:.1f} farki)",
+                        field="duration",
+                        context={"expected": target_duration, "actual": actual_duration, "percent_diff": percent_diff}
+                    )
 
         # Validate resolution
         if "width" in specs and "height" in specs:
