@@ -322,103 +322,27 @@ class FFmpegSpeedColumn(ProgressColumn):
 
 class MultiStepProgress:
     """
-    Render pipeline progress display.
-    Shows last 20 lines of FFmpeg output + current stage at bottom.
+    Simple step tracker for rendering pipeline.
+    Prints step names only — FFmpeg shows its own raw terminal output.
     """
-
-    MAX_LINES = 20
 
     def __init__(self, steps: List[str]):
         self.steps = steps
-        self._current_step = -1
-        self._lines: List[str] = []
-        self._completed: set = set()
-        self._live = None
 
     def __enter__(self):
-        from rich.live import Live
-        from rich.text import Text as RichText
-
-        self._live = Live(
-            RichText(""),
-            console=console,
-            refresh_per_second=4,
-            transient=False,
-        )
-        self._live.__enter__()
         return self
 
     def __exit__(self, *args):
-        if self._live:
-            # Final render before exit
-            self._render()
-            self._live.__exit__(*args)
-
-    def _add_line(self, line: str):
-        """Add a line to the output buffer, keeping max MAX_LINES."""
-        self._lines.append(line)
-        if len(self._lines) > self.MAX_LINES:
-            self._lines = self._lines[-self.MAX_LINES:]
-
-    def _render(self):
-        """Render the current state to the Live display."""
-        if not self._live:
-            return
-
-        from rich.text import Text as RichText
-        from rich.panel import Panel
-
-        parts = []
-        # Show last 20 lines of output
-        for line in self._lines:
-            parts.append(line)
-
-        # Build stage indicator at the bottom
-        if self._current_step >= 0 and self._current_step < len(self.steps):
-            step_name = self.steps[self._current_step]
-            step_num = self._current_step + 1
-            total = len(self.steps)
-            stage_line = f"[bold cyan]>>> [{step_num}/{total}] {step_name}[/bold cyan]"
-        elif all(i in self._completed for i in range(len(self.steps))):
-            stage_line = "[bold green]>>> Tamamlandi[/bold green]"
-        else:
-            stage_line = ""
-
-        output_text = "\n".join(parts)
-        if stage_line:
-            output_text += "\n" + stage_line
-
-        self._live.update(
-            Panel(
-                output_text,
-                title="[bold cyan]Render[/bold cyan]",
-                border_style="cyan",
-                padding=(0, 1),
-            )
-        )
+        pass
 
     def update(self, step_index: int, percent: float, description: Optional[str] = None, **kwargs):
-        """Update progress for a specific step."""
-        if self._current_step != step_index:
-            self._current_step = step_index
-            step_name = self.steps[step_index] if step_index < len(self.steps) else "?"
-            self._add_line(f"[bold cyan]--- [{step_index+1}/{len(self.steps)}] {step_name} basladi ---[/bold cyan]")
-
-        # Build a concise status line from FFmpeg progress data
-        speed = kwargs.get("speed")
-        speed_str = f"{speed:.1f}x" if speed and speed <= 999 else (">999x" if speed and speed > 999 else "")
-        line = f"  %{percent:5.1f}"
-        if speed_str:
-            line += f"  speed={speed_str}"
-        self._add_line(line)
-        self._render()
+        """No-op. FFmpeg shows its own terminal output."""
+        pass
 
     def complete_step(self, step_index: int):
-        """Mark a step as complete."""
-        self._completed.add(step_index)
+        """Print step completion."""
         step_name = self.steps[step_index] if step_index < len(self.steps) else "?"
-        self._add_line(f"[bold green]✓ [{step_index+1}/{len(self.steps)}] {step_name} tamamlandi[/bold green]")
-        self._render()
+        console.print(f"\n[bold green]✓[/] [{step_index+1}/{len(self.steps)}] {step_name}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

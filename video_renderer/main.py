@@ -338,10 +338,10 @@ def run_resume() -> int:
             )
 
             def make_progress_callback(step_idx: int):
-                def callback(p):
-                    progress.update(step_idx, p.percent)
-
-                return callback
+                # Print step name, return None so FFmpeg shows raw terminal output
+                step_name = steps[step_idx] if step_idx < len(steps) else "?"
+                console.print(f"\n[bold cyan]▶ [{step_idx+1}/{len(steps)}] {step_name}[/bold cyan]")
+                return None
 
             # Step 1-3: Video processing
             if mode == "single" and single_video_path:
@@ -1473,10 +1473,10 @@ def render_pipeline(
         video_only_single = tmp_dir / f"video_only_single_{codec_config.codec_family}.mp4"
 
         def make_progress_callback(step_idx: int):
-            def callback(p):
-                progress.update(step_idx, p.percent, speed=p.speed)
-
-            return callback
+            # Print step name, return None so FFmpeg shows raw terminal output
+            step_name = steps[step_idx] if step_idx < len(steps) else "?"
+            console.print(f"\n[bold cyan]▶ [{step_idx+1}/{len(steps)}] {step_name}[/bold cyan]")
+            return None
 
         def apply_audio_extras(base_audio: Path) -> Path:
             audio_out = base_audio
