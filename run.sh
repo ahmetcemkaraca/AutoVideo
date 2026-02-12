@@ -1,6 +1,6 @@
 #!/bin/bash
 if [ -f "venv/bin/python3" ]; then
-    ./venv/bin/python3 run.py
+    ./venv/bin/python3 run.py "$@"
 else
-    python3 run.py
+    python3 run.py "$@"
 fi

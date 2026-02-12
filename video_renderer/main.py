@@ -34,7 +34,13 @@ from .ffmpeg import FFmpegRunner, probe_video, get_duration, VideoInfo
 from .video import VideoEncoder, encode_parallel
 from .batch import SmartBatchDetector, BatchPair
 from concurrent.futures import ThreadPoolExecutor
-from .audio import AudioProcessor, is_background_file, parse_background_gain_db, mux_video_audio
+from .audio import (
+    AudioProcessor,
+    is_background_file,
+    parse_background_gain_db,
+    mux_video_audio,
+    create_timed_effects_track,
+)
 from .validator import PostRenderValidator
 from .tui import (
     console,
@@ -280,6 +286,7 @@ def run_resume() -> int:
     chosen_tracks = [Path(p) for p in session["tracks"]]
     tracks_validated = session.get("tracks_validated", False)
     chosen_bgs = [(Path(b["path"]), b["db"]) for b in session.get("bgs", [])]
+    timed_effects = session.get("timed_effects", [])
     out_path = Path(session["out"])
     out_path = Path(session["out"])
     post_action = session.get("post_action", "keep")
@@ -293,6 +300,11 @@ def run_resume() -> int:
     audio_bitrate = config.get("audio_bitrate", "192k")
     drive_enabled = config.get("drive_enabled", False)
     drive_folder_id = config.get("drive_folder_id", "")
+    video_audio_mode = config.get("video_audio_mode", "keep")
+    keep_video_audio = video_audio_mode == "keep"
+    apply_audio_fades = bool(config.get("apply_audio_fades", True))
+    audio_fade_in_sec = float(config.get("audio_fade_in_sec", 2.0))
+    audio_fade_out_sec = float(config.get("audio_fade_out_sec", 4.0))
 
     print_success(f"Session bulundu: {session['ts']}")
     print_info(f"Hedef: {out_path.name} ({dur_str})")
@@ -405,6 +417,15 @@ def run_resume() -> int:
                 else:
                     audio_full = music_loop_file
 
+                if timed_effects:
+                    effects_track = create_timed_effects_track(
+                        runner, tmp_dir, timed_effects, total_seconds
+                    )
+                    if effects_track and effects_track.exists():
+                        audio_full = audio_processor.mix_tracks(
+                            audio_full, [effects_track], total_seconds
+                        )
+
                 progress.complete_step(3)
 
             # Step 5: Final mux (always run if output doesn't exist)
@@ -419,6 +440,10 @@ def run_resume() -> int:
                     out_path,
                     audio_bitrate=audio_bitrate,
                     progress_callback=make_progress_callback(4),
+                    keep_video_audio=keep_video_audio,
+                    apply_audio_fades=apply_audio_fades,
+                    fade_in_sec=audio_fade_in_sec,
+                    fade_out_sec=audio_fade_out_sec,
                 )
                 progress.complete_step(4)
 
@@ -1376,6 +1401,11 @@ def render_pipeline(
     out_path: Path,
     run_log: Path,
     tmp_dir: Path,
+    timed_effects: Optional[List[dict]] = None,
+    keep_video_audio: bool = True,
+    apply_audio_fades: bool = True,
+    audio_fade_in_sec: float = 2.0,
+    audio_fade_out_sec: float = 4.0,
     suppress_progress: bool = False,
 ) -> Tuple[Path, dict]:
     """
@@ -1392,8 +1422,6 @@ def render_pipeline(
     console.print()
 
     runner = FFmpegRunner(run_log)
-    audio_processor = AudioProcessor(runner, tmp_dir)
-
     audio_processor = AudioProcessor(runner, tmp_dir)
 
     class DummyProgress:
@@ -1424,6 +1452,22 @@ def render_pipeline(
 
             return callback
 
+        def apply_audio_extras(base_audio: Path) -> Path:
+            audio_out = base_audio
+
+            # Optional timed effects (ozel1)
+            if timed_effects:
+                effects_track = create_timed_effects_track(
+                    runner,
+                    tmp_dir,
+                    timed_effects,
+                    total_seconds,
+                )
+                if effects_track and effects_track.exists():
+                    audio_out = audio_processor.mix_tracks(audio_out, [effects_track], total_seconds)
+
+            return audio_out
+
         if mode == "single" and single_video_path:
             # Single video encode (no concat)
             t0 = time.perf_counter()
@@ -1451,6 +1495,8 @@ def render_pipeline(
                 audio_full = audio_processor.mix_tracks(music_loop, bg_processed, total_seconds)
             else:
                 audio_full = music_loop
+
+            audio_full = apply_audio_extras(audio_full)
 
             step_times["Audio isleme"] = time.perf_counter() - t0
             progress.complete_step(3)
@@ -1506,6 +1552,8 @@ def render_pipeline(
                 else:
                     audio_full = music_loop
 
+                audio_full = apply_audio_extras(audio_full)
+
                 audio_time = time.perf_counter() - t0
                 return audio_time
 
@@ -1533,6 +1581,10 @@ def render_pipeline(
             out_path,
             audio_bitrate=audio_bitrate,
             progress_callback=make_progress_callback(4),
+            keep_video_audio=keep_video_audio,
+            apply_audio_fades=apply_audio_fades,
+            fade_in_sec=audio_fade_in_sec,
+            fade_out_sec=audio_fade_out_sec,
         )
         step_times["Final mux"] = time.perf_counter() - t0
         progress.complete_step(4)
@@ -1905,7 +1957,7 @@ def handle_post_render_actions(
             print_error(f"Upload hatasi: {e}")
 
 
-def run_interactive() -> int:
+def run_interactive(ozel1_mode: bool = False) -> int:
     """
     Run the interactive render wizard (State Machine Implementation).
     Supports Back Navigation.
@@ -1943,6 +1995,12 @@ def run_interactive() -> int:
         "dur_str": "",
         "chosen_tracks": [],
         "chosen_bgs": [],
+        "timed_effects": [],
+        "video_audio_mode": "keep",
+        "apply_audio_fades": True,
+        "audio_fade_in_sec": 2.0,
+        "audio_fade_out_sec": 4.0,
+        "ozel1_mode": ozel1_mode,
         # Drive/Post
         "drive_enabled": False,
         "drive_folder_id": "",
@@ -2078,6 +2136,83 @@ def run_interactive() -> int:
                 chosen_bgs.append((tr, db))
                 
         s["chosen_bgs"] = chosen_bgs
+
+        # Intro/Loop video sesi: varsayilan "degistirme" (koru)
+        console.print()
+        va_choice = ask_choice(
+            "Intro/Loop video sesi",
+            ["Degistirme (sesi koru)", "Kaldir (videoyu sessiz kullan)"],
+            1,
+        )
+        s["video_audio_mode"] = "keep" if va_choice == 1 else "remove"
+
+        # Müzik/ses fade in/out
+        s["apply_audio_fades"] = ask_confirm(
+            "Muzik/seslerde baslangicta fade-in ve sonda fade-out uygulansin mi?",
+            True,
+        )
+        if s["apply_audio_fades"]:
+            fi_str = ask_text("Fade-in suresi (sn)", "2.0")
+            fo_str = ask_text("Fade-out suresi (sn)", "4.0")
+            try:
+                s["audio_fade_in_sec"] = max(0.0, float(fi_str))
+            except Exception:
+                s["audio_fade_in_sec"] = 2.0
+            try:
+                s["audio_fade_out_sec"] = max(0.0, float(fo_str))
+            except Exception:
+                s["audio_fade_out_sec"] = 4.0
+
+        # Ozel1: zamanli tek-sefer efektler
+        if s.get("ozel1_mode"):
+            s["timed_effects"] = []
+            if ask_confirm("OZEL1 aktif: Zamanli efekt sesleri eklensin mi?", True):
+                effect_pool = sorted({*all_tracks, *all_bgs}, key=lambda p: p.name.lower())
+                if effect_pool:
+                    print_audio_table(effect_pool, "OZEL1 Efekt Havuzu")
+                    selected = ask_multiple_choice(
+                        "Efekt sesi/secimleri",
+                        [p.name for p in effect_pool],
+                        min_count=1,
+                    )
+                    for idx in selected:
+                        sfx = effect_pool[idx - 1]
+                        start_after = ask_int(f"{sfx.name} ilk calma (sn)", 0, 86400)
+                        interval_sec = ask_int(f"{sfx.name} tekrar araligi (sn)", 1, 86400, 20)
+                        max_plays = ask_int(
+                            f"{sfx.name} maksimum tekrar (0=sinirsiz)",
+                            0,
+                            10000,
+                            0,
+                        )
+                        gain_text = ask_text(f"{sfx.name} ses seviyesi dB", "-6")
+                        fade_in_text = ask_text(f"{sfx.name} fade-in (sn)", "0.1")
+                        fade_out_text = ask_text(f"{sfx.name} fade-out (sn)", "0.5")
+
+                        try:
+                            gain_db = float(gain_text)
+                        except Exception:
+                            gain_db = -6.0
+                        try:
+                            fade_in = max(0.0, float(fade_in_text))
+                        except Exception:
+                            fade_in = 0.1
+                        try:
+                            fade_out = max(0.0, float(fade_out_text))
+                        except Exception:
+                            fade_out = 0.5
+
+                        s["timed_effects"].append(
+                            {
+                                "path": sfx.as_posix(),
+                                "start_after_sec": start_after,
+                                "interval_sec": interval_sec,
+                                "max_plays": max_plays,
+                                "gain_db": gain_db,
+                                "fade_in_sec": fade_in,
+                                "fade_out_sec": fade_out,
+                            }
+                        )
         return 0
 
     def step_std_audio(s):
@@ -2142,6 +2277,7 @@ def run_interactive() -> int:
             "tracks": [p.as_posix() for p in s["chosen_tracks"]],
             "tracks_validated": True,
             "bgs": [{"path": p.as_posix(), "db": db} for p, db in s["chosen_bgs"]],
+            "timed_effects": s.get("timed_effects", []),
             "out": s["out_path"].as_posix(),
             "post_action": s["post_action"],
             "config": {
@@ -2150,6 +2286,10 @@ def run_interactive() -> int:
                 "fps": s["target_fps"],
                 "scale_algo": s["scale_algo"],
                 "audio_bitrate": s["audio_bitrate"],
+                "video_audio_mode": s.get("video_audio_mode", "keep"),
+                "apply_audio_fades": s.get("apply_audio_fades", True),
+                "audio_fade_in_sec": s.get("audio_fade_in_sec", 2.0),
+                "audio_fade_out_sec": s.get("audio_fade_out_sec", 4.0),
                 "drive_enabled": s["drive_enabled"],
                 "drive_folder_id": s["drive_folder_id"],
             },
@@ -2162,7 +2302,12 @@ def run_interactive() -> int:
             s["codec_config"], s["target_width"], s["target_height"], s["target_fps"],
             s["scale_algo"], s["audio_bitrate"], s["total_seconds"],
             s["chosen_tracks"], s["chosen_bgs"], s["out_path"],
-            s["run_log"], s["tmp_dir"]
+            s["run_log"], s["tmp_dir"],
+            timed_effects=s.get("timed_effects", []),
+            keep_video_audio=(s.get("video_audio_mode", "keep") == "keep"),
+            apply_audio_fades=s.get("apply_audio_fades", True),
+            audio_fade_in_sec=s.get("audio_fade_in_sec", 2.0),
+            audio_fade_out_sec=s.get("audio_fade_out_sec", 4.0),
         )
 
         run_post_render_review_cli(
@@ -2285,6 +2430,12 @@ Ornekler:
     )
 
     parser.add_argument("--tui", action="store_true", help="Yeni Textual TUI arayuzunu kullan")
+
+    parser.add_argument(
+        "--ozel1",
+        action="store_true",
+        help="Ozel1 modu - zamanli tek-sefer efekt sesleri ve gelismis ses kontrolu",
+    )
 
     parser.add_argument(
         "--batch",
@@ -2439,7 +2590,7 @@ Ornekler:
                     session_json.unlink(missing_ok=True)
 
             # Run interactive wizard
-            result = run_interactive()
+            result = run_interactive(ozel1_mode=args.ozel1)
 
             if result == 0:
                 # Success

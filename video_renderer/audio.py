@@ -958,6 +958,10 @@ def mux_video_audio(
     output: Path,
     audio_bitrate: str = "192k",
     progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
+    keep_video_audio: bool = False,
+    apply_audio_fades: bool = True,
+    fade_in_sec: float = 2.0,
+    fade_out_sec: float = 4.0,
 ) -> Path:
     """
     OPTIMIZED: Mux video and audio into final output.
@@ -990,6 +994,27 @@ def mux_video_audio(
 
     threads = min(4, os.cpu_count() or 4)
 
+    def _video_has_audio_stream(video_path: Path) -> bool:
+        cmd_probe = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index",
+            "-of",
+            "csv=p=0",
+            str(video_path),
+        ]
+        try:
+            result = subprocess.run(cmd_probe, capture_output=True, text=True, timeout=10)
+            return bool(result.stdout.strip())
+        except Exception:
+            return False
+
+    has_video_audio = keep_video_audio and _video_has_audio_stream(video)
+
     cmd = [
         "ffmpeg",
         "-y",
@@ -998,33 +1023,62 @@ def mux_video_audio(
         "-i",
         str(video),
         "-stream_loop",
-        "-1",  # Loop audio if shorter than video
+        "-1",
         "-i",
         str(audio),
         "-map",
-        "0:v:0",  # Use video from first input
-        "-map",
-        "1:a:0",  # Use audio from second input
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-b:a",
-        audio_bitrate,
-        "-profile:a",
-        "aac_low",  # AAC-LC for compatibility
-        "-ac",
-        "2",  # Stereo
-        "-t",
-        str(video_duration),  # Use video duration, not -shortest
-        "-movflags",
-        "+faststart",
-        "-max_muxing_queue_size",
-        "4096",  # Large queue for 48hr+ videos
-        "-flush_packets",
-        "1",  # Optimize packet flushing
-        str(output),
+        "0:v:0",
     ]
+
+    fade_out_start = max(0.0, video_duration - max(0.0, float(fade_out_sec)))
+
+    if has_video_audio:
+        ext_chain = "[1:a]aresample=48000,asetpts=PTS-STARTPTS"
+        if apply_audio_fades:
+            ext_chain += (
+                f",afade=t=in:st=0:d={max(0.0, float(fade_in_sec))}"
+                f",afade=t=out:st={fade_out_start}:d={max(0.0, float(fade_out_sec))}"
+            )
+        ext_chain += "[ext]"
+
+        filter_complex = (
+            "[0:a]aresample=48000,asetpts=PTS-STARTPTS[vin];"
+            f"{ext_chain};"
+            "[vin][ext]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]"
+        )
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[mix]"])
+    else:
+        cmd.extend(["-map", "1:a:0"])
+        if apply_audio_fades:
+            af = (
+                f"afade=t=in:st=0:d={max(0.0, float(fade_in_sec))},"
+                f"afade=t=out:st={fade_out_start}:d={max(0.0, float(fade_out_sec))}"
+            )
+            cmd.extend(["-af", af])
+
+    cmd.extend(
+        [
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            audio_bitrate,
+            "-profile:a",
+            "aac_low",
+            "-ac",
+            "2",
+            "-t",
+            str(video_duration),
+            "-movflags",
+            "+faststart",
+            "-max_muxing_queue_size",
+            "4096",
+            "-flush_packets",
+            "1",
+            str(output),
+        ]
+    )
 
     # Calculate timeout based on video duration
     # For muxing with -c:v copy, use generous timeout (no progress updates during fast copy)
@@ -1033,3 +1087,152 @@ def mux_video_audio(
 
     runner.run(cmd, capture_progress=bool(progress_callback), timeout=mux_timeout)
     return output
+
+
+def _normalize_effect_timeline(
+    total_seconds: int,
+    start_after_sec: float,
+    interval_sec: float,
+) -> List[float]:
+    """Build event timeline for one-shot effects."""
+    timeline = []
+    start = max(0.0, float(start_after_sec))
+    interval = max(0.1, float(interval_sec))
+    current = start
+    while current < total_seconds:
+        timeline.append(current)
+        current += interval
+    return timeline
+
+
+def _safe_float(value, default: float) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _coerce_effect(effect: dict) -> dict:
+    return {
+        "path": effect.get("path", ""),
+        "start_after_sec": _safe_float(effect.get("start_after_sec", 5.0), 5.0),
+        "interval_sec": _safe_float(effect.get("interval_sec", 20.0), 20.0),
+        "fade_in_sec": _safe_float(effect.get("fade_in_sec", 0.1), 0.1),
+        "fade_out_sec": _safe_float(effect.get("fade_out_sec", 0.5), 0.5),
+        "gain_db": _safe_float(effect.get("gain_db", -6.0), -6.0),
+        "max_plays": _safe_int(effect.get("max_plays", 0), 0),
+    }
+
+
+def _build_effect_output_path(tmp_dir: Path) -> Path:
+    return tmp_dir / "timed_effects.w64"
+
+
+def create_timed_effects_track(
+    runner: FFmpegRunner,
+    tmp_dir: Path,
+    effects: List[dict],
+    total_seconds: int,
+    sample_rate: int = 48000,
+) -> Optional[Path]:
+    """Create one-shot timed effects track mixed over silence timeline."""
+    if not effects:
+        return None
+
+    output = _build_effect_output_path(tmp_dir)
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"anullsrc=r={sample_rate}:cl=stereo",
+        "-t",
+        str(total_seconds),
+    ]
+
+    filter_parts = [f"[0:a]atrim=0:{total_seconds},asetpts=PTS-STARTPTS[base]"]
+    mix_inputs = ["[base]"]
+    input_idx = 1
+
+    for raw_effect in effects:
+        effect = _coerce_effect(raw_effect)
+        effect_path = Path(effect["path"])
+        if not effect_path.exists():
+            continue
+
+        src_duration = get_duration_safe(effect_path)
+        if not src_duration or src_duration <= 0:
+            continue
+
+        timeline = _normalize_effect_timeline(
+            total_seconds,
+            effect["start_after_sec"],
+            effect["interval_sec"],
+        )
+        max_plays = effect["max_plays"]
+        if max_plays > 0:
+            timeline = timeline[:max_plays]
+
+        for start_t in timeline:
+            remaining = total_seconds - start_t
+            if remaining <= 0:
+                continue
+            clip_duration = min(src_duration, remaining)
+            fade_in = max(0.0, effect["fade_in_sec"])
+            fade_out = max(0.0, effect["fade_out_sec"])
+            fade_out_start = max(0.0, clip_duration - fade_out)
+            delay_ms = max(0, int(start_t * 1000))
+
+            cmd.extend(["-stream_loop", "-1", "-i", str(effect_path)])
+
+            label = f"e{input_idx}"
+            chain = (
+                f"[{input_idx}:a]"
+                f"atrim=0:{clip_duration},asetpts=PTS-STARTPTS,"
+                f"volume={effect['gain_db']}dB"
+            )
+            if fade_in > 0:
+                chain += f",afade=t=in:st=0:d={fade_in}"
+            if fade_out > 0:
+                chain += f",afade=t=out:st={fade_out_start}:d={fade_out}"
+            chain += f",adelay={delay_ms}|{delay_ms}[{label}]"
+
+            filter_parts.append(chain)
+            mix_inputs.append(f"[{label}]")
+            input_idx += 1
+
+    if len(mix_inputs) == 1:
+        return None
+
+    filter_parts.append(
+        f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=0:normalize=0[mix]"
+    )
+
+    cmd.extend(
+        [
+            "-filter_complex",
+            ";".join(filter_parts),
+            "-map",
+            "[mix]",
+            "-c:a",
+            "pcm_s16le",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            "2",
+            "-f",
+            "w64",
+            str(output),
+        ]
+    )
+
+    runner.run_simple(cmd)
+    return output if output.exists() else None

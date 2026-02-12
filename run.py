@@ -96,6 +96,15 @@ def main():
         print(f"\n[!] Venv icinde eksik kutuphane: {missing}")
         print("Otomatik yukleniyor...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+
+    # Direct passthrough mode (e.g. `bash run.sh --ozel1`)
+    if len(sys.argv) > 1:
+        cmd = [sys.executable, "-m", "video_renderer", *sys.argv[1:]]
+        try:
+            subprocess.run(cmd)
+        except KeyboardInterrupt:
+            print("\nIptal edildi.")
+        return
         
     print("========================================")
     print("   AutoVideo Baslatici (Launcher)      ")
