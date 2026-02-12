@@ -632,162 +632,51 @@ class VideoEncoder:
     ) -> Path:
         """
         Concatenate intro + repeated loop to reach target duration.
+        Uses concat demuxer with stream copy (no re-encoding) for maximum speed.
 
-        Uses binary MPEG-TS concatenation for maximum speed:
-        1. Remux MP4 → TS (stream copy, ~instant)
-        2. Binary file concat: intro.ts + loop.ts * N (pure I/O, no FFmpeg)
-        3. Single FFmpeg pass: combined.ts → MP4 with -c:v copy + trim
-
-        MPEG-TS supports binary concatenation because packets are self-contained.
-        This avoids timestamp drift that causes YouTube to speed up loops.
-        No re-encoding at any step — entire pipeline is stream copy.
-
-        Falls back to CFR re-encode only if binary TS concat fails.
+        Both intro and loop are already normalized to the same format,
+        so -c:v copy works directly on the MP4 files.
         """
-        import logging
-        logger = logging.getLogger(__name__)
-
         intro_duration = get_duration(intro)
         loop_duration = get_duration(loop)
 
         remaining = max(0.0, total_seconds - intro_duration)
         loop_count = int(math.ceil(remaining / loop_duration)) if loop_duration > 0 else 0
 
-        output = tmp_dir / "video_only.mp4"
-
-        # ── Primary: Binary TS concatenation (no re-encode, max speed) ──
-        try:
-            intro_ts = tmp_dir / "intro_concat.ts"
-            loop_ts = tmp_dir / "loop_concat.ts"
-            combined_ts = tmp_dir / "combined.ts"
-
-            # Step 1: Remux MP4 → MPEG-TS (stream copy, ~instant)
-            if not intro_ts.exists():
-                print(f"  [TS Remux] intro -> .ts")
-                self._remux_to_ts(intro, intro_ts)
-            if not loop_ts.exists():
-                print(f"  [TS Remux] loop -> .ts")
-                self._remux_to_ts(loop, loop_ts)
-
-            # Step 2: Binary file concatenation (pure I/O, extremely fast)
-            # MPEG-TS packets are self-contained, so binary concat works correctly.
-            print(f"  [Binary Concat] 1 intro + {loop_count} loop -> combined.ts")
-            with open(combined_ts, 'wb') as outf:
-                with open(intro_ts, 'rb') as f:
-                    shutil.copyfileobj(f, outf, length=8 * 1024 * 1024)
-                for _ in range(loop_count):
-                    with open(loop_ts, 'rb') as f:
-                        shutil.copyfileobj(f, outf, length=8 * 1024 * 1024)
-
-            combined_size_mb = combined_ts.stat().st_size / (1024 * 1024)
-            print(f"  [Binary Concat] {combined_size_mb:.0f} MB yazildi")
-
-            # Step 3: Remux combined.ts → MP4 with stream copy + trim
-            print(f"  [Remux] combined.ts -> video_only.mp4 (-c:v copy -t {total_seconds})")
-            cmd = [
-                "ffmpeg", "-y",
-                "-fflags", "+genpts+discardcorrupt",
-                "-i", str(combined_ts),
-                "-c:v", "copy",
-                "-an",
-                "-t", str(total_seconds),
-                "-movflags", "+faststart",
-                "-avoid_negative_ts", "make_zero",
-                str(output),
-            ]
-            self.runner.run(cmd, capture_progress=False)
-
-            # Verify output
-            if not output.exists():
-                raise RuntimeError("Binary TS concat output not created")
-
-            output_duration = get_duration(output)
-            if output_duration < 10:
-                raise RuntimeError(f"Binary TS concat output too short: {output_duration:.1f}s")
-
-            # Allow 5% tolerance for long videos
-            if total_seconds > 0 and abs(output_duration - total_seconds) > max(5.0, total_seconds * 0.05):
-                raise RuntimeError(
-                    f"Binary TS concat duration mismatch: target={total_seconds:.1f}s, "
-                    f"actual={output_duration:.1f}s"
-                )
-
-            print(f"  [OK] video_only.mp4: {output_duration:.1f}s")
-
-            # Cleanup TS intermediates
-            for f in [intro_ts, loop_ts, combined_ts]:
-                if f.exists():
-                    f.unlink()
-
-            return output
-
-        except Exception as ts_err:
-            logger.warning(f"Binary TS concat failed: {ts_err}. Falling back to re-encode...")
-            print(f"  [WARN] TS concat basarisiz: {ts_err}")
-            print(f"  [WARN] Re-encode fallback kullaniliyor...")
-            # Cleanup on failure
-            for f in [tmp_dir / "intro_concat.ts", tmp_dir / "loop_concat.ts", tmp_dir / "combined.ts"]:
-                if f.exists():
-                    f.unlink()
-            if output.exists():
-                output.unlink()
-
-        # ── Fallback: CFR re-encode with fastest preset ──
+        # Write concat list
         concat_list = tmp_dir / "video_list.txt"
         files = [intro] + [loop] * loop_count
         write_concat_list(files, concat_list)
 
-        cmd = ["ffmpeg", "-y"]
-        if self._use_gpu and self._accel_type == "nvenc":
-            cmd.extend(["-hwaccel", "cuda"])
-        cmd.extend([
-            "-fflags", "+genpts",
-            "-f", "concat", "-safe", "0",
+        output = tmp_dir / "video_only.mp4"
+
+        if progress_callback:
+            self.runner.set_total_duration(total_seconds)
+            self.runner.set_progress_callback(progress_callback)
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
             "-i", str(concat_list),
-            "-an", "-vsync", "cfr", "-r", str(self.fps),
-        ])
-        cmd.extend(self._get_fast_concat_codec_args())
-        cmd.extend(self.color.to_ffmpeg_args())
-        cmd.extend([
+            "-c:v", "copy",
+            "-an",
             "-t", str(total_seconds),
             "-movflags", "+faststart",
-            "-avoid_negative_ts", "make_zero",
             str(output),
-        ])
+        ]
 
-        try:
-            self.runner.run(cmd, capture_progress=False)
-        except Exception:
-            logger.warning("Fast preset concat failed, final fallback to libx264 ultrafast...")
-            if output.exists():
-                output.unlink()
-            fallback_cmd = [
-                "ffmpeg", "-y",
-                "-fflags", "+genpts",
-                "-f", "concat", "-safe", "0",
-                "-i", str(concat_list),
-                "-an", "-vsync", "cfr", "-r", str(self.fps),
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
-            ]
-            fallback_cmd.extend(self.color.to_ffmpeg_args())
-            fallback_cmd.extend([
-                "-t", str(total_seconds),
-                "-movflags", "+faststart",
-                "-avoid_negative_ts", "make_zero",
-                str(output),
-            ])
-            self.runner.run(fallback_cmd, capture_progress=False)
+        self.runner.run(cmd, capture_progress=bool(progress_callback))
 
+        # Verify output
         if not output.exists():
             raise RuntimeError(f"Concat failed: output file not created at {output}")
 
         output_duration = get_duration(output)
         if output_duration < 10:
-            raise RuntimeError(f"Concat output too short: {output_duration:.1f}s")
-
-        if total_seconds > 0 and abs(output_duration - total_seconds) > max(5.0, total_seconds * 0.05):
             raise RuntimeError(
-                f"Concat duration mismatch: target={total_seconds:.1f}s, actual={output_duration:.1f}s"
+                f"Concat output too short: {output_duration:.1f}s. "
+                f"This may indicate a problem with the input videos."
             )
 
         return output

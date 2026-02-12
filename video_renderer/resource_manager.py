@@ -334,6 +334,15 @@ class ResourceManager:
         file_count = self.cleanup_temp_files()
         logger.info(f"Deleted {file_count} temporary files")
 
+        # Restore terminal state (FFmpeg/Rich may corrupt echo settings)
+        try:
+            import sys
+            if sys.platform != "win32":
+                import os
+                os.system("stty sane 2>/dev/null")
+        except Exception:
+            pass
+
         logger.info("Resource cleanup complete")
 
     @property

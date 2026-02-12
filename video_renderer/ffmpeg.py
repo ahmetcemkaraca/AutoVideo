@@ -257,7 +257,7 @@ class FFmpegRunner:
         self._log_command(cmd)
 
         if not capture_progress or not self._progress_callback:
-            return subprocess.run(cmd, check=True)
+            return subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL)
 
         # First attempt: Hardware encoding
         hw_stderr = None
