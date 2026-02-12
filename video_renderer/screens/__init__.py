@@ -5,6 +5,7 @@ Screens package for Video Renderer TUI.
 """
 
 from .home import HomeScreen
+from .mode_select import ModeSelectScreen
 from .video_select import VideoSelectScreen
 from .audio_select import AudioSelectScreen
 from .settings import SettingsScreen
@@ -28,6 +29,7 @@ from .validation import (
 
 __all__ = [
     "HomeScreen",
+    "ModeSelectScreen",
     "VideoSelectScreen",
     "AudioSelectScreen",
     "SettingsScreen",

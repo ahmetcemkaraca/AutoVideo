@@ -37,7 +37,7 @@ class HomeScreen(Screen):
 
     def _check_session(self):
         """Check for existing session."""
-        session_path = Path.cwd() / "tmp" / "last_session.json"
+        session_path = getattr(self.app, "session_file", Path.cwd() / "tmp" / "last_session.json")
         if session_path.exists():
             try:
                 self.session_data = json.loads(session_path.read_text(encoding="utf-8"))

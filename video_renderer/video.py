@@ -274,12 +274,12 @@ class VideoEncoder:
         cpu_count = os.cpu_count() or 4
 
         if self._use_gpu:
-            # GPU encoding benefits from fewer threads
-            return min(4, cpu_count)
+            # GPU pipeline still needs enough CPU threads for decode/filter/feed.
+            return min(8, cpu_count)
         else:
             # CPU encoding can use more threads
-            # Use 75% of available threads to avoid system overload
-            return max(1, int(cpu_count * 0.75))
+            # Keep one core free for OS responsiveness.
+            return max(1, cpu_count - 1)
 
     def normalize_video(
         self,
@@ -480,6 +480,8 @@ class VideoEncoder:
             [
                 "-tune",
                 "fastdecode",  # Optimize for faster decoding
+                "-movflags",
+                "+faststart",
             ]
         )
 
@@ -538,7 +540,8 @@ class VideoEncoder:
     ) -> Path:
         """
         Concatenate intro + repeated loop to reach target duration.
-        Uses stream copy for speed (no re-encoding).
+        Re-encodes with CFR timestamps to prevent timestamp drift/speed issues
+        on platforms like YouTube after upload/transcode.
 
         Args:
             intro: Normalized intro video
@@ -570,22 +573,77 @@ class VideoEncoder:
         cmd = [
             "ffmpeg",
             "-y",
+            "-fflags",
+            "+genpts",
             "-f",
             "concat",
             "-safe",
             "0",
             "-i",
             str(concat_list),
-            "-c:v",
-            "copy",
-            "-t",
-            str(total_seconds),  # Trim to exact duration
-            "-movflags",
-            "+faststart",
-            str(output),
+            "-an",
+            "-vsync",
+            "cfr",
+            "-r",
+            str(self.fps),
         ]
+        cmd.extend(self.codec.to_ffmpeg_args())
+        cmd.extend(self.color.to_ffmpeg_args())
+        cmd.extend(
+            [
+                "-t",
+                str(total_seconds),
+                "-movflags",
+                "+faststart",
+                "-video_track_timescale",
+                "90000",
+                "-avoid_negative_ts",
+                "make_zero",
+                str(output),
+            ]
+        )
 
-        self.runner.run(cmd, capture_progress=bool(progress_callback))
+        try:
+            self.runner.run(cmd, capture_progress=bool(progress_callback))
+        except Exception:
+            fallback_cmd = [
+                "ffmpeg",
+                "-y",
+                "-fflags",
+                "+genpts",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-an",
+                "-vsync",
+                "cfr",
+                "-r",
+                str(self.fps),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "23",
+            ]
+            fallback_cmd.extend(self.color.to_ffmpeg_args())
+            fallback_cmd.extend(
+                [
+                    "-t",
+                    str(total_seconds),
+                    "-movflags",
+                    "+faststart",
+                    "-video_track_timescale",
+                    "90000",
+                    "-avoid_negative_ts",
+                    "make_zero",
+                    str(output),
+                ]
+            )
+            self.runner.run(fallback_cmd, capture_progress=bool(progress_callback))
 
         # Verify output file was created and is valid
         if not output.exists():
@@ -596,6 +654,12 @@ class VideoEncoder:
             raise RuntimeError(
                 f"Concat output suspiciously short: {output_duration:.1f}s. "
                 f"This may indicate a problem with the input videos or concat list."
+            )
+
+        if total_seconds > 0 and abs(output_duration - total_seconds) > max(3.0, total_seconds * 0.03):
+            raise RuntimeError(
+                f"Concat output duration mismatch: target={total_seconds:.1f}s, "
+                f"actual={output_duration:.1f}s"
             )
 
         return output

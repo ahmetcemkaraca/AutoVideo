@@ -19,9 +19,15 @@ class CompleteScreen(Screen):
 
     BINDINGS = [
         ("n", "new_render", "Yeni Render"),
+        ("s", "show_summary", "Ozet"),
+        ("d", "show_detail", "Detay"),
         ("e", "export_report", "Rapor Dışa Aktar"),
         ("q", "quit", "Cikis"),
     ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._review_mode = "summary"
 
     def compose(self) -> ComposeResult:
         result = getattr(self.app, "render_result", {})
@@ -68,12 +74,21 @@ class CompleteScreen(Screen):
                     classes="subtitle"
                 )
 
+        with Container(classes="panel"):
+            yield Static("🔎 Render Sonrasi Kontrol", classes="panel-title")
+            yield Static("", id="review_text", classes="info-text")
+
         with Horizontal(classes="action-bar"):
+            yield Button("📝 Ozet", id="summary", classes="-secondary")
+            yield Button("📚 Detay", id="detail", classes="-secondary")
             yield Button("📄 Rapor Dışa Aktar", id="export", classes="-secondary")
             yield Button("🆕 Yeni Render", id="new", classes="-primary")
             yield Button("🚪 Cikis", id="quit", classes="-secondary")
 
         yield Footer()
+
+    def on_mount(self) -> None:
+        self._update_review_view()
 
     def _format_duration(self, seconds: float) -> str:
         """Format duration."""
@@ -83,11 +98,15 @@ class CompleteScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
-        if event.button.id == "export":
+        if event.button.id == "summary":
+            self.action_show_summary()
+        elif event.button.id == "detail":
+            self.action_show_detail()
+        elif event.button.id == "export":
             self.action_export_report()
         elif event.button.id == "new":
             # Clear session and start fresh
-            session_path = Path.cwd() / "tmp" / "last_session.json"
+            session_path = getattr(self.app, "session_file", Path.cwd() / "tmp" / "last_session.json")
             session_path.unlink(missing_ok=True)
 
             # Clear app state
@@ -113,6 +132,58 @@ class CompleteScreen(Screen):
 
         elif event.button.id == "quit":
             self.app.exit()
+
+    def _update_review_view(self) -> None:
+        """Render validation summary/detail text."""
+        result = getattr(self.app, "render_result", {})
+        validation = result.get("validation", {})
+        post_result = validation.get("post_result")
+
+        text_widget = self.query_one("#review_text", Static)
+
+        if not post_result:
+            text_widget.update("Doğrulama sonucu bulunamadı.")
+            return
+
+        if self._review_mode == "summary":
+            output_meta = post_result.metadata.get("output", {}) if hasattr(post_result, "metadata") else {}
+            youtube_meta = post_result.metadata.get("youtube", {}) if hasattr(post_result, "metadata") else {}
+
+            summary_lines = [
+                f"Durum: {'✅ Uygun' if post_result.valid else '❌ Sorunlu'}",
+                f"Hata: {len(post_result.errors)} | Uyarı: {len(post_result.warnings)} | Bilgi: {len(post_result.info)}",
+            ]
+
+            if output_meta:
+                summary_lines.append(
+                    f"Cikti: {output_meta.get('codec', '-')} | {output_meta.get('width', '-') }x{output_meta.get('height', '-')} | {output_meta.get('fps', '-') }"
+                )
+                summary_lines.append(
+                    f"Sure: hedef {output_meta.get('target_duration', '-')}s, gercek {float(output_meta.get('duration', 0)):.1f}s"
+                )
+
+            if youtube_meta:
+                summary_lines.append(
+                    f"YouTube: kapsayici={youtube_meta.get('format_name', '-')}, vcodec={youtube_meta.get('video_codec', '-')}, acodec={youtube_meta.get('audio_codec', '-')}"
+                )
+
+            text_widget.update("\n".join(summary_lines))
+            return
+
+        # Detail mode
+        detail_lines = []
+        if post_result.issues:
+            for issue in post_result.issues:
+                line = f"[{issue.severity.value.upper()}] ({issue.category}) {issue.message}"
+                if issue.details:
+                    line += f"\n  - {issue.details}"
+                if issue.suggestion:
+                    line += f"\n  - Oneri: {issue.suggestion}"
+                detail_lines.append(line)
+        else:
+            detail_lines.append("Sorun bulunmadi.")
+
+        text_widget.update("\n\n".join(detail_lines))
 
     def action_export_report(self) -> None:
         """Export validation report to JSON file."""
@@ -170,6 +241,14 @@ class CompleteScreen(Screen):
                 title="Hata",
                 severity="error"
             )
+
+    def action_show_summary(self) -> None:
+        self._review_mode = "summary"
+        self._update_review_view()
+
+    def action_show_detail(self) -> None:
+        self._review_mode = "detail"
+        self._update_review_view()
 
     def action_new_render(self) -> None:
         """Start new render."""

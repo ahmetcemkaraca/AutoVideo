@@ -10,6 +10,8 @@ import time
 import traceback
 import random
 import subprocess
+import os
+import uuid
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -33,6 +35,7 @@ from .video import VideoEncoder, encode_parallel
 from .batch import SmartBatchDetector, BatchPair
 from concurrent.futures import ThreadPoolExecutor
 from .audio import AudioProcessor, is_background_file, parse_background_gain_db, mux_video_audio
+from .validator import PostRenderValidator
 from .tui import (
     console,
     print_header,
@@ -177,6 +180,65 @@ def format_duration(seconds: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
+def create_run_tmp_dir(base: Path) -> Tuple[str, Path]:
+    """Create isolated tmp directory for a single render run."""
+    run_id = f"{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
+    run_dir = base / "tmp" / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_id, run_dir
+
+
+def run_post_render_review_cli(out_path: Path, target_seconds: int, target_specs: dict) -> None:
+    """Show post-render validation summary/detail before next action selection."""
+    validator = PostRenderValidator()
+    result = validator.validate_output(out_path, target_seconds, target_specs)
+
+    def show_summary() -> None:
+        console.print()
+        console.print("[header]Render Sonrasi Kontrol (Ozet)[/]")
+        console.print(f"  Durum: {'[success]Uygun[/]' if result.valid else '[error]Sorunlu[/]'}")
+        console.print(
+            f"  Hata/Uyari/Bilgi: {len(result.errors)}/{len(result.warnings)}/{len(result.info)}"
+        )
+        output_meta = result.metadata.get("output", {})
+        youtube_meta = result.metadata.get("youtube", {})
+        if output_meta:
+            console.print(
+                f"  Cikti: {output_meta.get('codec', '-')} | {output_meta.get('width', '-')}x{output_meta.get('height', '-')} | {output_meta.get('fps', '-')}"
+            )
+            console.print(
+                f"  Sure: hedef={output_meta.get('target_duration', '-')}s, gercek={float(output_meta.get('duration', 0)):.1f}s"
+            )
+        if youtube_meta:
+            console.print(
+                f"  YouTube: {youtube_meta.get('format_name', '-')} | v={youtube_meta.get('video_codec', '-')} | a={youtube_meta.get('audio_codec', '-')}"
+            )
+
+    def show_detail() -> None:
+        console.print()
+        console.print("[header]Render Sonrasi Kontrol (Detay)[/]")
+        if not result.issues:
+            console.print("  [success]Sorun bulunmadi.[/]")
+            return
+        for issue in result.issues:
+            sev = issue.severity.value.upper()
+            console.print(f"  [{sev}] ({issue.category}) {issue.message}")
+            if issue.details:
+                console.print(f"    - {issue.details}")
+            if issue.suggestion:
+                console.print(f"    - Oneri: {issue.suggestion}")
+
+    show_summary()
+    while True:
+        c = ask_choice("Kontrol secenegi", ["Devam et", "Detay goster", "Ozeti tekrar goster"], 1)
+        if c == 1:
+            break
+        if c == 2:
+            show_detail()
+        elif c == 3:
+            show_summary()
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Resume Support
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -185,10 +247,7 @@ def format_duration(seconds: int) -> str:
 def run_resume() -> int:
     """Resume from last session."""
     base = Path.cwd()
-    tmp_dir = base / "tmp"
-    session_json = tmp_dir / "last_session.json"
-    run_log = tmp_dir / "run_log.txt"
-    err_log = tmp_dir / "error_log.txt"
+    session_json = base / "tmp" / "last_session.json"
 
     print_header()
     print_working_directory(base)
@@ -203,6 +262,11 @@ def run_resume() -> int:
     except (json.JSONDecodeError, OSError, IOError) as e:
         print_error(f"Session dosyasi okunamadi: {e}")
         return 2
+
+    tmp_dir = Path(session.get("tmp_dir", (base / "tmp").as_posix()))
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    run_log = tmp_dir / "run_log.txt"
+    err_log = tmp_dir / "error_log.txt"
 
     # Load session data
     mode = session.get("mode", "intro_loop")
@@ -361,6 +425,18 @@ def run_resume() -> int:
         # Completion
         final_duration = get_duration(out_path)
         print_completion(out_path, final_duration)
+
+        run_post_render_review_cli(
+            out_path,
+            total_seconds,
+            {
+                "codec": codec_family,
+                "width": target_width,
+                "height": target_height,
+                "fps": target_fps,
+                "has_audio": True,
+            },
+        )
 
         # Post action
         if post_action == "delete":
@@ -1836,24 +1912,18 @@ def run_interactive() -> int:
     """
     base = Path.cwd()
     music_dir = base / "music"
-    tmp_dir = base / "tmp"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-
-    # CRITICAL: Clean stale tmp files
-    for f in tmp_dir.glob("*.mp4"): f.unlink(missing_ok=True)
-    for f in tmp_dir.glob("*.w64"): f.unlink(missing_ok=True)
-    for f in tmp_dir.glob("*.txt"):
-        if f.name != "last_session.json": f.unlink(missing_ok=True)
+    run_id, tmp_dir = create_run_tmp_dir(base)
 
     run_log = tmp_dir / "run_log.txt"
     err_log = tmp_dir / "error_log.txt"
-    session_json = tmp_dir / "last_session.json"
+    session_json = base / "tmp" / "last_session.json"
     
     # State Data
     state = {
         "base": base,
         "music_dir": music_dir,
         "tmp_dir": tmp_dir,
+        "run_id": run_id,
         "run_log": run_log,
         "videos": [],
         "mode": "standard",
@@ -2059,12 +2129,30 @@ def run_interactive() -> int:
         # Save Session
         sess = {
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "run_id": s["run_id"],
+            "tmp_dir": s["tmp_dir"].as_posix(),
             "mode": s["mode"],
             "intro": s["intro_path"].as_posix() if s["intro_path"] else None,
             "loop": s["loop_path"].as_posix() if s["loop_path"] else None,
-            "config": {"width":s["target_width"], "height":s["target_height"]},
-            # ... minimal session for resume ...
-            "out": s["out_path"].as_posix()
+            "video": s["single_video_path"].as_posix() if s["single_video_path"] else None,
+            "codec": s["codec_family"],
+            "encoder": s["codec_config"].encoder if s["codec_config"] else "",
+            "duration": s["dur_str"],
+            "duration_sec": s["total_seconds"],
+            "tracks": [p.as_posix() for p in s["chosen_tracks"]],
+            "tracks_validated": True,
+            "bgs": [{"path": p.as_posix(), "db": db} for p, db in s["chosen_bgs"]],
+            "out": s["out_path"].as_posix(),
+            "post_action": s["post_action"],
+            "config": {
+                "width": s["target_width"],
+                "height": s["target_height"],
+                "fps": s["target_fps"],
+                "scale_algo": s["scale_algo"],
+                "audio_bitrate": s["audio_bitrate"],
+                "drive_enabled": s["drive_enabled"],
+                "drive_folder_id": s["drive_folder_id"],
+            },
         }
         session_json.write_text(json.dumps(sess))
         
@@ -2075,6 +2163,18 @@ def run_interactive() -> int:
             s["scale_algo"], s["audio_bitrate"], s["total_seconds"],
             s["chosen_tracks"], s["chosen_bgs"], s["out_path"],
             s["run_log"], s["tmp_dir"]
+        )
+
+        run_post_render_review_cli(
+            s["out_path"],
+            s["total_seconds"],
+            {
+                "codec": s["codec_family"],
+                "width": s["target_width"],
+                "height": s["target_height"],
+                "fps": s["target_fps"],
+                "has_audio": True,
+            },
         )
         
         # Post Actions

@@ -72,40 +72,42 @@ CODEC_H264 = CodecConfig(
     name="H.264",
     encoder="libx264",
     preset="fast",
-    crf=26,  # Increased from 20 for smaller file size
+    crf=24,
     profile="high",
     level="4.2",
-    extra_args=["-g", "240", "-tune", "film"],
+    extra_args=["-g", "240", "-tune", "film", "-x264-params", "aq-mode=2:aq-strength=1.0"],
 )
 
 CODEC_H265 = CodecConfig(
     name="H.265",
     encoder="libx265",
     preset="fast",
-    crf=28,  # Increased from 23
-    extra_args=["-g", "240", "-tag:v", "hvc1"],
+    crf=27,
+    extra_args=["-g", "240", "-tag:v", "hvc1", "-x265-params", "aq-mode=3:aq-strength=0.9"],
 )
 
 # Hardware encoders (NVIDIA)
 CODEC_H264_NVENC = CodecConfig(
     name="H.264 (NVENC)",
     encoder="h264_nvenc",
-    preset="p6",  # slower, better quality
-    crf=29,  # actually uses -cq for NVENC, increased from 23
+    preset="p5",
+    crf=28,
     profile="high",
     extra_args=[
         "-rc",
         "vbr",
         "-cq",
-        "29",
+        "28",
         "-b:v",
         "0",
         "-spatial_aq",
         "1",
+        "-temporal_aq",
+        "1",
         "-b_ref_mode",
         "0",  # Disable B-frame ref for faster encode
         "-rc-lookahead",
-        "32",  # Lookahead frames for better quality
+        "24",
         "-surfaces",
         "64",  # Async depth for GPU utilization
         "-extra_hw_frames",
@@ -116,24 +118,26 @@ CODEC_H264_NVENC = CodecConfig(
 CODEC_H265_NVENC = CodecConfig(
     name="H.265 (NVENC)",
     encoder="hevc_nvenc",
-    preset="p6",
-    crf=32,  # Increased from 26
+    preset="p5",
+    crf=31,
     profile="main",
     extra_args=[
         "-rc",
         "vbr",
         "-cq",
-        "32",
+        "31",
         "-b:v",
         "0",
         "-tag:v",
         "hvc1",
         "-spatial_aq",
         "1",
+        "-temporal_aq",
+        "1",
         "-b_ref_mode",
         "0",
         "-rc-lookahead",
-        "32",
+        "24",
         "-surfaces",
         "64",
         "-extra_hw_frames",
@@ -144,21 +148,23 @@ CODEC_H265_NVENC = CodecConfig(
 CODEC_AV1_NVENC = CodecConfig(
     name="AV1 (NVENC)",
     encoder="av1_nvenc",
-    preset="p6",
-    crf=48,  # Increased from 40
+    preset="p5",
+    crf=46,
     extra_args=[
         "-rc",
         "vbr",
         "-cq",
-        "48",
+        "46",
         "-b:v",
         "0",
         "-spatial_aq",
         "1",
+        "-temporal_aq",
+        "1",
         "-b_ref_mode",
         "0",
         "-rc-lookahead",
-        "32",
+        "24",
         "-surfaces",
         "64",
         "-extra_hw_frames",

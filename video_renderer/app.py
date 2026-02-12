@@ -15,11 +15,15 @@ Resource Management:
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple, Literal
 from dataclasses import dataclass
+import os
+import time
+import uuid
 
 from textual.app import App
 from textual.binding import Binding
 
 from .screens import (
+    ModeSelectScreen,
     HomeScreen,
     VideoSelectScreen,
     AudioSelectScreen,
@@ -78,6 +82,7 @@ class VideoRendererApp(App):
     ]
 
     SCREENS = {
+        "mode_select": ModeSelectScreen,
         "home": HomeScreen,
         "video_select": VideoSelectScreen,
         "audio_select": AudioSelectScreen,
@@ -103,6 +108,7 @@ class VideoRendererApp(App):
         # Unified mode configuration
         self.mode = mode
         self.mode_config = self._init_mode_config(mode)
+        self.mode_selected = False
 
         # Legacy ramtest_mode support (for backward compatibility)
         self.ramtest_mode = mode in ["ramtest", "ramdisk"]
@@ -142,7 +148,36 @@ class VideoRendererApp(App):
         # Validation control
         self.skip_validation: bool = False
 
+        # Session / temp paths (isolated per render run)
+        self.base_tmp_dir = Path.cwd() / "tmp"
+        self.base_tmp_dir.mkdir(parents=True, exist_ok=True)
+        self.runs_root = self.base_tmp_dir / "runs"
+        self.runs_root.mkdir(parents=True, exist_ok=True)
+        self.session_file = self.base_tmp_dir / "last_session.json"
+        self.current_run_id: Optional[str] = None
+        self.current_run_tmp_dir: Path = self.base_tmp_dir
+
         # Mode-specific features
+        if mode == "ramtest":
+            self._setup_ramtest_mode()
+
+    def start_new_run_context(self) -> Path:
+        """Create isolated tmp directory for one render run."""
+        run_id = f"{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
+        run_dir = self.runs_root / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        self.current_run_id = run_id
+        self.current_run_tmp_dir = run_dir
+        return run_dir
+
+    def set_mode(self, mode: Literal["standard", "ramtest", "ramdisk", "high_vram"]) -> None:
+        """Set active render mode at runtime before render flow starts."""
+        self.mode = mode
+        self.mode_config = self._init_mode_config(mode)
+        self.ramtest_mode = mode in ["ramtest", "ramdisk"]
+        self.ramtest_config = RamTestConfig(enabled=self.ramtest_mode)
+        self.mode_selected = True
+
         if mode == "ramtest":
             self._setup_ramtest_mode()
 
@@ -205,15 +240,7 @@ class VideoRendererApp(App):
 
     def on_mount(self) -> None:
         """Called when app is mounted."""
-        # Update title with mode indicator
-        mode_suffix = {
-            "standard": "",
-            "ramtest": " [RAM]",
-            "ramdisk": " [RAMDisk]",
-            "high_vram": " [HighVRAM]",
-        }.get(self.mode, "")
-        self.SUB_TITLE = f"FFmpeg Video Processing{mode_suffix}"
-        self.push_screen("home")
+        self.push_screen("mode_select")
 
     def action_quit(self) -> None:
         """

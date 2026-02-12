@@ -592,7 +592,7 @@ class AudioProcessor:
         total_seconds: int,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
         pre_validated: bool = False,
-        trim_silence: bool = True,
+        trim_silence: bool = False,
     ) -> Path:
         """
         OPTIMIZED: Create a looped music track from multiple tracks.

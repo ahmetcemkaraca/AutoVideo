@@ -1192,6 +1192,8 @@ class PostRenderValidator(VideoValidator):
     MIN_AUDIO_BITRATE = 128
     # Audio-visual sync tolerance in seconds
     SYNC_TOLERANCE = 0.1
+    # YouTube duration mismatch tolerance (stream vs format)
+    STREAM_DURATION_TOLERANCE = 2.0
 
     def __init__(
         self,
@@ -1269,6 +1271,9 @@ class PostRenderValidator(VideoValidator):
             # Check file size
             self._validate_file_size(output_path, info.duration, result)
 
+            # Check YouTube compatibility and timestamp consistency
+            self._validate_youtube_compliance(output_path, result)
+
         except Exception as e:
             result.add_issue(ValidationIssue(
                 category="output",
@@ -1279,6 +1284,150 @@ class PostRenderValidator(VideoValidator):
             ))
 
         return result
+
+    def _validate_youtube_compliance(self, output_path: Path, result: ValidationResult) -> None:
+        """Validate output for common YouTube ingest expectations and timing consistency."""
+        try:
+            cmd = [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries",
+                "format=format_name,duration:stream=index,codec_type,codec_name,pix_fmt,avg_frame_rate,r_frame_rate,duration,sample_rate,channels",
+                "-of", "json",
+                str(output_path),
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20, check=True)
+            data = json.loads(proc.stdout)
+
+            fmt = data.get("format", {})
+            streams = data.get("streams", [])
+            video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
+            audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+
+            youtube_meta = {
+                "format_name": fmt.get("format_name", ""),
+                "video_codec": video_stream.get("codec_name") if video_stream else None,
+                "audio_codec": audio_stream.get("codec_name") if audio_stream else None,
+                "pixel_format": video_stream.get("pix_fmt") if video_stream else None,
+            }
+            result.metadata.setdefault("youtube", {}).update(youtube_meta)
+
+            format_name = (fmt.get("format_name") or "").lower()
+            if "mp4" not in format_name and "mov" not in format_name:
+                result.add_issue(ValidationIssue(
+                    category="youtube",
+                    severity=ValidationSeverity.WARNING,
+                    message=f"YouTube için kapsayıcı önerilmiyor: {format_name}",
+                    details="Önerilen kapsayıcı: MP4 (veya MOV).",
+                    suggestion="Çıktı formatını MP4 olarak kullanın.",
+                ))
+
+            if video_stream:
+                v_codec = (video_stream.get("codec_name") or "").lower()
+                if v_codec not in {"h264", "hevc", "av1", "vp9"}:
+                    result.add_issue(ValidationIssue(
+                        category="youtube",
+                        severity=ValidationSeverity.WARNING,
+                        message=f"YouTube için yaygın olmayan video codec: {v_codec or 'unknown'}",
+                        suggestion="H.264, HEVC veya AV1 önerilir.",
+                    ))
+
+                pix_fmt = (video_stream.get("pix_fmt") or "").lower()
+                if pix_fmt and not (pix_fmt.startswith("yuv420p") or pix_fmt.startswith("yuvj420p")):
+                    result.add_issue(ValidationIssue(
+                        category="youtube",
+                        severity=ValidationSeverity.WARNING,
+                        message=f"YouTube için riskli pixel format: {pix_fmt}",
+                        suggestion="yuv420p/yuv420p10le kullanın.",
+                    ))
+
+            if audio_stream:
+                a_codec = (audio_stream.get("codec_name") or "").lower()
+                if a_codec not in {"aac", "opus"}:
+                    result.add_issue(ValidationIssue(
+                        category="youtube",
+                        severity=ValidationSeverity.INFO,
+                        message=f"Audio codec: {a_codec or 'unknown'}",
+                        details="YouTube için AAC/Opus daha uyumludur.",
+                    ))
+
+                sr_raw = audio_stream.get("sample_rate")
+                try:
+                    sr = int(sr_raw) if sr_raw else 0
+                except Exception:
+                    sr = 0
+                if sr and sr not in {44100, 48000}:
+                    result.add_issue(ValidationIssue(
+                        category="youtube",
+                        severity=ValidationSeverity.WARNING,
+                        message=f"Örnekleme hızı önerilen değer dışında: {sr} Hz",
+                        suggestion="44.1kHz veya 48kHz kullanın.",
+                    ))
+
+            # Timing consistency checks (prevents upload/transcode speed anomalies)
+            format_duration = 0.0
+            try:
+                format_duration = float(fmt.get("duration", 0) or 0)
+            except Exception:
+                format_duration = 0.0
+
+            stream_video_duration = 0.0
+            if video_stream:
+                try:
+                    stream_video_duration = float(video_stream.get("duration", 0) or 0)
+                except Exception:
+                    stream_video_duration = 0.0
+
+            stream_audio_duration = 0.0
+            if audio_stream:
+                try:
+                    stream_audio_duration = float(audio_stream.get("duration", 0) or 0)
+                except Exception:
+                    stream_audio_duration = 0.0
+
+            if format_duration > 0 and stream_video_duration > 0:
+                diff = abs(format_duration - stream_video_duration)
+                if diff > self.STREAM_DURATION_TOLERANCE:
+                    result.add_issue(ValidationIssue(
+                        category="youtube",
+                        severity=ValidationSeverity.ERROR,
+                        message="Kapsayıcı/Video süreleri uyumsuz",
+                        details=f"format={format_duration:.2f}s, video={stream_video_duration:.2f}s, fark={diff:.2f}s",
+                        suggestion="Zaman damgası (PTS) tutarsızlığı olabilir; concat/mux adımlarını kontrol edin.",
+                    ))
+
+            if format_duration > 0 and stream_audio_duration > 0:
+                diff = abs(format_duration - stream_audio_duration)
+                if diff > self.STREAM_DURATION_TOLERANCE:
+                    result.add_issue(ValidationIssue(
+                        category="youtube",
+                        severity=ValidationSeverity.WARNING,
+                        message="Kapsayıcı/Audio süreleri uyumsuz",
+                        details=f"format={format_duration:.2f}s, audio={stream_audio_duration:.2f}s, fark={diff:.2f}s",
+                        suggestion="Audio loop/mux adımını kontrol edin.",
+                    ))
+
+            if video_stream:
+                avg_fps = self._parse_fps(video_stream.get("avg_frame_rate", "0/1"))
+                real_fps = self._parse_fps(video_stream.get("r_frame_rate", "0/1"))
+                if avg_fps > 0 and real_fps > 0:
+                    fps_diff = abs(avg_fps - real_fps)
+                    if fps_diff > 5.0:
+                        result.add_issue(ValidationIssue(
+                            category="youtube",
+                            severity=ValidationSeverity.WARNING,
+                            message="FPS akış bilgileri tutarsız",
+                            details=f"avg_frame_rate={avg_fps:.3f}, r_frame_rate={real_fps:.3f}",
+                            suggestion="CFR sabit fps encode kullanın.",
+                        ))
+
+        except Exception as e:
+            result.add_issue(ValidationIssue(
+                category="youtube",
+                severity=ValidationSeverity.INFO,
+                message="YouTube uyumluluk analizi tamamlanamadı",
+                details=str(e),
+            ))
 
     def _validate_duration(
         self,

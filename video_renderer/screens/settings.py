@@ -474,6 +474,10 @@ class SettingsScreen(Screen):
         self.app.enable_upload = self.enable_upload
         self.app.drive_folder_id = self.drive_folder_id
 
+        # Create isolated temp context for this render run
+        if hasattr(self.app, "start_new_run_context"):
+            self.app.start_new_run_context()
+
         # Go to render screen
         self.app.push_screen("render")
 

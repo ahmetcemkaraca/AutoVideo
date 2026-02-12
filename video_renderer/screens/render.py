@@ -270,7 +270,7 @@ class RenderScreen(Screen):
         app = self.app
 
         base = Path.cwd()
-        tmp_dir = base / "tmp"
+        tmp_dir = getattr(app, "current_run_tmp_dir", base / "tmp")
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
         run_log = tmp_dir / "run_log.txt"
@@ -290,6 +290,10 @@ class RenderScreen(Screen):
             # Check for resume from session
             session = getattr(app, "session", None)
             if session:
+                session_tmp = session.get("tmp_dir")
+                if session_tmp:
+                    tmp_dir = Path(session_tmp)
+                    tmp_dir.mkdir(parents=True, exist_ok=True)
                 if session.get("mode") == "single":
                     single_video_path = Path(session["video"])
                 else:
@@ -302,10 +306,62 @@ class RenderScreen(Screen):
                 total_seconds = session["duration_sec"]
                 out_path = Path(session["out"])
 
+            # Fresh render starts should not reuse stale intermediates from previous jobs.
+            # Resume mode keeps intermediates intentionally.
+            if not session:
+                for pattern in (
+                    "intro_norm_*.mp4",
+                    "loop_norm_*.mp4",
+                    "video_only*.mp4",
+                    "music_loop.w64",
+                    "audio_mixed.w64",
+                    "video_list.txt",
+                    "music_list.txt",
+                    "trimmed_*.w64",
+                ):
+                    for f in tmp_dir.glob(pattern):
+                        f.unlink(missing_ok=True)
+
             if not codec_config:
                 from config import get_best_encoder
 
                 codec_config = get_best_encoder(codec_family)
+
+            # Persist resumable session (points to isolated tmp run dir)
+            session_file = getattr(app, "session_file", base / "tmp" / "last_session.json")
+            try:
+                session_payload = {
+                    "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "run_id": getattr(app, "current_run_id", None),
+                    "tmp_dir": tmp_dir.as_posix(),
+                    "mode": "single" if single_video_path else "intro_loop",
+                    "intro": intro_path.as_posix() if intro_path else None,
+                    "loop": loop_path.as_posix() if loop_path else None,
+                    "video": single_video_path.as_posix() if single_video_path else None,
+                    "codec": codec_family,
+                    "duration": getattr(app, "duration_str", ""),
+                    "duration_sec": total_seconds,
+                    "tracks": [p.as_posix() for p in chosen_tracks],
+                    "tracks_validated": True,
+                    "bgs": [{"path": p.as_posix(), "db": db} for p, db in chosen_bgs],
+                    "out": out_path.as_posix(),
+                    "post_action": "keep",
+                    "config": {
+                        "width": 1920,
+                        "height": 1080,
+                        "fps": 30,
+                        "scale_algo": "lanczos",
+                        "audio_bitrate": "192k",
+                        "drive_enabled": getattr(app, "enable_upload", False),
+                        "drive_folder_id": getattr(app, "drive_folder_id", "") or "",
+                    },
+                }
+                session_file.write_text(
+                    json.dumps(session_payload, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
 
             # ═══════════════════════════════════════════════════════════════════
             # PRE-RENDER VALIDATION
@@ -379,6 +435,7 @@ class RenderScreen(Screen):
             intro_norm = tmp_dir / f"intro_norm_{codec_family}.mp4"
             loop_norm = tmp_dir / f"loop_norm_{codec_family}.mp4"
             video_only_single = tmp_dir / f"video_only_single_{codec_family}.mp4"
+            video_only_concat = tmp_dir / "video_only.mp4"
 
             # Create encoder
             encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=30)
@@ -397,9 +454,9 @@ class RenderScreen(Screen):
                 if not total_seconds or total_seconds <= 0:
                     total_seconds = int(get_duration(single_video_path))
 
-                if video_only_single.exists():
+                if session and video_only_single.exists():
                     video_only = video_only_single
-                    self.call_from_thread(self._log, "Video zaten var, atlaniyor...")
+                    self.call_from_thread(self._log, "Resume: onceki video kullaniliyor...")
                 else:
 
                     def single_progress(p: FFmpegProgress):
@@ -419,8 +476,8 @@ class RenderScreen(Screen):
                 self.call_from_thread(self._update_step_status, "intro", "active")
                 self.call_from_thread(self._log, f"Intro encode: {intro_path.name}")
 
-                if intro_norm.exists():
-                    self.call_from_thread(self._log, "Intro zaten var, atlaniyor...")
+                if session and intro_norm.exists():
+                    self.call_from_thread(self._log, "Resume: intro encode atlandi...")
                 else:
 
                     def intro_progress(p: FFmpegProgress):
@@ -439,8 +496,8 @@ class RenderScreen(Screen):
                 self.call_from_thread(self._update_step_status, "loop", "active")
                 self.call_from_thread(self._log, f"Loop encode: {loop_path.name}")
 
-                if loop_norm.exists():
-                    self.call_from_thread(self._log, "Loop zaten var, atlaniyor...")
+                if session and loop_norm.exists():
+                    self.call_from_thread(self._log, "Resume: loop encode atlandi...")
                 else:
 
                     def loop_progress(p: FFmpegProgress):
@@ -457,10 +514,9 @@ class RenderScreen(Screen):
                 self.call_from_thread(self._update_step_status, "concat", "active")
                 self.call_from_thread(self._log, "Video birlestiriliyor...")
 
-                video_only_files = list(tmp_dir.glob("video_only_*.mp4"))
-                if video_only_files:
-                    video_only = video_only_files[0]
-                    self.call_from_thread(self._log, "Concat zaten var, atlaniyor...")
+                if session and video_only_concat.exists():
+                    video_only = video_only_concat
+                    self.call_from_thread(self._log, "Resume: concat atlandi...")
                 else:
 
                     def concat_progress(p: FFmpegProgress):
@@ -489,12 +545,12 @@ class RenderScreen(Screen):
             music_loop_path = tmp_dir / "music_loop.w64"
             audio_mixed_path = tmp_dir / "audio_mixed.w64"
 
-            if chosen_bgs and audio_mixed_path.exists():
+            if session and chosen_bgs and audio_mixed_path.exists():
                 audio_full = audio_mixed_path
-                self.call_from_thread(self._log, "Audio zaten var, atlaniyor...")
-            elif not chosen_bgs and music_loop_path.exists():
+                self.call_from_thread(self._log, "Resume: mix audio kullaniliyor...")
+            elif session and not chosen_bgs and music_loop_path.exists():
                 audio_full = music_loop_path
-                self.call_from_thread(self._log, "Audio zaten var, atlaniyor...")
+                self.call_from_thread(self._log, "Resume: music loop kullaniliyor...")
             else:
                 # Validate and process tracks
                 self.call_from_thread(self._log, "Track'ler dogrulaniyor...")
@@ -540,7 +596,13 @@ class RenderScreen(Screen):
                 def mux_progress(p: FFmpegProgress):
                     self.call_from_thread(self._update_step_status, "mux", "active", p.percent)
 
-                mux_video_audio(runner, video_only, audio_full, out_path, mux_progress)
+                mux_video_audio(
+                    runner,
+                    video_only,
+                    audio_full,
+                    out_path,
+                    progress_callback=mux_progress,
+                )
 
             self.call_from_thread(self._update_step_status, "mux", "complete", 100)
 
@@ -567,7 +629,6 @@ class RenderScreen(Screen):
 
             if not post_result.valid:
                 self.call_from_thread(self._log, f"✗ Çıktı doğrulaması başarısız")
-                # Show red notification for post-render validation failure
                 self.call_from_thread(
                     app.notify,
                     f"❌ Çıktı doğrulaması başarısız: {len(post_result.errors)} hata tespit edildi",
@@ -575,11 +636,8 @@ class RenderScreen(Screen):
                     severity="error",
                     timeout=5
                 )
-                from ..screens.validation import show_validation_result
-                self.call_from_thread(show_validation_result, app, post_result)
             elif post_result.warnings:
                 self.call_from_thread(self._log, f"⚠️ Çıktı doğrulaması: {len(post_result.warnings)} uyarı")
-                # Show warning notification
                 self.call_from_thread(
                     app.notify,
                     f"⚠️ Çıktı doğrulaması uyarısı: {len(post_result.warnings)} uyarı tespit edildi",
