@@ -656,6 +656,7 @@ class VideoEncoder:
 
         cmd = [
             "ffmpeg", "-y",
+            "-fflags", "+genpts",
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_list),
