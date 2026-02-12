@@ -7,16 +7,31 @@ Comprehensive test suite for the AutoVideo video rendering and automation system
 ```
 tests/
 ├── conftest.py                  # Pytest configuration and fixtures
+├── fixtures/                    # Test fixtures and generators
+│   ├── __init__.py
+│   ├── generate_test_videos.py  # Test video generation utilities
+│   └── videos/                  # Sample video files for testing
 ├── unit/                        # Unit tests
 │   ├── test_video_encoder.py    # VideoEncoder tests
 │   ├── test_audio_processor.py  # AudioProcessor tests
 │   ├── test_batch_queue.py      # BatchQueue tests
-│   └── test_ffmpeg_runner.py    # FFmpegRunner tests
+│   ├── test_ffmpeg_runner.py    # FFmpegRunner tests
+│   ├── test_audit.py            # Audit logging tests
+│   ├── test_config.py           # Configuration management tests
+│   └── test_security.py         # Security validation tests
 ├── integration/                 # Integration tests
 │   ├── test_rendering_workflow.py         # End-to-end rendering tests
 │   └── test_automation_pipeline.py        # Pipeline automation tests
-└── performance/                 # Performance benchmarks
-    └── test_benchmarks.py       # Performance and scalability tests
+├── e2e/                         # End-to-end tests
+│   ├── test_cli_wizard.py       # CLI wizard workflow tests
+│   └── test_tui_workflow.py     # TUI application workflow tests
+├── performance/                 # Performance benchmarks
+│   └── test_benchmarks.py       # Performance and scalability tests
+├── test_batch.py                # Batch processing tests
+├── test_batch_thread_safety.py  # Thread safety tests for batch operations
+├── test_error_handling.py       # Error handling tests
+├── test_optimizations.py        # Optimization verification tests
+└── test_validator.py            # Input validation tests
 ```
 
 ## Running Tests
@@ -97,7 +112,7 @@ pytest -n auto
 
 ## Test Fixtures
 
-### Common Fixtures
+### Common Fixtures (conftest.py)
 
 - `temp_dir`: Temporary directory (auto-cleanup)
 - `work_dir`: Working directory with subdirectories
@@ -120,6 +135,18 @@ pytest -n auto
 - `mock_youtube_credentials`: Mock YouTube credentials files
 - `mock_subprocess_run`: Mock subprocess.run calls
 
+### Fixtures Directory (tests/fixtures/)
+
+The `fixtures/` directory contains test data generators and sample files:
+
+- `generate_test_videos.py`: Utility script for generating test video files
+- `videos/`: Directory containing sample video files for testing
+
+To generate test videos:
+```bash
+python tests/fixtures/generate_test_videos.py
+```
+
 ## Coverage Goals
 
 Target: **80%+** code coverage
@@ -129,6 +156,9 @@ Current coverage by module:
 - `audio_processor.py`: 90%+
 - `batch_queue.py`: 95%+
 - `ffmpeg_runner.py`: 85%+
+- `audit.py`: 85%+
+- `config.py`: 80%+
+- `security.py`: 85%+
 
 ## Writing New Tests
 
@@ -246,10 +276,12 @@ rm -rf .pytest_cache/
 
 ## Test Statistics
 
-- **Total Tests**: 200+
-- **Unit Tests**: 150+
-- **Integration Tests**: 30+
-- **Performance Tests**: 20+
+- **Total Test Files**: 17
+- **Unit Test Files**: 7
+- **Integration Test Files**: 2
+- **E2E Test Files**: 2
+- **Performance Test Files**: 1
+- **Root Level Test Files**: 5
 - **Estimated Runtime**: 2-3 minutes (unit), 5-10 minutes (full)
 
 ## Contributing Tests

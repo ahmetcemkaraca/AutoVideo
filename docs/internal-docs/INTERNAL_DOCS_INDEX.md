@@ -12,6 +12,7 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
 - [Security](#security)
 - [Research & Analysis](#research--analysis)
 - [Quality Assurance](#quality-assurance)
+- [Archived Documentation](#archived-documentation)
 
 ---
 
@@ -24,11 +25,6 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
   - Module dependencies and relationships
   - Design patterns and architectural decisions
 
-- **[LEAD_ARCHITECT_ANALYSIS.md](architecture/LEAD_ARCHITECT_ANALYSIS.md)**
-  - Lead architect's analysis and recommendations
-  - Technical debt assessment
-  - Refactoring priorities
-
 - **[SYSTEM_DESIGN.md](architecture/system-design.md)**
   - High-level system design
   - Component interaction diagrams
@@ -38,53 +34,45 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
   - Quick overview of system architecture
   - Key components and their roles
 
-### Data Flow
-
-- **[DATA_FLOW.md](architecture/DATA_FLOW.md)** (TODO)
-  - Detailed data flow diagrams
-  - State management flow
-  - Error handling flow
-
-### Module Dependencies
-
-- **[MODULE_DEPENDENCIES.md](architecture/MODULE_DEPENDENCIES.md)** (TODO)
-  - Complete dependency graph
-  - Import analysis
-  - Circular dependency detection
-
 ---
 
 ## Development Guides
 
 ### Coding Standards
 
-- **[CODING_STANDARDS.md](guides/CODING_STANDARDS.md)** (TODO)
-  - Code style guide
-  - Naming conventions
-  - Documentation standards
-  - Best practices
+- **[contributing-guide.md](guides/contributing-guide.md)**
+  - Contribution workflow
+  - Pull request guidelines
+  - Code review process
 
 ### Testing Guide
 
-- **[TESTING_GUIDE.md](guides/testing-guide.md)**
+- **[testing-guide.md](guides/testing-guide.md)**
   - Testing strategy and coverage goals
   - Unit testing guidelines
   - Integration testing guidelines
   - Test organization
 
-### Debugging Guide
+### Optimization Guide
 
-- **[DEBUGGING_GUIDE.md](guides/DEBUGGING_GUIDE.md)** (TODO)
-  - Common debugging techniques
-  - Tool recommendations
-  - Troubleshooting procedures
+- **[optimization_developer_guide.md](guides/optimization_developer_guide.md)**
+  - Performance optimization techniques
+  - Memory management
+  - GPU utilization
 
-### Contributing Guide
+### Error Handling
 
-- **[contributing-guide.md](guides/contributing-guide.md)**
-  - Contribution workflow
-  - Pull request guidelines
-  - Code review process
+- **[error-handling-guide.md](error-handling-guide.md)**
+  - Error handling strategy
+  - Exception hierarchy
+  - Error reporting guidelines
+
+### Operations
+
+- **[RUNBOOK.md](RUNBOOK.md)**
+  - Operations runbook
+  - Deployment procedures
+  - Incident response
 
 ---
 
@@ -102,31 +90,10 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
   - Memory tracking implementation
   - Performance optimization strategies
 
-### Video Processing
-
-- **[VIDEO_ENCODER.md](modules/VIDEO_ENCODER.md)** (TODO)
-  - Video encoder internals
-  - Codec configuration
-  - Hardware acceleration
-
-- **[AUDIO_PROCESSOR.md](modules/AUDIO_PROCESSOR.md)** (TODO)
-  - Audio processing pipeline
-  - Mixing and looping logic
-  - Format conversion
-
-### Validation System
-
-- **[validation/architecture.md](validation/architecture.md)**
-  - Validation module architecture
-  - API reference for validators
-  - Integration points
-  - Extending validation checks
-
-- **[validation/troubleshooting.md](validation/troubleshooting.md)**
-  - Common validation errors and solutions
-  - Platform-specific issues
-  - FFmpeg/ffprobe requirements
-  - Debugging validation failures
+- **[comparison_ramtest.md](modules/comparison_ramtest.md)**
+  - Ramtest vs standard mode comparison
+  - Performance benchmarks
+  - Use case recommendations
 
 ### Batch Queue
 
@@ -144,6 +111,20 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
   - Before/after comparison
   - Migration guide
   - Breaking changes
+
+### Validation System
+
+- **[validation/architecture.md](validation/architecture.md)**
+  - Validation module architecture
+  - API reference for validators
+  - Integration points
+  - Extending validation checks
+
+- **[validation/troubleshooting.md](validation/troubleshooting.md)**
+  - Common validation errors and solutions
+  - Platform-specific issues
+  - FFmpeg/ffprobe requirements
+  - Debugging validation failures
 
 ---
 
@@ -166,13 +147,6 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
   - Best practices
   - Configuration examples
 
-### Error Handling
-
-- **[error-handling-guide.md](error-handling-guide.md)**
-  - Error handling strategy
-  - Exception hierarchy
-  - Error reporting guidelines
-
 ---
 
 ## Research & Analysis
@@ -186,17 +160,21 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
 
 ### Performance Analysis
 
-- **[performance_optimization_summary.md](../performance_optimization_summary.md)**
+- **[performance_optimization_summary.md](research/performance_optimization_summary.md)**
   - Performance optimization summary
   - Bottleneck identification
   - Optimization strategies
 
-### Comparisons
+### Project History
 
-- **[comparison_ramtest.md](comparison_ramtest.md)**
-  - Ramtest vs standard mode comparison
-  - Performance benchmarks
-  - Use case recommendations
+- **[Project_Summary_Log.md](research/Project_Summary_Log.md)**
+  - Development history and milestones
+- **[dev_session_summary.md](research/dev_session_summary.md)**
+  - Recent development sessions
+- **[PROJE_ANALIZ_RAPORU.md](research/PROJE_ANALIZ_RAPORU.md)**
+  - Turkish project analysis report
+- **[IMPORT_ANALYSIS_REPORT.md](research/IMPORT_ANALYSIS_REPORT.md)**
+  - Import and dependency analysis
 
 ---
 
@@ -209,12 +187,38 @@ Welcome to the AutoVideo internal documentation. This section contains documenta
   - Test suite evaluation
   - Recommendations
 
+### Code Analysis
+
+- **[CODE_ANALYSIS_REPORT.md](qa/CODE_ANALYSIS_REPORT.md)**
+  - Static analysis findings
+  - Critical issues
+  - Recommendations
+
+- **[CRITICAL_FIXES_SUMMARY.md](qa/CRITICAL_FIXES_SUMMARY.md)**
+  - Critical issue fixes
+  - Verification results
+  - Impact assessment
+
+- **[Video_Duration_Debug_Report.md](qa/Video_Duration_Debug_Report.md)**
+  - Video duration debugging report
+
 ### Production Readiness
 
 - **[production_readiness_summary.md](production_readiness_summary.md)**
   - Production readiness assessment
   - Deployment checklist
   - Monitoring requirements
+
+---
+
+## API Reference
+
+### Video Renderer API
+
+- **[video-renderer-api.md](api/video-renderer-api.md)**
+  - Complete API documentation
+  - Class references
+  - Function signatures
 
 ---
 
@@ -227,6 +231,7 @@ Located in [`../adr/`](../adr/):
 - **ADR-003:** Logging Architecture
 - **ADR-004:** Config Management
 - **ADR-005:** Test Framework Selection
+- **ADR-006:** Ramtest Integration Strategy
 
 ---
 
@@ -265,50 +270,15 @@ Located in [`../adr/`](../adr/):
 - `video_renderer/logging_config.py` - Logging configuration
 - `video_renderer/error_reporting.py` - Error reporting
 
-### Important Patterns
+---
 
-**Render Mode Configuration:**
-```python
-from video_renderer.config import get_render_config
+## Archived Documentation
 
-config = get_render_config("ramtest")
-# Returns RenderModeConfig with mode-specific settings
-```
+Documentation that has been superseded or is kept for historical reference is located in [`archive/`](archive/):
 
-**Security Validation:**
-```python
-from video_renderer.security import validate_path
-
-safe_path = validate_path(user_input, base_dir=Path.cwd())
-# Raises SecurityError if unsafe
-```
-
-**Audit Logging:**
-```python
-from video_renderer.audit import log_security_event
-
-log_security_event("FILE_ACCESS", {"file": "video.mp4"})
-```
-
-**Video Validation:**
-```python
-from video_renderer.video import VideoEncoder
-from video_renderer.ffmpeg import FFmpegRunner
-
-runner = FFmpegRunner()
-encoder = VideoEncoder(runner, codec_config, width=1920, height=1080)
-is_compat, reason = encoder.check_compatibility(Path("video.mp4"))
-if not is_compat:
-    print(f"Incompatible: {reason}")
-```
-
-**Audio Validation:**
-```python
-from video_renderer.audio import AudioProcessor
-
-processor = AudioProcessor(runner, tmp_dir)
-valid, invalid = processor.validate_tracks(tracks, parallel=True)
-```
+- **v1.0.0/** - Version 1.0.0 documentation snapshot
+- Historical analysis reports
+- Superseded documentation
 
 ---
 
@@ -363,115 +333,5 @@ valid, invalid = processor.validate_tracks(tracks, parallel=True)
 
 ---
 
-## Common Tasks
-
-### Adding a New Render Mode
-
-1. Update `video_renderer/config.py`:
-   ```python
-   @dataclass
-   class RenderModeConfig:
-       mode: str = "new_mode"
-       # Add mode-specific settings
-   ```
-
-2. Update `get_render_config()` factory:
-   ```python
-   configs = {
-       "new_mode": RenderModeConfig(mode="new_mode", ...)
-   }
-   ```
-
-3. Update TUI mode selection screen
-4. Add tests for new mode
-5. Update documentation
-
-### Adding a New Codec
-
-1. Add codec config to `video_renderer/config.py`:
-   ```python
-   CODEC_NEW = CodecConfig(
-       name="New Codec",
-       encoder="libnew",
-       preset="medium",
-       crf=20
-   )
-   ```
-
-2. Add to CODECS registry:
-   ```python
-   CODECS = {
-       "new": CODEC_NEW,
-       ...
-   }
-   ```
-
-3. Update `get_best_encoder()` if hardware variant exists
-4. Add tests
-5. Update documentation
-
-### Adding Security Validation
-
-1. Add validation function to `video_renderer/security.py`:
-   ```python
-   def validate_custom_input(input: str) -> bool:
-       # Validation logic
-       pass
-   ```
-
-2. Add audit logging:
-   ```python
-   log_security_event("CUSTOM_VALIDATION", {...})
-   ```
-
-3. Add tests
-4. Update security documentation
-
----
-
-## Getting Help
-
-### Internal Resources
-
-- **Team Lead:** Review with lead architect for architectural decisions
-- **Code Reviews:** Required for all changes
-- **Testing:** Coordinate with QA team
-
-### External Resources
-
-- **Python Documentation:** https://docs.python.org/3/
-- **FFmpeg Documentation:** https://ffmpeg.org/documentation.html
-- **Textual Documentation:** https://textual.textual.io/
-
----
-
-## Document Standards
-
-### Formatting
-
-- Use Markdown for all documentation
-- Include code examples for all APIs
-- Use relative paths for internal links
-- Use absolute paths for external links
-
-### Structure
-
-Each document should include:
-1. Title and brief description
-2. Table of contents (if long)
-3. Main content with examples
-4. Related documents section
-5. Last updated date
-
-### Review Process
-
-1. Draft documentation
-2. Technical review
-3. Peer review
-4. Final approval
-5. Merge to main
-
----
-
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-12
 **Maintained By:** Development Team

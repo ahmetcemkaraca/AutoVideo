@@ -570,6 +570,8 @@ class VideoEncoder:
             self.runner.set_total_duration(total_seconds)
             self.runner.set_progress_callback(progress_callback)
 
+        # Videos are already normalized (same codec, resolution, fps, color).
+        # Use stream copy (-c:v copy) instead of re-encoding for maximum speed.
         cmd = [
             "ffmpeg",
             "-y",
@@ -582,30 +584,29 @@ class VideoEncoder:
             "-i",
             str(concat_list),
             "-an",
-            "-vsync",
-            "cfr",
-            "-r",
-            str(self.fps),
+            "-c:v",
+            "copy",
+            "-t",
+            str(total_seconds),
+            "-movflags",
+            "+faststart",
+            "-video_track_timescale",
+            "90000",
+            "-avoid_negative_ts",
+            "make_zero",
+            str(output),
         ]
-        cmd.extend(self.codec.to_ffmpeg_args())
-        cmd.extend(self.color.to_ffmpeg_args())
-        cmd.extend(
-            [
-                "-t",
-                str(total_seconds),
-                "-movflags",
-                "+faststart",
-                "-video_track_timescale",
-                "90000",
-                "-avoid_negative_ts",
-                "make_zero",
-                str(output),
-            ]
-        )
 
         try:
             self.runner.run(cmd, capture_progress=bool(progress_callback))
         except Exception:
+            # Fallback: re-encode with CFR if stream copy fails (e.g. timestamp issues)
+            import logging
+            logging.getLogger(__name__).warning(
+                "Stream copy concat failed, falling back to re-encode..."
+            )
+            if output.exists():
+                output.unlink()
             fallback_cmd = [
                 "ffmpeg",
                 "-y",

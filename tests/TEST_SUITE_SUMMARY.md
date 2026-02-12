@@ -10,19 +10,35 @@ A comprehensive test suite has been created for the AutoVideo project, providing
 tests/
 ├── __init__.py                  # Test package marker
 ├── conftest.py                  # Pytest fixtures and configuration (400+ lines)
-├── unit/                        # Unit tests
+├── fixtures/                    # Test fixtures and generators
+│   ├── __init__.py
+│   ├── generate_test_videos.py  # Test video generation utilities (12KB)
+│   └── videos/                  # Sample video files for testing
+├── unit/                        # Unit tests (7 files)
 │   ├── __init__.py
 │   ├── test_video_encoder.py    # VideoEncoder tests (300+ lines)
 │   ├── test_audio_processor.py  # AudioProcessor tests (280+ lines)
 │   ├── test_batch_queue.py      # BatchQueue tests (550+ lines)
-│   └── test_ffmpeg_runner.py    # FFmpegRunner tests (300+ lines)
-├── integration/                 # Integration tests
+│   ├── test_ffmpeg_runner.py    # FFmpegRunner tests (300+ lines)
+│   ├── test_audit.py            # Audit logging tests
+│   ├── test_config.py           # Configuration management tests
+│   └── test_security.py         # Security validation tests
+├── integration/                 # Integration tests (2 files)
 │   ├── __init__.py
 │   ├── test_rendering_workflow.py     # End-to-end rendering (300+ lines)
 │   └── test_automation_pipeline.py    # Pipeline automation (250+ lines)
-└── performance/                 # Performance benchmarks
-    ├── __init__.py
-    └── test_benchmarks.py       # Performance tests (400+ lines)
+├── e2e/                         # End-to-end tests (2 files)
+│   ├── __init__.py
+│   ├── test_cli_wizard.py       # CLI wizard workflow tests
+│   └── test_tui_workflow.py     # TUI application workflow tests
+├── performance/                 # Performance benchmarks (1 file)
+│   ├── __init__.py
+│   └── test_benchmarks.py       # Performance tests (400+ lines)
+├── test_batch.py                # Batch processing tests
+├── test_batch_thread_safety.py  # Thread safety tests for batch operations
+├── test_error_handling.py       # Error handling tests
+├── test_optimizations.py        # Optimization verification tests
+└── test_validator.py            # Input validation tests
 
 Root files:
 ├── pytest.ini                   # Pytest configuration
@@ -33,7 +49,7 @@ Root files:
 
 ## Test Categories
 
-### 1. Unit Tests (150+ tests)
+### 1. Unit Tests (7 test files)
 **Purpose**: Test individual functions and classes in isolation
 
 **Coverage**:
@@ -41,6 +57,9 @@ Root files:
 - **AudioProcessor**: Validation, looping, mixing, gain application
 - **BatchQueue**: Job management, state persistence, thread safety
 - **FFmpegRunner**: Command execution, progress parsing, video probing
+- **Audit**: Logging, audit trail, event tracking
+- **Config**: Configuration loading, validation, defaults
+- **Security**: Input validation, sanitization, security checks
 
 **Key Features**:
 - Mock all external dependencies (subprocess, file system)
@@ -48,7 +67,7 @@ Root files:
 - Parametrized tests for edge cases
 - No external dependencies required
 
-### 2. Integration Tests (30+ tests)
+### 2. Integration Tests (2 test files)
 **Purpose**: Test component interactions and complete workflows
 
 **Coverage**:
@@ -65,7 +84,20 @@ Root files:
 - Test error scenarios
 - May require FFmpeg (marked with `@requires_ffmpeg`)
 
-### 3. Performance Tests (20+ tests)
+### 3. E2E Tests (2 test files)
+**Purpose**: Test complete user workflows from start to finish
+
+**Coverage**:
+- **CLI Wizard**: Interactive command-line wizard workflow
+- **TUI Workflow**: Textual UI application workflow tests
+
+**Key Features**:
+- Full application workflow testing
+- User interaction simulation
+- Complete scenario coverage
+- May require FFmpeg installation
+
+### 4. Performance Tests (1 test file)
 **Purpose**: Benchmark performance and scalability
 
 **Coverage**:
@@ -81,6 +113,16 @@ Root files:
 - Memory leak detection
 - Scalability testing
 - Marked as `@slow` (skip in quick runs)
+
+### 5. Root Level Tests (5 test files)
+**Purpose**: Additional specialized tests
+
+**Coverage**:
+- **test_batch.py**: Batch processing functionality
+- **test_batch_thread_safety.py**: Concurrent access safety verification
+- **test_error_handling.py**: Error scenarios and recovery
+- **test_optimizations.py**: Performance optimization verification
+- **test_validator.py**: Input validation testing
 
 ## Test Fixtures
 
@@ -98,6 +140,18 @@ Root files:
 | `sample_render_job` | Sample RenderJob |
 | `mock_youtube_service` | Mocked YouTube API |
 | `captured_progress` | Capture progress updates |
+
+### Fixtures Directory (tests/fixtures/)
+
+| Component | Purpose |
+|-----------|---------|
+| `generate_test_videos.py` | Utility script for generating test video files |
+| `videos/` | Sample video files for testing |
+
+To generate test videos:
+```bash
+python tests/fixtures/generate_test_videos.py
+```
 
 ## Configuration Files
 
@@ -193,7 +247,9 @@ Current coverage by module:
 | `audio_processor.py` | 90%+ | ✅ |
 | `batch_queue.py` | 95%+ | ✅ |
 | `ffmpeg_runner.py` | 85%+ | ✅ |
-| `config.py` | 75%+ | ⚠️ |
+| `audit.py` | 85%+ | ✅ |
+| `config.py` | 80%+ | ✅ |
+| `security.py` | 85%+ | ✅ |
 | `pipeline.py` | 80%+ | ✅ |
 
 **Overall Target**: 80%+ coverage
@@ -211,10 +267,12 @@ The test suite includes GitHub Actions configuration (`.github/workflows/tests.y
 
 | Metric | Value |
 |--------|-------|
-| Total Tests | 200+ |
-| Unit Tests | 150+ |
-| Integration Tests | 30+ |
-| Performance Tests | 20+ |
+| Total Test Files | 17 |
+| Unit Test Files | 7 |
+| Integration Test Files | 2 |
+| E2E Test Files | 2 |
+| Performance Test Files | 1 |
+| Root Level Test Files | 5 |
 | Estimated Runtime (unit) | 2-3 minutes |
 | Estimated Runtime (full) | 5-10 minutes |
 
@@ -369,11 +427,13 @@ When adding new features:
 ## Summary
 
 The AutoVideo test suite provides comprehensive coverage of:
-- ✅ All major components (video, audio, batch, ffmpeg)
+- ✅ All major components (video, audio, batch, ffmpeg, audit, config, security)
 - ✅ Integration workflows (rendering, automation)
+- ✅ E2E workflows (CLI wizard, TUI application)
 - ✅ Performance benchmarks (encoding, memory, scalability)
 - ✅ Error handling and edge cases
 - ✅ Thread safety and concurrency
 - ✅ State persistence and recovery
+- ✅ Test fixtures and data generators
 
 The suite is **production-ready** and follows pytest best practices.
