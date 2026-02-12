@@ -1696,12 +1696,14 @@ def render_pipeline(
 
 def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> bool:
     """
-    Emergency post-render duration fix using frame-exact trim (stream copy).
+    Emergency post-render duration fix using frame-exact trim.
     
     Fixes videos where duration is wrong due to broken timestamps.
     Uses -vframes to bypass timestamp issues entirely.
     
-    This is FAST (stream copy, ~2 min for 8h video) and lossless.
+    Strategy: Try stream copy first with -r + -fps_mode (MP4), then MKV fallback.
+    
+    This is FAST (stream copy, ~2-3 min for 8h video) and lossless.
     
     Args:
         video_path: Path to video file to fix
@@ -1723,11 +1725,14 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
     tmp_fixed = video_path.parent / f"{video_path.stem}_fixed_tmp{video_path.suffix}"
     
     try:
-        print(f"  [Stream Copy Fix] -vframes {target_frames} (frame-exact trim)")
+        # Strategy 1: Stream copy with -r flag to reset FPS + -fps_mode CFR
+        print(f"  [Stream Copy Fix] -r {fps} -fps_mode cfr -vframes {target_frames}")
         cmd = [
             "ffmpeg", "-y",
+            "-r", str(fps),
             "-i", str(video_path),
             "-c:v", "copy", "-c:a", "copy",
+            "-fps_mode", "cfr",
             "-vframes", str(target_frames),
             str(tmp_fixed),
         ]
@@ -1739,16 +1744,41 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
         tolerance = max(2.0, target_seconds * 0.02)
         
         if fixed_duration > 10 and abs(fixed_duration - target_seconds) <= tolerance:
-            print(f"  [OK] Fixed duration: {fixed_duration:.1f}s")
-            # Replace original with fixed
+            print(f"  [OK] Stream copy fix succeeded: {fixed_duration:.1f}s")
             video_path.unlink()
             tmp_fixed.rename(video_path)
-            print(f"  [OK] Video duration fixed and saved")
+            print(f"  [OK] Fixed version saved")
             return True
         else:
-            print(f"  [ERROR] Fixed duration still wrong: {fixed_duration:.1f}s")
+            # Duration still wrong, try MKV fallback
+            print(f"  [WARN] MP4 stream copy still wrong ({fixed_duration:.1f}s), trying MKV...")
             tmp_fixed.unlink()
-            return False
+            
+            tmp_mkv = video_path.parent / f"{video_path.stem}_fixed_tmp.mkv"
+            cmd_mkv = cmd.copy()
+            cmd_mkv[cmd_mkv.index(str(tmp_fixed))] = str(tmp_mkv)
+            
+            try:
+                subprocess.run(cmd_mkv, check=True, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                fixed_duration = get_duration(tmp_mkv)
+                if fixed_duration > 10 and abs(fixed_duration - target_seconds) <= tolerance:
+                    print(f"  [OK] MKV fix succeeded: {fixed_duration:.1f}s")
+                    video_path.unlink()
+                    new_mkv_path = video_path.parent / (video_path.stem + ".mkv")
+                    tmp_mkv.rename(new_mkv_path)
+                    print(f"  [OK] Fixed video saved as .mkv")
+                    return True
+                else:
+                    print(f"  [ERROR] MKV format also failed ({fixed_duration:.1f}s)")
+                    tmp_mkv.unlink()
+                    return False
+            except Exception as e:
+                print(f"  [ERROR] MKV fallback failed: {e}")
+                if tmp_mkv.exists():
+                    tmp_mkv.unlink()
+                return False
             
     except Exception as e:
         print(f"  [ERROR] Duration fix failed: {e}")

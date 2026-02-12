@@ -680,9 +680,11 @@ class VideoEncoder:
             print(f"  [Concat] 1 intro + {loop_count} loop (TS stream copy)")
             cmd = [
                 "ffmpeg", "-y",
+                "-r", str(self.fps),  # Reset FPS for proper frame counting
                 "-f", "concat", "-safe", "0",
                 "-i", str(concat_list_ts),
                 "-c:v", "copy", "-an",
+                "-fps_mode", "cfr",  # Constant frame rate
                 "-vframes", str(target_frames),  # Frame-exact (1728000 @ 60fps for 8h)
                 "-movflags", "+faststart",
                 str(output),
