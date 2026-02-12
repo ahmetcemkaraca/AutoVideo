@@ -9,7 +9,7 @@ Includes both standard and RAM-optimized (ramtest) configurations.
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import Set, Dict, List, Optional
+from typing import Any, Set, Dict, List, Optional
 import subprocess
 import shutil
 import os
@@ -409,6 +409,213 @@ def clear_encoder_cache():
     global _encoder_detection_cache, _cache_timestamp
     _encoder_detection_cache = None
     _cache_timestamp = 0.0
+
+
+def check_nvenc_readiness() -> Dict[str, Any]:
+    """
+    Comprehensive NVENC readiness check.
+    Verifies GPU driver, CUDA, and FFmpeg NVENC support.
+
+    Returns:
+        Dict with check results:
+        {
+            "ready": bool,           # Overall NVENC readiness
+            "gpu_found": bool,       # nvidia-smi detects a GPU
+            "gpu_name": str,         # GPU model name
+            "driver_version": str,   # NVIDIA driver version
+            "cuda_version": str,     # CUDA version (from nvidia-smi)
+            "vram_total_mb": int,    # Total VRAM in MB
+            "vram_free_mb": int,     # Free VRAM in MB
+            "ffmpeg_nvenc": bool,    # FFmpeg has NVENC encoders listed
+            "encoders_working": dict,# {encoder: bool} actual test results
+            "issues": list,          # List of issue descriptions
+        }
+    """
+    result = {
+        "ready": False,
+        "gpu_found": False,
+        "gpu_name": "",
+        "driver_version": "",
+        "cuda_version": "",
+        "vram_total_mb": 0,
+        "vram_free_mb": 0,
+        "ffmpeg_nvenc": False,
+        "encoders_working": {},
+        "issues": [],
+    }
+
+    # 1. Check nvidia-smi availability and GPU presence
+    try:
+        smi = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,driver_version,memory.total,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if smi.returncode == 0 and smi.stdout.strip():
+            parts = [p.strip() for p in smi.stdout.strip().split("\n")[0].split(",")]
+            if len(parts) >= 4:
+                result["gpu_found"] = True
+                result["gpu_name"] = parts[0]
+                result["driver_version"] = parts[1]
+                result["vram_total_mb"] = int(float(parts[2]))
+                result["vram_free_mb"] = int(float(parts[3]))
+            else:
+                result["issues"].append("nvidia-smi çıktısı beklenmeyen formatta")
+        else:
+            result["issues"].append(
+                "nvidia-smi çalıştırılamadı veya GPU bulunamadı. "
+                "NVIDIA driver kurulu mu? https://www.nvidia.com/drivers"
+            )
+    except FileNotFoundError:
+        result["issues"].append(
+            "nvidia-smi bulunamadı. NVIDIA driver kurulu değil. "
+            "https://www.nvidia.com/drivers adresinden indirin."
+        )
+    except subprocess.TimeoutExpired:
+        result["issues"].append("nvidia-smi zaman aşımına uğradı. GPU takılı/donmuş olabilir.")
+    except Exception as e:
+        result["issues"].append(f"nvidia-smi hatası: {e}")
+
+    # 2. Check CUDA version from nvidia-smi
+    if result["gpu_found"]:
+        try:
+            cuda_check = subprocess.run(
+                ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if cuda_check.returncode == 0:
+                compute_cap = cuda_check.stdout.strip().split("\n")[0].strip()
+                result["cuda_version"] = compute_cap
+
+                # NVENC requires compute capability >= 3.0
+                try:
+                    major = int(compute_cap.split(".")[0])
+                    if major < 3:
+                        result["issues"].append(
+                            f"GPU compute capability {compute_cap} < 3.0. "
+                            f"NVENC için en az 3.0 gerekli (Kepler veya üstü)."
+                        )
+                except (ValueError, IndexError):
+                    pass
+        except Exception:
+            pass
+
+    # 3. Check FFmpeg NVENC encoder support
+    try:
+        enc_check = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if enc_check.returncode == 0:
+            output = enc_check.stdout
+            nvenc_encoders = ["h264_nvenc", "hevc_nvenc", "av1_nvenc"]
+            found_any = False
+            for enc in nvenc_encoders:
+                if enc in output:
+                    found_any = True
+            result["ffmpeg_nvenc"] = found_any
+            if not found_any:
+                result["issues"].append(
+                    "FFmpeg'de NVENC encoder bulunamadı. "
+                    "FFmpeg'in NVENC desteği ile derlenmiş olması gerekir. "
+                    "Windows: gyan.dev/ffmpeg/builds/ adresinden full build indirin. "
+                    "Linux: sudo apt install ffmpeg (veya NVIDIA SDK ile derleyin)."
+                )
+    except FileNotFoundError:
+        result["issues"].append("FFmpeg bulunamadı. Lütfen FFmpeg kurun.")
+    except Exception as e:
+        result["issues"].append(f"FFmpeg encoder kontrol hatası: {e}")
+
+    # 4. Actually test NVENC encoders
+    if result["gpu_found"] and result["ffmpeg_nvenc"]:
+        for encoder in ["h264_nvenc", "hevc_nvenc", "av1_nvenc"]:
+            try:
+                test_cmd = [
+                    "ffmpeg", "-hide_banner", "-y",
+                    "-f", "lavfi", "-i", "color=black:s=64x64:d=0.04",
+                    "-c:v", encoder,
+                    "-t", "0.04",
+                    "-f", "null", "-",
+                ]
+                test_result = subprocess.run(
+                    test_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                working = test_result.returncode == 0 and "Error" not in test_result.stderr
+                result["encoders_working"][encoder] = working
+                if not working:
+                    # Extract useful error from stderr
+                    err_lines = [
+                        l.strip() for l in test_result.stderr.split("\n")
+                        if "Error" in l or "error" in l or "Cannot" in l
+                    ]
+                    err_msg = err_lines[0] if err_lines else "Bilinmeyen hata"
+                    result["issues"].append(f"{encoder} çalışmıyor: {err_msg}")
+            except subprocess.TimeoutExpired:
+                result["encoders_working"][encoder] = False
+                result["issues"].append(f"{encoder} testi zaman aşımına uğradı")
+            except Exception as e:
+                result["encoders_working"][encoder] = False
+                result["issues"].append(f"{encoder} test hatası: {e}")
+
+    # 5. Overall readiness
+    result["ready"] = (
+        result["gpu_found"]
+        and result["ffmpeg_nvenc"]
+        and any(result["encoders_working"].values())
+    )
+
+    return result
+
+
+def print_nvenc_status():
+    """Print NVENC readiness status to console (for CLI diagnostics)."""
+    status = check_nvenc_readiness()
+
+    lines = []
+    lines.append("=" * 50)
+    lines.append("NVENC Durum Kontrolu")
+    lines.append("=" * 50)
+
+    if status["gpu_found"]:
+        lines.append(f"  GPU     : {status['gpu_name']}")
+        lines.append(f"  Driver  : {status['driver_version']}")
+        lines.append(f"  Compute : {status['cuda_version']}")
+        lines.append(f"  VRAM    : {status['vram_free_mb']} MB bos / {status['vram_total_mb']} MB toplam")
+    else:
+        lines.append("  GPU     : Bulunamadi")
+
+    lines.append(f"  FFmpeg  : {'NVENC destekli' if status['ffmpeg_nvenc'] else 'NVENC yok'}")
+
+    if status["encoders_working"]:
+        for enc, ok in status["encoders_working"].items():
+            symbol = "OK" if ok else "FAIL"
+            lines.append(f"  {enc:15s}: {symbol}")
+
+    lines.append("-" * 50)
+    if status["ready"]:
+        lines.append("  Sonuc: NVENC KULLANILABILIR")
+    else:
+        lines.append("  Sonuc: NVENC KULLANILAMIYOR")
+        for issue in status["issues"]:
+            lines.append(f"  ! {issue}")
+
+    lines.append("=" * 50)
+    print("\n".join(lines))
+
+    return status["ready"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

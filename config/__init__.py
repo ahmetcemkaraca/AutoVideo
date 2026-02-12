@@ -70,6 +70,8 @@ from .renderer import (
     detect_available_encoders,
     get_best_encoder,
     clear_encoder_cache,
+    check_nvenc_readiness,
+    print_nvenc_status,
     # Backward compatibility aliases
     RenderConfig as RendererConfigAlias,
 )

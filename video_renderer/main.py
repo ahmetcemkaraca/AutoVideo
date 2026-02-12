@@ -1421,6 +1421,32 @@ def render_pipeline(
 
     console.print()
 
+    # NVENC readiness check if hardware encoder is selected
+    if "nvenc" in codec_config.encoder.lower():
+        from config import check_nvenc_readiness
+        nvenc_status = check_nvenc_readiness()
+        if nvenc_status["ready"]:
+            gpu_name = nvenc_status["gpu_name"]
+            vram = nvenc_status["vram_total_mb"]
+            print_success(f"NVENC hazir: {gpu_name} ({vram} MB VRAM)")
+        else:
+            print_warning("NVENC kullanılamıyor, software encoder'a geciliyor:")
+            for issue in nvenc_status["issues"]:
+                print_warning(f"  - {issue}")
+            # Fallback to software encoder
+            from config import get_best_encoder as _get_best_sw
+            sw_family = codec_config.codec_family
+            # Force software by clearing nvenc from available list
+            from config import clear_encoder_cache
+            clear_encoder_cache()
+            # Get software fallback
+            sw_codec_map = {"av1": "av1", "h264": "h264", "h265": "h265"}
+            from .config import CODECS as _SW_CODECS
+            sw_key = sw_codec_map.get(sw_family, "h264")
+            if sw_key in _SW_CODECS:
+                codec_config = _SW_CODECS[sw_key]
+                print_info(f"Software encoder: {codec_config.name}")
+
     runner = FFmpegRunner(run_log)
     audio_processor = AudioProcessor(runner, tmp_dir)
 

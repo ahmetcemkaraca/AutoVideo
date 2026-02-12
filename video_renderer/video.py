@@ -530,6 +530,98 @@ class VideoEncoder:
             f"format=yuv420p"
         )
 
+    def _get_fast_concat_codec_args(self) -> List[str]:
+        """
+        Get fastest possible codec args for the concat re-encode step.
+
+        Since input videos are already at target quality (normalized),
+        this step only needs to fix timestamps. Use fastest preset
+        to minimize re-encode time while maintaining codec compatibility.
+        """
+        enc = self.codec.encoder.lower()
+
+        # NVIDIA NVENC — already very fast, use p1 (fastest) preset
+        if "nvenc" in enc:
+            args = ["-c:v", self.codec.encoder, "-preset", "p1"]
+            # Use VBR with quality target
+            cq = self.codec.crf
+            args.extend(["-rc", "vbr", "-cq", str(cq), "-b:v", "0"])
+            if self.codec.profile:
+                args.extend(["-profile:v", self.codec.profile])
+            # Minimal lookahead for speed
+            args.extend(["-rc-lookahead", "8", "-surfaces", "64"])
+            if "hevc" in enc:
+                args.extend(["-tag:v", "hvc1"])
+            return args
+
+        # Intel QSV — use veryfast preset
+        if "qsv" in enc:
+            args = ["-c:v", self.codec.encoder, "-preset", "veryfast"]
+            args.extend(["-global_quality", str(self.codec.crf)])
+            if self.codec.profile:
+                args.extend(["-profile:v", self.codec.profile])
+            if "hevc" in enc:
+                args.extend(["-tag:v", "hvc1"])
+            return args
+
+        # VAAPI — use QP mode (no preset concept)
+        if "vaapi" in enc:
+            args = ["-c:v", self.codec.encoder, "-qp", str(self.codec.crf)]
+            if self.codec.profile:
+                args.extend(["-profile:v", self.codec.profile])
+            if "hevc" in enc:
+                args.extend(["-tag:v", "hvc1"])
+            return args
+
+        # Software: libsvtav1 — preset 12 is fastest
+        if "svtav1" in enc or "svt-av1" in enc:
+            return ["-c:v", "libsvtav1", "-preset", "12", "-crf", str(self.codec.crf)]
+
+        # Software: libx265 — ultrafast
+        if "x265" in enc or "libx265" in enc:
+            return [
+                "-c:v", "libx265", "-preset", "ultrafast",
+                "-crf", str(self.codec.crf), "-tag:v", "hvc1",
+            ]
+
+        # Software: libx264 — ultrafast (default fallback)
+        if "x264" in enc or "libx264" in enc:
+            return [
+                "-c:v", "libx264", "-preset", "ultrafast",
+                "-crf", str(self.codec.crf),
+            ]
+
+        # Unknown encoder: use same codec args but log warning
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Unknown encoder '{self.codec.encoder}' for fast concat, using default args"
+        )
+        return self.codec.to_ffmpeg_args()
+
+    def _get_bsf_for_codec(self) -> Optional[str]:
+        """Get the bitstream filter needed to remux MP4 → MPEG-TS for this codec."""
+        enc = self.codec.encoder.lower()
+        if "h264" in enc or "x264" in enc:
+            return "h264_mp4toannexb"
+        if "hevc" in enc or "x265" in enc or "h265" in enc:
+            return "hevc_mp4toannexb"
+        # AV1, VP9 etc. do not need a bitstream filter for TS remux
+        return None
+
+    def _remux_to_ts(self, mp4_path: Path, ts_path: Path) -> None:
+        """Remux an MP4 file to MPEG-TS format (stream copy, no re-encode)."""
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(mp4_path),
+            "-c:v", "copy",
+            "-an",
+        ]
+        bsf = self._get_bsf_for_codec()
+        if bsf:
+            cmd.extend(["-bsf:v", bsf])
+        cmd.extend(["-f", "mpegts", str(ts_path)])
+        self.runner.run_simple(cmd)
+
     def concat_videos(
         self,
         intro: Path,
@@ -540,8 +632,16 @@ class VideoEncoder:
     ) -> Path:
         """
         Concatenate intro + repeated loop to reach target duration.
-        Re-encodes with CFR timestamps to prevent timestamp drift/speed issues
-        on platforms like YouTube after upload/transcode.
+
+        Uses MPEG-TS intermediate format for lossless concatenation:
+        1. Remux MP4 → TS (stream copy, fixes timestamp continuity)
+        2. Concat TS files with -c:v copy (no re-encode needed)
+        3. Output to MP4 with proper timestamps
+
+        This avoids the timestamp drift issue that causes YouTube to
+        speed up or truncate the loop section, WITHOUT re-encoding.
+
+        Falls back to CFR re-encode only if TS-based concat fails.
 
         Args:
             intro: Normalized intro video
@@ -553,16 +653,14 @@ class VideoEncoder:
         Returns:
             Path to concatenated video
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         intro_duration = get_duration(intro)
         loop_duration = get_duration(loop)
 
         remaining = max(0.0, total_seconds - intro_duration)
         loop_count = int(math.ceil(remaining / loop_duration)) if loop_duration > 0 else 0
-
-        # Write concat list
-        concat_list = tmp_dir / "video_list.txt"
-        files = [intro] + [loop] * loop_count
-        write_concat_list(files, concat_list)
 
         output = tmp_dir / "video_only.mp4"
 
@@ -570,80 +668,128 @@ class VideoEncoder:
             self.runner.set_total_duration(total_seconds)
             self.runner.set_progress_callback(progress_callback)
 
-        # Videos are already normalized (same codec, resolution, fps, color).
-        # Use stream copy (-c:v copy) instead of re-encoding for maximum speed.
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-fflags",
-            "+genpts",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(concat_list),
+        # ── Primary: TS-based stream copy concat (no re-encode) ──
+        try:
+            # Step 1: Remux intro & loop to MPEG-TS
+            intro_ts = tmp_dir / "intro_concat.ts"
+            loop_ts = tmp_dir / "loop_concat.ts"
+
+            if not intro_ts.exists():
+                self._remux_to_ts(intro, intro_ts)
+            if not loop_ts.exists():
+                self._remux_to_ts(loop, loop_ts)
+
+            # Step 2: Write concat list with TS files
+            concat_list_ts = tmp_dir / "video_list_ts.txt"
+            ts_files = [intro_ts] + [loop_ts] * loop_count
+            write_concat_list(ts_files, concat_list_ts)
+
+            # Step 3: Concat TS → MP4 with stream copy
+            cmd = [
+                "ffmpeg", "-y",
+                "-fflags", "+genpts",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_list_ts),
+                "-an",
+                "-c:v", "copy",
+                "-t", str(total_seconds),
+                "-movflags", "+faststart",
+                "-video_track_timescale", "90000",
+                "-avoid_negative_ts", "make_zero",
+                str(output),
+            ]
+
+            self.runner.run(cmd, capture_progress=bool(progress_callback))
+
+            # Verify TS-based output before accepting
+            if output.exists():
+                output_duration = get_duration(output)
+                if output_duration < 10:
+                    raise RuntimeError(
+                        f"TS concat output too short: {output_duration:.1f}s"
+                    )
+                if total_seconds > 0 and abs(output_duration - total_seconds) > max(3.0, total_seconds * 0.03):
+                    raise RuntimeError(
+                        f"TS concat duration mismatch: target={total_seconds:.1f}s, "
+                        f"actual={output_duration:.1f}s"
+                    )
+                # Success — clean up TS intermediates
+                for f in [intro_ts, loop_ts, concat_list_ts]:
+                    if f.exists():
+                        f.unlink()
+                return output
+
+            raise RuntimeError("TS concat output not created")
+
+        except Exception as ts_err:
+            logger.warning(f"TS-based concat failed: {ts_err}. Falling back to CFR re-encode...")
+            if output.exists():
+                output.unlink()
+            # Clean up TS files on failure
+            for f in [tmp_dir / "intro_concat.ts", tmp_dir / "loop_concat.ts", tmp_dir / "video_list_ts.txt"]:
+                if f.exists():
+                    f.unlink()
+
+        # ── Fallback: CFR re-encode with fastest preset ──
+        concat_list = tmp_dir / "video_list.txt"
+        files = [intro] + [loop] * loop_count
+        write_concat_list(files, concat_list)
+
+        cmd = ["ffmpeg", "-y"]
+
+        # Hardware-accelerated decoding for faster pipeline
+        if self._use_gpu and self._accel_type == "nvenc":
+            cmd.extend(["-hwaccel", "cuda"])
+
+        cmd.extend([
+            "-fflags", "+genpts",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(concat_list),
             "-an",
-            "-c:v",
-            "copy",
-            "-t",
-            str(total_seconds),
-            "-movflags",
-            "+faststart",
-            "-video_track_timescale",
-            "90000",
-            "-avoid_negative_ts",
-            "make_zero",
+            "-vsync", "cfr",
+            "-r", str(self.fps),
+        ])
+
+        concat_codec_args = self._get_fast_concat_codec_args()
+        cmd.extend(concat_codec_args)
+        cmd.extend(self.color.to_ffmpeg_args())
+        cmd.extend([
+            "-t", str(total_seconds),
+            "-movflags", "+faststart",
+            "-video_track_timescale", "90000",
+            "-avoid_negative_ts", "make_zero",
             str(output),
-        ]
+        ])
 
         try:
             self.runner.run(cmd, capture_progress=bool(progress_callback))
         except Exception:
-            # Fallback: re-encode with CFR if stream copy fails (e.g. timestamp issues)
-            import logging
-            logging.getLogger(__name__).warning(
-                "Stream copy concat failed, falling back to re-encode..."
-            )
+            logger.warning("Fast preset concat failed, final fallback to libx264 ultrafast...")
             if output.exists():
                 output.unlink()
             fallback_cmd = [
-                "ffmpeg",
-                "-y",
-                "-fflags",
-                "+genpts",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_list),
+                "ffmpeg", "-y",
+                "-fflags", "+genpts",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_list),
                 "-an",
-                "-vsync",
-                "cfr",
-                "-r",
-                str(self.fps),
-                "-c:v",
-                "libx264",
-                "-preset",
-                "fast",
-                "-crf",
-                "23",
+                "-vsync", "cfr",
+                "-r", str(self.fps),
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "18",
             ]
             fallback_cmd.extend(self.color.to_ffmpeg_args())
-            fallback_cmd.extend(
-                [
-                    "-t",
-                    str(total_seconds),
-                    "-movflags",
-                    "+faststart",
-                    "-video_track_timescale",
-                    "90000",
-                    "-avoid_negative_ts",
-                    "make_zero",
-                    str(output),
-                ]
-            )
+            fallback_cmd.extend([
+                "-t", str(total_seconds),
+                "-movflags", "+faststart",
+                "-video_track_timescale", "90000",
+                "-avoid_negative_ts", "make_zero",
+                str(output),
+            ])
             self.runner.run(fallback_cmd, capture_progress=bool(progress_callback))
 
         # Verify output file was created and is valid
@@ -651,7 +797,7 @@ class VideoEncoder:
             raise RuntimeError(f"Concat failed: output file not created at {output}")
 
         output_duration = get_duration(output)
-        if output_duration < 10:  # Less than 10 seconds indicates a problem
+        if output_duration < 10:
             raise RuntimeError(
                 f"Concat output suspiciously short: {output_duration:.1f}s. "
                 f"This may indicate a problem with the input videos or concat list."
