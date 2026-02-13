@@ -684,6 +684,23 @@ class AudioProcessor:
         ]
 
         self.runner.run(cmd, capture_progress=bool(progress_callback))
+
+        # Cleanup temp list
+        try:
+            if music_list.exists():
+                music_list.unlink()
+        except:
+            pass
+
+        # Cleanup trimmed tracks if any
+        if trim_silence:
+            for track in tracks:
+                try:
+                    if track.exists() and track.parent == self.tmp_dir:
+                        track.unlink()
+                except:
+                    pass
+
         return output
 
     def apply_gain(self, source: Path, gain_db: float, output_name: Optional[str] = None) -> Path:

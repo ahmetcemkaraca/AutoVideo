@@ -266,9 +266,7 @@ class FFmpegRunner:
         if not use_stream_processing:
             result = subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL)
             # Restore terminal echo after FFmpeg (which may corrupt tty settings)
-            import sys, os
-            if sys.platform != "win32":
-                os.system("stty sane 2>/dev/null")
+            # FIXED: Removed 'stty sane' as it causes artifacts (^H) in Textual apps
             return result
 
         # First attempt: Hardware encoding

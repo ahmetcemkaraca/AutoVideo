@@ -331,6 +331,14 @@ class BatchScreen(Screen):
             self.queue.update_progress(job.id, 60)
             self.call_from_thread(self._update_table)
 
+            # Cleanup normalized videos
+            for f in [intro_norm, loop_norm]:
+                try:
+                    if f.exists():
+                        f.unlink()
+                except:
+                    pass
+
         if worker.is_cancelled:
             return
 
@@ -344,8 +352,23 @@ class BatchScreen(Screen):
         if job.backgrounds:
             bg_processed = audio_processor.process_backgrounds(job.backgrounds)
             audio_full = audio_processor.mix_tracks(music_loop, bg_processed, job.total_seconds)
+            
+            # Cleanup background optimization files
+            for bg_file in bg_processed:
+                try:
+                    if bg_file.exists():
+                        bg_file.unlink()
+                except:
+                    pass
         else:
             audio_full = music_loop
+
+        # Cleanup music loop (it's mixed now)
+        try:
+            if music_loop.exists() and audio_full != music_loop:
+                music_loop.unlink()
+        except:
+            pass
 
         self.queue.update_progress(job.id, 80)
         self.call_from_thread(self._update_table)
@@ -355,6 +378,15 @@ class BatchScreen(Screen):
 
         # Step 5: Final mux
         mux_video_audio(runner, video_only, audio_full, job.output_path)
+
+        # Cleanup final intermediates
+        try:
+            if video_only and video_only.exists():
+                video_only.unlink()
+            if audio_full and audio_full.exists():
+                audio_full.unlink()
+        except:
+            pass
 
         self.queue.complete_job(job.id)
         self.call_from_thread(self._update_table)
