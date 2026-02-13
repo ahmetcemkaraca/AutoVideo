@@ -1,6 +1,84 @@
 #!/bin/bash
-if [ -f "venv/bin/python3" ]; then
-    ./venv/bin/python3 run.py "$@"
+
+# Video Renderer Startup Script
+# Robust dependency checking and environment setup
+
+# ANSI Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}=== Video Renderer Baslatiliyor ===${NC}"
+
+# 1. Check Python 3
+echo -n "Checking Python 3... "
+if command -v python3 &> /dev/null; then
+    echo -e "${GREEN}OK ($(python3 --version))${NC}"
 else
-    python3 run.py "$@"
+    echo -e "${RED}MISSING${NC}"
+    echo -e "${YELLOW}Python 3 yukleniyor...${NC}"
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip
+    else
+        echo -e "${RED}HATA: apt-get bulunamadi. Lutfen Python 3.8+ manuel yukleyin.${NC}"
+        read -p "Cikis icin Enter'a basin..."
+        exit 1
+    fi
+fi
+
+# 2. Check FFmpeg
+echo -n "Checking FFmpeg... "
+if command -v ffmpeg &> /dev/null; then
+    # Parse version just to be sure
+    FFVER=$(ffmpeg -version | head -n1 | grep -oP 'version \K.[^ ]+')
+    echo -e "${GREEN}OK (v$FFVER)${NC}"
+else
+    echo -e "${RED}MISSING${NC}"
+    echo -e "${YELLOW}FFmpeg yukleniyor...${NC}"
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y ffmpeg
+    else
+        echo -e "${RED}HATA: apt-get bulunamadi. Lutfen FFmpeg manuel yukleyin.${NC}"
+        read -p "Cikis icin Enter'a basin..."
+        exit 1
+    fi
+fi
+
+# 3. Check/Create Venv
+VENV_DIR="venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo -e "${YELLOW}Virtual Environment (venv) olusturuluyor...${NC}"
+    python3 -m venv "$VENV_DIR"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}HATA: venv olusturulamadi. 'python3-venv' paketinin yuklu oldugundan emin olun.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Venv olusturuldu.${NC}"
+    
+    # First time setup: Upgrade pip and install requirements
+    echo -e "${BLUE}Bagimliliklar yukleniyor...${NC}"
+    ./$VENV_DIR/bin/pip install --upgrade pip
+    ./$VENV_DIR/bin/pip install -r requirements.txt
+else
+    # Check if we need to update requirements (simple check)
+    # Ideally we'd compare timestamps or use pip-sync, but for now just check modules
+    if ! ./$VENV_DIR/bin/python3 -c "import textual" &> /dev/null; then
+        echo -e "${YELLOW}Eksik paketler tespit edildi. Yukleniyor...${NC}"
+        ./$VENV_DIR/bin/pip install -r requirements.txt
+    fi
+fi
+
+# 4. Run Application
+echo -e "${GREEN}Uygulama baslatiliyor...${NC}"
+source "$VENV_DIR/bin/activate"
+
+# Check if run.py exists
+if [ -f "run.py" ]; then
+    python run.py "$@"
+else
+    echo -e "${RED}HATA: run.py bulunamadi!${NC}"
+    read -p "Cikis icin Enter'a basin..."
+    exit 1
 fi

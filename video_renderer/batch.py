@@ -62,6 +62,7 @@ class RenderJob:
     single_video_path: Optional[Path] = None
     mode: str = "intro_loop"  # intro_loop or single
     codec_family: str = "av1"
+    video_bitrate: Optional[str] = None  # e.g., "5000k" or "5M"
     duration_str: str = "9:00:00"
     total_seconds: int = 32400
     tracks: List[Path] = field(default_factory=list)

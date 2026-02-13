@@ -112,6 +112,7 @@ class FFmpegRunner:
     ):
         self.log_path = log_path
         self._progress_callback: Optional[Callable[[FFmpegProgress], None]] = None
+        self._log_callback: Optional[Callable[[str], None]] = None
         self._total_duration: float = 0.0
         self._max_retries = max_retries
         self._callback_lock = threading.Lock()
@@ -123,6 +124,10 @@ class FFmpegRunner:
     def set_progress_callback(self, callback: Callable[[FFmpegProgress], None]):
         """Set a callback for progress updates."""
         self._progress_callback = callback
+
+    def set_log_callback(self, callback: Callable[[str], None]):
+        """Set a callback for raw log lines."""
+        self._log_callback = callback
 
     def set_total_duration(self, duration: float):
         """Set total duration for percent calculation."""
@@ -256,7 +261,9 @@ class FFmpegRunner:
         """
         self._log_command(cmd)
 
-        if not capture_progress or not self._progress_callback:
+        use_stream_processing = (capture_progress and self._progress_callback) or self._log_callback
+
+        if not use_stream_processing:
             result = subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL)
             # Restore terminal echo after FFmpeg (which may corrupt tty settings)
             import sys, os
@@ -341,6 +348,11 @@ class FFmpegRunner:
                 # Process ended, read remaining output
                 for line in process.stderr.readlines():
                     self._stderr_buffer.append(line)
+                    # Log callback
+                    with self._callback_lock:
+                        if self._log_callback:
+                            self._log_callback(line)
+                            
                     if progress := self._parse_progress_line(line):
                         with self._callback_lock:
                             if self._progress_callback:
@@ -361,6 +373,11 @@ class FFmpegRunner:
 
             # Only keep recent lines in memory (circular buffer)
             self._stderr_buffer.append(line)
+
+            # Log callback
+            with self._callback_lock:
+                if self._log_callback:
+                    self._log_callback(line)
 
             # Parse progress (fast-path on non-progress lines)
             if progress := self._parse_progress_line(line):

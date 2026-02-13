@@ -53,14 +53,31 @@ class BatchScreen(Screen):
             classes="container",
         )
 
-        # Queue table
-        with Container(classes="panel"):
-            yield Static("Is Kuyrugu", classes="panel-title")
-            yield DataTable(id="queue_table")
+        with TabbedContent(initial="queue_tab"):
+            with TabPane("Is Kuyrugu", id="queue_tab"):
+                with Container(classes="panel"):
+                    yield Static("Is Kuyrugu", classes="panel-title")
+                    yield DataTable(id="queue_table")
+                
+                # Summary
+                with Container(classes="panel"):
+                    yield Static("", id="queue_summary", classes="info-text")
 
-        # Summary
-        with Container(classes="panel"):
-            yield Static("", id="queue_summary", classes="info-text")
+            with TabPane("Canli Izleme", id="monitor_tab"):
+                 with Horizontal(classes="monitor-container"):
+                     for i in range(3):
+                         # Create 3 columns for logs
+                         with Vertical(classes="log-pane"):
+                             yield Label(f"Worker {i+1}", classes="log-label")
+                             # RichLog for streaming output
+                             yield RichLog(
+                                 id=f"log_{i}", 
+                                 markup=True, 
+                                 highlight=True, 
+                                 classes="log-widget",
+                                 wrap=True,
+                                 max_lines=1000
+                             )
 
         # Actions
         with Horizontal(classes="action-bar"):
@@ -127,7 +144,10 @@ class BatchScreen(Screen):
         text = (
             f"Toplam: {total} | Kuyrukta: {queued} | Calisiyor: {running} | Tamamlandi: {complete}"
         )
-        self.query_one("#queue_summary", Static).update(text)
+        try:
+            self.query_one("#queue_summary", Static).update(text)
+        except Exception:
+            pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -174,7 +194,8 @@ class BatchScreen(Screen):
         
         # Start 3 concurrent workers
         for i in range(3):
-            w = self.run_worker(self._process_queue, thread=True, group="batch_workers")
+            # Pass worker_id to track logs
+            w = self.run_worker(self._process_queue(i), thread=True, group="batch_workers")
             self.process_workers.append(w)
 
         # Start monitor
@@ -193,7 +214,7 @@ class BatchScreen(Screen):
         self.call_from_thread(self._update_summary)
         self.call_from_thread(self.notify, "Kuyruk isleme tamamlandi!")
 
-    async def _process_queue(self) -> None:
+    async def _process_queue(self, worker_id: int) -> None:
         """Process all queued jobs sequentially."""
         worker = get_current_worker()
 
@@ -207,18 +228,36 @@ class BatchScreen(Screen):
 
             try:
                 self.call_from_thread(self._update_table)
-                await self._run_single_job(job, worker)
+                await self._run_single_job(job, worker, worker_id)
             except Exception as e:
                 self.queue.fail_job(job.id, str(e))
-
-            except Exception as e:
-                self.queue.fail_job(job.id, str(e))
+                # Log error to worker log
+                try:
+                    log_widget = self.query_one(f"#log_{worker_id}", RichLog)
+                    self.call_from_thread(log_widget.write, f"[red]JOB FAILED: {e}[/]")
+                except Exception:
+                    pass
 
         # Individual worker finished (monitor handles global completion state)
 
-    async def _run_single_job(self, job: RenderJob, worker: Worker) -> None:
+    async def _run_single_job(self, job: RenderJob, worker: Worker, worker_id: int = 0) -> None:
         """Run a single render job."""
         self.queue.start_job(job.id)
+
+        # Get Log Widget
+        log_widget = None
+        try:
+            log_widget = self.query_one(f"#log_{worker_id}", RichLog)
+            self.call_from_thread(log_widget.clear)
+            self.call_from_thread(log_widget.write, f"[bold green]Starting Job #{job.id}[/]")
+            self.call_from_thread(log_widget.write, f"Render: {job.output_path.name if job.output_path else 'Auto'}")
+            
+            # Helper for thread-safe logging
+            def log_callback(line: str):
+                self.call_from_thread(log_widget.write, line.rstrip())
+                
+        except Exception:
+            log_callback = None
 
         base = Path.cwd()
         # Unique tmp dir per job to avoid conflicts
@@ -227,6 +266,9 @@ class BatchScreen(Screen):
         run_log = tmp_dir / "run_log.txt"
 
         runner = FFmpegRunner(run_log)
+        if log_callback:
+            runner.set_log_callback(log_callback)
+            
         codec_config = get_best_encoder(job.codec_family)
 
         # Create encoder
@@ -244,7 +286,11 @@ class BatchScreen(Screen):
 
                 # Normalize/Encode video (simple copy/convert)
                 # We reuse normalize_video for this
-                encoder.normalize_video(job.single_video_path, video_only)
+                encoder.normalize_video(
+                    job.single_video_path, 
+                    video_only, 
+                    bitrate=job.video_bitrate
+                )
 
             self.queue.update_progress(job.id, 60)  # Jump to 60 directly
             self.call_from_thread(self._update_table)
@@ -255,7 +301,11 @@ class BatchScreen(Screen):
             # Step 1: Encode intro
             intro_norm = tmp_dir / f"batch_{job.id}_intro_{job.codec_family}.mp4"
             if not intro_norm.exists():
-                encoder.normalize_video(job.intro_path, intro_norm)
+                encoder.normalize_video(
+                    job.intro_path, 
+                    intro_norm, 
+                    bitrate=job.video_bitrate
+                )
             self.queue.update_progress(job.id, 20)
             self.call_from_thread(self._update_table)
 
@@ -265,7 +315,11 @@ class BatchScreen(Screen):
             # Step 2: Encode loop
             loop_norm = tmp_dir / f"batch_{job.id}_loop_{job.codec_family}.mp4"
             if not loop_norm.exists():
-                encoder.normalize_video(job.loop_path, loop_norm)
+                encoder.normalize_video(
+                    job.loop_path, 
+                    loop_norm, 
+                    bitrate=job.video_bitrate
+                )
             self.queue.update_progress(job.id, 40)
             self.call_from_thread(self._update_table)
 

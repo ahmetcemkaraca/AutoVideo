@@ -287,6 +287,7 @@ class VideoEncoder:
         output: Path,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
         scale_algo: str = "lanczos",
+        bitrate: Optional[str] = None,
     ) -> Path:
         """
         OPTIMIZED: Normalize a video to target specs.
@@ -302,6 +303,7 @@ class VideoEncoder:
             output: Output video path
             progress_callback: Optional progress callback
             scale_algo: Scaling algorithm (lanczos, bicubic, bilinear)
+            bitrate: Optional target bitrate (e.g. "5000k", "5M") to override defaults
 
         Returns:
             Path to normalized video
@@ -312,9 +314,10 @@ class VideoEncoder:
             self.runner.set_progress_callback(progress_callback)
 
         # Check compatibility (with caching)
+        # Note: If custom bitrate is requested, we FORCE re-encode even if compatible otherwise
         is_compat, reason = self.check_compatibility(source)
 
-        if is_compat:
+        if is_compat and not bitrate:
             try:
                 # Fast path: direct copy without re-encoding
                 print(f"  [Direct Copy] {source.name} uyumlu. Skipping encode.")
@@ -330,11 +333,13 @@ class VideoEncoder:
                 return output
             except Exception as e:
                 print(f"  [WARN] Direct copy failed: {e}. Falling back to re-encoding...")
+        elif is_compat and bitrate:
+            reason = f"Custom bitrate requested ({bitrate})"
 
         print(f"  [Re-encode] {source.name}: {reason}")
 
         # Build optimized FFmpeg command
-        cmd = self._build_normalize_command(source, output, scale_algo)
+        cmd = self._build_normalize_command(source, output, scale_algo, bitrate=bitrate)
 
         gpu_error = None
         try:
@@ -349,7 +354,7 @@ class VideoEncoder:
                 print(f"  [WARN] Hardware encoding failed: {e}. Falling back to software...")
                 try:
                     cmd_software = self._build_normalize_command(
-                        source, output, scale_algo, force_software=True
+                        source, output, scale_algo, force_software=True, bitrate=bitrate
                     )
                     self.runner.run(cmd_software, capture_progress=bool(progress_callback))
                 except Exception as sw_error:
@@ -391,7 +396,12 @@ class VideoEncoder:
         return output
 
     def _build_normalize_command(
-        self, source: Path, output: Path, scale_algo: str, force_software: bool = False
+        self, 
+        source: Path, 
+        output: Path, 
+        scale_algo: str, 
+        force_software: bool = False,
+        bitrate: Optional[str] = None
     ) -> List[str]:
         """Build optimized FFmpeg command for video normalization.
 
@@ -469,6 +479,54 @@ class VideoEncoder:
             nvenc_args = get_nvenc_extra_args(codec_family, high_vram=True)
             # Override default args with optimized ones
             codec_args = nvenc_args
+
+        # Apply Bitrate Override
+        if bitrate:
+            # Filter out conflicting args from codec_args
+            # Blacklist: -rc, -cq, -qp, -b:v, and their values
+            # This is a bit tricky since some are flags and some are values.
+            # Assuming standard ffmpeg syntax where these always take a value.
+            
+            filtered_args = []
+            skip_next = False
+            blacklist = {"-rc", "-cq", "-qp", "-b:v", "-maxrate", "-bufsize", "-cbr"}
+            
+            for arg in codec_args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                
+                if arg in blacklist:
+                    skip_next = True
+                    continue
+                
+                filtered_args.append(arg)
+            
+            codec_args = filtered_args
+            
+            # Calculate bufsize (2x bitrate usually recommended for streaming/VBR constraint)
+            # We need to parse bitrate string to integer to calc bufsize
+            try:
+                val = bitrate.lower().replace("k", "").replace("m", "")
+                val_int = float(val)
+                if "m" in bitrate.lower():
+                    val_int *= 1000
+                
+                bufsize = f"{int(val_int * 2)}k"
+                
+                # Append new bitrate args
+                # Use Constrained VBR (CVBR) approach: -b:v target -maxrate target -bufsize 2*target
+                codec_args.extend([
+                    "-b:v", bitrate,
+                    "-maxrate", bitrate,
+                    "-bufsize", bufsize
+                ])
+                
+                # For NVENC, ensure we don't accidentally leave it in a confused mode.
+                # Usually -b:v + -maxrate is enough.
+                
+            except Exception as e:
+                print(f"Warning: Could not parse bitrate '{bitrate}', ignoring override. Error: {e}")
 
         cmd.extend(codec_args)
 

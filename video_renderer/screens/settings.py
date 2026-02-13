@@ -37,12 +37,16 @@ class SettingsScreen(Screen):
         self.selected_codec = "av1"
         self.duration_str = "9:00:00"
         self.output_name = ""
+        self.video_bitrate = ""  # Custom bitrate (e.g. 5000k)
         self.enable_upload = False
         self.drive_folder_id = ""
 
         # Mode detection
         self.app_mode = getattr(self.app, "mode", "standard")
         self.mode_config = getattr(self.app, "mode_config", None)
+        
+        # Batch Mode Check
+        self.is_batch = getattr(self.app, "batch_job_id", None) is not None
 
     def compose(self) -> ComposeResult:
         # Mode indicator in title
@@ -68,18 +72,22 @@ class SettingsScreen(Screen):
                     yield RadioButton("AV1 (Kaliteli, kucuk boyut)", id="av1", value=True)
                     yield RadioButton("H.265/HEVC (Dengeli)", id="h265")
                     yield RadioButton("H.264/AVC (Uyumlu)", id="h264")
-
-            # Duration
+            
+            # Duration & Bitrate
             with Container(classes="panel"):
-                yield Static("⏱️ Sure", classes="panel-title")
+                yield Static("⏱️ Sure & Kalite", classes="panel-title")
                 with RadioSet(id="duration_radio"):
                     yield RadioButton("3 saat", id="dur_3")
                     yield RadioButton("6 saat", id="dur_6")
                     yield RadioButton("9 saat", id="dur_9", value=True)
                     yield RadioButton("12 saat", id="dur_12")
                     yield RadioButton("Rastgele (8-10 saat)", id="dur_random")
-                yield Static("Veya ozel sure (HH:MM:SS):", classes="subtitle")
+                
+                yield Static("Ozel Sure (HH:MM:SS):", classes="subtitle")
                 yield Input(placeholder="9:00:00", id="custom_duration")
+                
+                yield Static("Video Bitrate (Bos=Oto):", classes="subtitle")
+                yield Input(placeholder="Orn: 5000k, 5M, 8M...", id="video_bitrate")
 
         # Mode-specific options
         if self.app_mode in ["ramtest", "ramdisk"]:
@@ -172,6 +180,7 @@ class SettingsScreen(Screen):
             yield Static("", id="summary_loop")
             yield Static("", id="summary_codec")
             yield Static("", id="summary_duration")
+            yield Static("", id="summary_bitrate") 
             yield Static("", id="summary_tracks")
             yield Static("", id="summary_bgs")
             yield Static("", id="summary_upload")
@@ -179,7 +188,9 @@ class SettingsScreen(Screen):
 
         with Horizontal(classes="action-bar"):
             yield Button("← Geri", id="back", classes="-secondary")
-            yield Button("🚀 Render Baslat", id="start", classes="-primary")
+            label = "💾 Isi Kaydet" if self.is_batch else "🚀 Render Baslat"
+            variant = "primary" if self.is_batch else "success"
+            yield Button(label, id="start", variant=variant)
 
         yield Footer()
 
@@ -281,6 +292,13 @@ class SettingsScreen(Screen):
             except Exception:
                 pass
 
+        # Bitrate Summary
+        try:
+            bitrate_text = f"Bitrate: {self.video_bitrate}" if self.video_bitrate else "Bitrate: Otomatik (CRF)"
+            self.query_one("#summary_bitrate", Static).update(bitrate_text)
+        except Exception:
+            pass
+
         if hasattr(app, "chosen_tracks"):
             try:
                 self.query_one("#summary_tracks", Static).update(
@@ -373,6 +391,9 @@ class SettingsScreen(Screen):
             if event.value:
                 self.duration_str = event.value
                 self._update_summary()
+        elif event.input.id == "video_bitrate":
+            self.video_bitrate = event.value
+            self._update_summary()
         elif event.input.id == "output_name":
             self.output_name = event.value
         elif event.input.id == "drive_folder_id":
@@ -432,7 +453,7 @@ class SettingsScreen(Screen):
         self._update_summary()
 
     def _start_render(self) -> None:
-        """Start the render process."""
+        """Start the render process or save batch job."""
         # Parse duration (or use video duration for single mode)
         if getattr(self.app, "render_mode", "intro_loop") == "single" and getattr(
             self.app, "single_video_path", None
@@ -456,9 +477,70 @@ class SettingsScreen(Screen):
 
         out_path = Path.cwd() / self.output_name
 
+        # --- BATCH MODE ---
+        if self.is_batch and hasattr(self.app, "batch_job_id"):
+            # Update the queued job instead of starting immediate render
+            from ..batch import JobStatus
+            
+            queue = getattr(self.app, "queue", None)
+            if queue:
+                # We need to update the job in the queue
+                # Since queue returns copies, we should likely update it via a method
+                # But typically we access the job directly if it's mutable in memory before saving?
+                # The BatchQueue design uses copies. We need to update and save.
+                # Actually, the queue.create_job() returned a job copy.
+                # We should re-fetch it or assume our local ID is valid.
+                
+                # Let's simple "add" it or update it. 
+                # Since we likely just created it in batch screen and came here,
+                # we can probably just update its fields.
+                
+                # However, BatchQueue interface is a bit strict.
+                # We need to use `_lock` or helper. 
+                # Let's assume we can get the job, update it, and save?
+                # Or better, just queue_job() which saves? 
+                # But we need to update fields first.
+                
+                # Hacky but effective: Directly modify the job in queue._jobs using lock
+                # (Since we are inside the app)
+                with queue._lock:
+                    job = queue._get_job_unsafe(self.app.batch_job_id)
+                    if job:
+                        job.codec_family = self.selected_codec
+                        job.duration_str = self.duration_str
+                        job.total_seconds = total_seconds
+                        job.output_path = out_path
+                        job.video_bitrate = self.video_bitrate if self.video_bitrate else None
+                        
+                        # Set tracks/bgs from app state
+                        job.tracks = getattr(self.app, "chosen_tracks", [])
+                        job.backgrounds = getattr(self.app, "chosen_bgs", [])
+                        
+                        job.upload_enabled = self.enable_upload
+                        job.upload_folder_id = self.drive_folder_id
+                        
+                        # Mark as queued
+                        job.status = JobStatus.QUEUED
+                        queue._save()
+                        
+                        self.notify(f"Is #{job.id} kuyruga eklendi!")
+            
+            # Navigate back to batch screen
+            # Stack: Batch -> VideoSelect -> AudioSelect -> Settings
+            # Pop 3 times? Or just pop until Batch?
+            # Easier: Pop, Pop, Pop
+            self.app.pop_screen() # Settings -> Audio
+            self.app.pop_screen() # Audio -> Video
+            self.app.pop_screen() # Video -> Batch
+            return
+
+        # --- IMMEDIATE RENDER MODE ---
+        
         # Store all settings in app
         self.app.codec_family = self.selected_codec
         self.app.codec_config = codec_config
+        self.app.video_bitrate = self.video_bitrate if self.video_bitrate else None
+        
         if getattr(self.app, "render_mode", "intro_loop") == "single" and getattr(
             self.app, "single_video_path", None
         ):

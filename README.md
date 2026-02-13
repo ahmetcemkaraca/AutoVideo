@@ -49,7 +49,7 @@ cd AutoVideo
 şş
 ```bash
 # Create virtual environment (recommended)
-python -m venv venv
+python3 -m venv venv
 
 # Activate virtual environment
 # On Windows:
