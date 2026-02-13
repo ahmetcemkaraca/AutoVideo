@@ -1095,7 +1095,57 @@ def configure_render_settings(
                     crf_val = ask_int(f"CRF/CQ ({codec_config.crf})", 0, 51, codec_config.crf)
                     codec_config.crf = crf_val
 
-    print_info(f"Ayarlar: {target_width}x{target_height} @ {target_fps} fps | {scale_algo}")
+    # ──────────────────────────────────────────────────────────────
+    # NEW: Bitrate Selection
+    # ──────────────────────────────────────────────────────────────
+    console.print()
+    video_bitrate = None
+    
+    # Kendi yazabileyim veya kaynak
+    # "Basit" modda istense de, genel olarak sormak mantikli mi?
+    # Kullanici "CLI modda basit seceneklerde" dedi.
+    # We'll ask if user wants to override bitrate.
+    
+    use_custom_bitrate = ask_choice(
+        "Video Bitrate (Kalite)",
+        [
+            "Otomatik (Varsayilan/CRF)", 
+            "Ozel Bitrate Gir (kbps/M)",
+            "Kaynak Video Bitrate'ini Kopyala (Deneysel)"
+        ],
+        1
+    )
+    
+    if use_custom_bitrate == 2:
+        video_bitrate = ask_text("Bitrate (orn: 5M, 5000k)", "5M")
+    elif use_custom_bitrate == 3:
+        # Try to detect source setup
+        ref_path = single_video_path if mode == "single" else intro_path
+        if ref_path and ref_path.exists():
+             try:
+                 # We don't have bitrate in probe result easily here without parsing again or trusting info
+                 # Let's just ask user to confirm source bitrate or just pass a flag?
+                 # Encoder supports string bitrate.
+                 # If we return "auto", it uses deafult.
+                 # If we want source, we might need to extract it.
+                 # Let's try to extract it from detailed probe if possible, or just ask user to enter it for now 
+                 # as "Copy Source" is complex without data. 
+                 # Actually, `probe_video` calls `ffprobe`. 
+                 # Let's keep it simple: Ask user to enter value if they chose Custom.
+                 # For "Source", maybe just print the source bitrate and ask them to type it?
+                 # Or better, logic:
+                 info = probe_video(ref_path)
+                 if info.bitrate and info.bitrate.isdigit():
+                     src_kbps = int(info.bitrate) // 1000
+                     print_info(f"Kaynak Bitrate: ~{src_kbps}k")
+                     video_bitrate = str(src_kbps) + "k"
+                 else:
+                     print_warning("Kaynak bitrate algilanamadi.")
+                     video_bitrate = ask_text("Bitrate girin", "5M")
+             except:
+                 video_bitrate = ask_text("Bitrate girin", "5M")
+
+    print_info(f"Ayarlar: {target_width}x{target_height} @ {target_fps} fps | {scale_algo} | Bitrate: {video_bitrate or 'Auto'}")
 
     return (
         codec_family,
@@ -1105,6 +1155,7 @@ def configure_render_settings(
         target_fps,
         scale_algo,
         audio_bitrate,
+        video_bitrate
     )
 
 
@@ -1407,6 +1458,7 @@ def render_pipeline(
     audio_fade_in_sec: float = 2.0,
     audio_fade_out_sec: float = 4.0,
     suppress_progress: bool = False,
+    video_bitrate: Optional[str] = None,
 ) -> Tuple[Path, dict]:
     """
     Execute the render pipeline.
@@ -1502,6 +1554,7 @@ def render_pipeline(
                 video_only_single,
                 make_progress_callback(0),
                 scale_algo=scale_algo,
+                bitrate=video_bitrate,
             )
             step_times["Intro encode"] = time.perf_counter() - t0
             progress.complete_step(0)
@@ -1540,7 +1593,7 @@ def render_pipeline(
                 # Encode intro
                 t0 = time.perf_counter()
                 encoder.normalize_video(
-                    intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo
+                    intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, bitrate=video_bitrate
                 )
                 intro_time = time.perf_counter() - t0
                 progress.complete_step(0)
@@ -1548,7 +1601,7 @@ def render_pipeline(
                 # Encode loop
                 t0 = time.perf_counter()
                 encoder.normalize_video(
-                    loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo
+                    loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, bitrate=video_bitrate
                 )
                 loop_time = time.perf_counter() - t0
                 progress.complete_step(1)
@@ -2170,6 +2223,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         "target_fps": 60.0,
         "scale_algo": "lanczos",
         "audio_bitrate": "192k",
+        "video_bitrate": None,
         # Duration/Audio
         "total_seconds": 0,
         "dur_str": "",
@@ -2230,7 +2284,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         return 0
 
     def step_config(s):
-        (cf, cc, tw, th, tf, sa, ab) = configure_render_settings(
+        (cf, cc, tw, th, tf, sa, ab, vb) = configure_render_settings(
             s["mode"], s["intro_path"], s["loop_path"], s["single_video_path"]
         )
         s["codec_family"] = cf
@@ -2240,6 +2294,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         s["target_fps"] = tf
         s["scale_algo"] = sa
         s["audio_bitrate"] = ab
+        s["video_bitrate"] = vb
         return 0
 
     def step_check_compat(s):
@@ -2488,6 +2543,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             apply_audio_fades=s.get("apply_audio_fades", True),
             audio_fade_in_sec=s.get("audio_fade_in_sec", 2.0),
             audio_fade_out_sec=s.get("audio_fade_out_sec", 4.0),
+            video_bitrate=s.get("video_bitrate"),
         )
 
         run_post_render_review_cli(

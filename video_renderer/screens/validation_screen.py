@@ -19,7 +19,7 @@ from textual.widgets import (
     Footer,
     DataTable,
     Label,
-    Content,
+    Label,
 )
 from textual.containers import Container, Vertical, Horizontal, VerticalScroll
 from textual.data import DataTable
@@ -205,7 +205,7 @@ class ValidationScreen(Screen):
         # FFprobe output (hidden by default)
         with VerticalScroll(id="ffprobe_container", classes="hidden log-panel"):
             yield Static("📄 FFprobe Çıktısı", classes="panel-title")
-            yield Content(id="ffprobe_content")
+            yield Static(id="ffprobe_content")
 
         # Action buttons
         with Horizontal(classes="action-bar"):
@@ -329,7 +329,7 @@ class ValidationScreen(Screen):
         """Update ffprobe output display."""
         if self._ffprobe_visible and self.report.raw_ffprobe:
             try:
-                content = self.query_one("#ffprobe_content", Content)
+                content = self.query_one("#ffprobe_content", Static)
                 content.update(self.report.raw_ffprobe)
                 self.query_one("#ffprobe_container", VerticalScroll).remove_class("hidden")
             except Exception:

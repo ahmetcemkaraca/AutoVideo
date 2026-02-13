@@ -285,7 +285,9 @@ class RenderScreen(Screen):
             codec_family = getattr(app, "codec_family", "av1")
             codec_config = getattr(app, "codec_config", None)
             total_seconds = getattr(app, "total_seconds", 32400)
+            total_seconds = getattr(app, "total_seconds", 32400)
             out_path = getattr(app, "out_path", base / "output.mp4")
+            video_bitrate = getattr(app, "video_bitrate", None)
 
             # Check for resume from session
             session = getattr(app, "session", None)
@@ -304,7 +306,11 @@ class RenderScreen(Screen):
                 codec_family = session["codec"]
                 codec_config = codec_config or app.codec_config
                 total_seconds = session["duration_sec"]
+                total_seconds = session["duration_sec"]
                 out_path = Path(session["out"])
+                # Resume session might need to store bitrate too if we support resuming with exact settings
+                # For now getting it from config or app if available, or None
+                video_bitrate = session.get("config", {}).get("video_bitrate")
 
             # Fresh render starts should not reuse stale intermediates from previous jobs.
             # Resume mode keeps intermediates intentionally.
@@ -353,7 +359,9 @@ class RenderScreen(Screen):
                         "scale_algo": "lanczos",
                         "audio_bitrate": "192k",
                         "drive_enabled": getattr(app, "enable_upload", False),
+                        "drive_enabled": getattr(app, "enable_upload", False),
                         "drive_folder_id": getattr(app, "drive_folder_id", "") or "",
+                        "video_bitrate": video_bitrate,
                     },
                 }
                 session_file.write_text(
@@ -465,7 +473,7 @@ class RenderScreen(Screen):
                         )
 
                     video_only = encoder.normalize_video(
-                        single_video_path, video_only_single, single_progress
+                        single_video_path, video_only_single, single_progress, bitrate=video_bitrate
                     )
 
                 self.call_from_thread(self._update_step_status, "intro", "complete", 100)
@@ -485,7 +493,7 @@ class RenderScreen(Screen):
                             self._update_step_status, "intro", "active", p.percent
                         )
 
-                    encoder.normalize_video(intro_path, intro_norm, intro_progress)
+                    encoder.normalize_video(intro_path, intro_norm, intro_progress, bitrate=video_bitrate)
 
                 self.call_from_thread(self._update_step_status, "intro", "complete", 100)
 
@@ -503,7 +511,7 @@ class RenderScreen(Screen):
                     def loop_progress(p: FFmpegProgress):
                         self.call_from_thread(self._update_step_status, "loop", "active", p.percent)
 
-                    encoder.normalize_video(loop_path, loop_norm, loop_progress)
+                    encoder.normalize_video(loop_path, loop_norm, loop_progress, bitrate=video_bitrate)
 
                 self.call_from_thread(self._update_step_status, "loop", "complete", 100)
 

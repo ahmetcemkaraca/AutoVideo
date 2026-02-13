@@ -42,7 +42,9 @@ class SmartBatchScreen(Screen):
         self.music_mode = "random"  # random, specific, none
         self.music_tracks: List[Path] = []  # All available tracks
         self.global_selected_tracks: List[Path] = []
+        self.global_selected_tracks: List[Path] = []
         self.global_bg_files: List[Path] = []
+        self.global_bitrate = ""  # New: Bitrate support
 
         # Per-project settings (index -> settings dict)
         self.project_settings = {}
@@ -73,6 +75,10 @@ class SmartBatchScreen(Screen):
                     yield Select.from_values(
                         ["av1", "h264", "h265"], value="av1", id="codec_select"
                     )
+
+                    yield Label("Video Bitrate (Bos=Oto):")
+                    yield Input(placeholder="Orn: 5000k, 5M", id="bitrate_input")
+
 
                     yield Label("Muzik Secimi:")
                     yield Select(
@@ -189,6 +195,7 @@ class SmartBatchScreen(Screen):
 
         # Save global settings
         self.global_duration = self.query_one("#duration_input", Input).value
+        self.global_bitrate = self.query_one("#bitrate_input", Input).value
         self.global_codec = self.query_one("#codec_select", Select).value
         self.music_mode = self.query_one("#music_mode_select", Select).value
 
@@ -248,7 +255,10 @@ class SmartBatchScreen(Screen):
 
     def _generate_jobs(self) -> None:
         """Generate actual jobs in the queue."""
-        queue = BatchQueue()  # Use singleton/existing queue from disk
+        queue = getattr(self.app, "queue", None)
+        if not queue:
+            # Fallback if not initialized (shouldn't happen)
+            queue = BatchQueue()
 
         count = 0
         for idx in self.selected_indices:
@@ -268,6 +278,7 @@ class SmartBatchScreen(Screen):
             job.codec_family = self.global_codec
             job.duration_str = self.global_duration
             job.total_seconds = total_sec
+            job.video_bitrate = self.global_bitrate if self.global_bitrate else None
             job.status = JobStatus.QUEUED
 
             # Music logic
