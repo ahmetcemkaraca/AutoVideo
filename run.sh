@@ -76,7 +76,7 @@ source "$VENV_DIR/bin/activate"
 
 # Check if run.py exists
 if [ -f "run.py" ]; then
-    python run.py "$@"
+    python3 run.py "$@"
 else
     echo -e "${RED}HATA: run.py bulunamadi!${NC}"
     read -p "Cikis icin Enter'a basin..."
