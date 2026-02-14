@@ -2493,7 +2493,14 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             indices = ask_multiple_choice("Track sec", [p.name for p in all_tracks]) # Raises BN
             chosen = [all_tracks[i-1] for i in indices]
         
-        random.shuffle(chosen)
+        # Order Selection
+        if len(chosen) > 1:
+            order_choice = ask_choice("Muzik calma sirasi", ["Karisik (Shuffle)", "Sirali (Secim Sirasi)"], 1)
+            if order_choice == 1:
+                random.shuffle(chosen)
+        else:
+            # Single track, no shuffle needed
+            pass
         s["chosen_tracks"] = chosen
         
         # BG Selection
@@ -2640,15 +2647,8 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             s["intro_path"], s["loop_path"], s["codec_family"], s["dur_str"],
             s["chosen_tracks"], s["chosen_bgs"], s["out_path"], s["post_action"], s["single_video_path"]
         )
-        if not ask_confirm("Devam edilsin mi?", True): # Raises BN (b=no or back?)
-            # ask_confirm doesn't natively support BackNavigation in tui.py yet?
-            # It uses Confirm.ask which returns bool.
-            # We need to wrap it or handle it. 
-            # Logic: No -> Back? Or No -> Cancel?
-            # Usually No -> Cancel. 
-            # But let's assume 'b' is not supported in Confirm.ask natively by Rich.
-            # We can use ask_choice("Devam?", ["Evet", "Hayir", "Geri"])
-            pass 
+        # Auto proceed to final check
+        pass 
         return 0
 
     def step_execute(s):
