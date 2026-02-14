@@ -444,7 +444,7 @@ def run_resume() -> int:
                     keep_video_audio=keep_video_audio,
                     apply_audio_fades=apply_audio_fades,
                     fade_in_sec=audio_fade_in_sec,
-                    fade_in_sec=audio_fade_in_sec,
+
                     fade_out_sec=audio_fade_out_sec,
                 )
                 progress.complete_step(4)
