@@ -852,57 +852,57 @@ def run_batch() -> int:
                 print_success(f"[{i}/{len(pairs)}] {pair.name} tamamlandı: {out_path.name}")
                 results.append((pair.name, True, out_path))
             
-            # ════════════════════════════════════════════════════════════════════
-            # MOVED OUTSIDE EXECUTOR/TRY CONTEXT (DEDENTED)
-            # ════════════════════════════════════════════════════════════════════
-            
-            # Metadata / Archive logic
-            try:
-                meta = {
-                    "source": pair.name,
-                    "intro": pair.intro.name,
-                    "loop": pair.loop.name,
-                    "codec": codec_family,
-                    "duration": total_seconds,
-                    "music_mode": music_mode,
-                    "music_tracks": [t.name for t in (job_tracks if 'job_tracks' in locals() else [])],
-                    "keep_source_audio": keep_source_audio,
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
+                # ════════════════════════════════════════════════════════════════════
+                # MOVED OUTSIDE EXECUTOR/TRY CONTEXT (DEDENTED) -> Actually keeping inside try for safety
+                # ════════════════════════════════════════════════════════════════════
                 
-                if post_action == "archive":
-                    archive_dir = base / "archive" # Shared archive root
-                    job_archive = archive_dir / f"{time.strftime('%Y%m%d')}_{pair.name}"
-                    job_archive.mkdir(parents=True, exist_ok=True)
+                # Metadata / Archive logic
+                try:
+                    meta = {
+                        "source": pair.name,
+                        "intro": pair.intro.name,
+                        "loop": pair.loop.name,
+                        "codec": codec_family,
+                        "duration": total_seconds,
+                        "music_mode": music_mode,
+                        "music_tracks": [t.name for t in (job_tracks if 'job_tracks' in locals() else [])],
+                        "keep_source_audio": keep_source_audio,
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                    }
                     
-                    # Move sources
-                    if pair.intro.exists():
-                        shutil.move(str(pair.intro), str(job_archive / pair.intro.name))
-                    if pair.loop.exists():
-                        shutil.move(str(pair.loop), str(job_archive / pair.loop.name))
+                    if post_action == "archive":
+                        archive_dir = base / "archive" # Shared archive root
+                        job_archive = archive_dir / f"{time.strftime('%Y%m%d')}_{pair.name}"
+                        job_archive.mkdir(parents=True, exist_ok=True)
                         
-                    # Save meta
-                    (job_archive / "render_info.json").write_text(json.dumps(meta, indent=2))
-                    print_success(f"  Arsivlendi: {job_archive.name}")
+                        # Move sources
+                        if pair.intro.exists():
+                            shutil.move(str(pair.intro), str(job_archive / pair.intro.name))
+                        if pair.loop.exists():
+                            shutil.move(str(pair.loop), str(job_archive / pair.loop.name))
+                            
+                        # Save meta
+                        (job_archive / "render_info.json").write_text(json.dumps(meta, indent=2))
+                        print_success(f"  Arsivlendi: {job_archive.name}")
+                        
+                    elif post_action == "delete":
+                        if pair.intro.exists(): pair.intro.unlink()
+                        if pair.loop.exists(): pair.loop.unlink()
+                        print_success("  Kaynak dosyalar silindi.")
+                        
+                    # Save meta to logs
+                    log_archive = base / "archive" / "logs"
+                    log_archive.mkdir(parents=True, exist_ok=True)
+                    (log_archive / f"meta_{out_path.stem}.json").write_text(json.dumps(meta, indent=2))
                     
-                elif post_action == "delete":
-                    if pair.intro.exists(): pair.intro.unlink()
-                    if pair.loop.exists(): pair.loop.unlink()
-                    print_success("  Kaynak dosyalar silindi.")
-                    
-                # Save meta to logs
-                log_archive = base / "archive" / "logs"
-                log_archive.mkdir(parents=True, exist_ok=True)
-                (log_archive / f"meta_{out_path.stem}.json").write_text(json.dumps(meta, indent=2))
+                except Exception as e:
+                    print_warning(f"Islem sonrasi hata: {e}")
                 
-            except Exception as e:
-                print_warning(f"Islem sonrasi hata: {e}")
-            
-            # Final cleanup of tmp (audio/video segments)
-            for f in tmp_dir.glob("*"):
-                 if f.is_file() and f != out_path and f.suffix.lower() not in ['.txt', '.log']: # Keep logs
-                     try: f.unlink()
-                     except: pass
+                # Final cleanup of tmp (audio/video segments)
+                for f in tmp_dir.glob("*"):
+                     if f.is_file() and f != out_path and f.suffix.lower() not in ['.txt', '.log']: # Keep logs
+                         try: f.unlink()
+                         except: pass
 
 
 

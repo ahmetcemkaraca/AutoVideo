@@ -10,6 +10,32 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# 0. Check for Updates
+echo -e "${BLUE}Checking for updates...${NC}"
+if command -v git &> /dev/null; then
+    # Capture output, merge stderr to stdout
+    GIT_OUT=$(git pull 2>&1)
+    
+    # Check if we are already up to date
+    # Note: "Already up to date." is the standard message, but language might vary.
+    # We check if it *doesn't* contain "Already up to date" (and assume success if it didn't fail).
+    if [[ "$GIT_OUT" == *"Already up to date."* ]]; then
+        echo -e "${GREEN}System is up to date.${NC}"
+    elif [[ "$GIT_OUT" == *"fatal"* || "$GIT_OUT" == *"error"* ]]; then
+        echo -e "${RED}Git update failed:${NC}"
+        echo "$GIT_OUT"
+        echo -e "${YELLOW}Continuing with current version...${NC}"
+    else
+        echo -e "${YELLOW}Updates detected and downloaded.${NC}"
+        echo -e "${BLUE}$GIT_OUT${NC}"
+        echo -e "${GREEN}Restarting script to apply updates...${NC}"
+        exec "$0" "$@"
+        exit 0
+    fi
+else
+    echo -e "${YELLOW}Git not found, skipping update check.${NC}"
+fi
+
 echo -e "${BLUE}=== Video Renderer Baslatiliyor ===${NC}"
 
 # 1. Check Python 3
