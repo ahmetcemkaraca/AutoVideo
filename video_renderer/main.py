@@ -11,6 +11,7 @@ import traceback
 import random
 import subprocess
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import List, Tuple, Optional
@@ -302,9 +303,9 @@ def run_resume() -> int:
     drive_folder_id = config.get("drive_folder_id", "")
     video_audio_mode = config.get("video_audio_mode", "keep")
     keep_video_audio = video_audio_mode == "keep"
-    apply_audio_fades = bool(config.get("apply_audio_fades", True))
-    audio_fade_in_sec = float(config.get("audio_fade_in_sec", 2.0))
-    audio_fade_out_sec = float(config.get("audio_fade_out_sec", 4.0))
+    apply_audio_fades = bool(config.get("apply_audio_fades", False))
+    audio_fade_in_sec = float(config.get("audio_fade_in_sec", 5.0))
+    audio_fade_out_sec = float(config.get("audio_fade_out_sec", 15.0))
 
     print_success(f"Session bulundu: {session['ts']}")
     print_info(f"Hedef: {out_path.name} ({dur_str})")
@@ -443,6 +444,7 @@ def run_resume() -> int:
                     keep_video_audio=keep_video_audio,
                     apply_audio_fades=apply_audio_fades,
                     fade_in_sec=audio_fade_in_sec,
+                    fade_in_sec=audio_fade_in_sec,
                     fade_out_sec=audio_fade_out_sec,
                 )
                 progress.complete_step(4)
@@ -450,6 +452,14 @@ def run_resume() -> int:
         # Completion
         final_duration = get_duration(out_path)
         print_completion(out_path, final_duration)
+
+        # CLEANUP before review (except final output)
+        try:
+            for f in tmp_dir.glob("*"):
+                if f.is_file() and f != out_path:
+                    f.unlink(missing_ok=True)
+        except Exception:
+            pass
 
         run_post_render_review_cli(
             out_path,
@@ -462,6 +472,7 @@ def run_resume() -> int:
                 "has_audio": True,
             },
         )
+
 
         # Post action
         if post_action == "delete":
@@ -566,17 +577,8 @@ def run_batch() -> int:
 
         # Display detected pairs
         console.print(f"\n[success]✓ {len(pairs)} adet intro/loop çifti bulundu:[/]\n")
+        # Confirmaton removed as requested
 
-        for i, pair in enumerate(pairs, 1):
-            console.print(f"  [number]{i}.[/] [bold]{pair.name}[/]")
-            console.print(f"     Intro: [muted]{pair.intro.name}[/]")
-            console.print(f"     Loop:  [muted]{pair.loop.name}[/]")
-            console.print()
-
-        # Confirm
-        if not ask_confirm(f"Bu {len(pairs)} çifti render etmek ister misiniz?", True):
-            print_warning("Batch iptal edildi.")
-            return 0
 
         # Check music directory
         music_candidates = [base / "music", base / "Music"]
@@ -630,7 +632,37 @@ def run_batch() -> int:
             return 2
 
         console.print(f"[info]Müzik klasöründe {len(tracks)} track bulundu.[/]")
-        chosen_tracks = tracks  # Use all tracks for batch
+        
+        # MUSIC SELECTION
+        music_mode = ask_choice(
+            "Muzik Secimi", 
+            [
+                "Rastgele (Her video farkli)", 
+                "Sirali (Dosya adi)", 
+                "Manuel Secim",
+                "Muzik Yok"
+            ], 
+            2
+        )
+        
+        global_tracks = []
+        if music_mode == 2: # Sorted
+            global_tracks = sorted(tracks)
+        elif music_mode == 3: # Manual
+            # Fix: map indices back to tracks
+            selected_indices = ask_multiple_choice(
+                "Muzikleri secin", 
+                [t.name for t in tracks],
+                min_count=1
+            )
+            global_tracks = [tracks[i-1] for i in selected_indices]
+        elif music_mode == 4: # None
+            global_tracks = []
+
+        # Source Audio Option
+        # User wants source audio kept by default sometimes, ask preference
+        keep_source_audio = ask_confirm("Kaynak videonun orijinal sesi korunsun mu?", False)
+
 
         # Background audio (optional)
         console.print()
@@ -667,13 +699,30 @@ def run_batch() -> int:
         console.print(f"  [bold]Çift sayısı:[/] {len(pairs)}")
         console.print(f"  [bold]Codec:[/] {codec_family}")
         console.print(f"  [bold]Süre:[/] {dur_str} ({total_seconds} saniye)")
-        console.print(f"  [bold]Müzik:[/] {len(chosen_tracks)} track")
+        console.print(f"  [bold]Müzik Modu:[/] {['Rastgele', 'Sirali', 'Manuel', 'Yok'][music_mode-1]}")
         console.print(f"  [bold]Arka plan:[/] {len(chosen_bgs)} dosya")
+        console.print(f"  [bold]Kaynak Ses:[/] {'Evet' if keep_source_audio else 'Hayir'}")
         console.print()
 
+        # Post Render Action
+        post_action_idx = ask_choice(
+            "Islem tamamlandiginda kaynak dosyalar ne olsun?",
+            ["Hicbir sey yapma (Kalsin)", "Arsivle (archive/ klasorune tasi)", "Sil"],
+            2
+        )
+        post_action_map = {1: "keep", 2: "archive", 3: "delete"}
+        post_action = post_action_map[post_action_idx]
+        
+        # Audio fade defaults
+        audio_fade_in = 5.0
+        audio_fade_out = 15.0
+        apply_fades = ask_confirm(f"Fade efekti uygulansin mi? (In: {audio_fade_in}s, Out: {audio_fade_out}s)", False)
+
+
         if not ask_confirm("Batch render başlatılsın mı?", True):
-            print_warning("Batch iptal edildi.")
-            return 0
+             # Just proceed, user complained about redundancy
+             pass 
+
 
         # ═══════════════════════════════════════════════════════════════
         # Execute batch renders sequentially
@@ -700,10 +749,12 @@ def run_batch() -> int:
 
             try:
                 # Setup encoder
-                runner = FFmpegRunner(tmp_dir / "run_log.txt")
-                audio_processor = AudioProcessor(runner, tmp_dir)
+                runner_video = FFmpegRunner(tmp_dir / "run_log_video.txt")
+                runner_audio = FFmpegRunner(tmp_dir / "run_log_audio.txt")
+                
+                audio_processor = AudioProcessor(runner_audio, tmp_dir)
                 encoder = VideoEncoder(
-                    runner=runner, codec_config=codec_config, width=1920, height=1080, fps=60
+                    runner=runner_video, codec_config=codec_config, width=1920, height=1080, fps=60
                 )
 
                 intro_norm = tmp_dir / f"intro_norm_{codec_family}.mp4"
@@ -717,24 +768,59 @@ def run_batch() -> int:
 
                 def encode_video():
                     nonlocal video_only
-                    encoder.normalize_video(pair.intro, intro_norm, None)
-                    encoder.normalize_video(pair.loop, loop_norm, None)
+                    encoder.normalize_video(pair.intro, intro_norm, None, keep_audio=keep_source_audio)
+                    encoder.normalize_video(pair.loop, loop_norm, None, keep_audio=keep_source_audio)
                     video_only = encoder.concat_videos(
-                        intro_norm, loop_norm, total_seconds, tmp_dir, None
+                        intro_norm, loop_norm, total_seconds, tmp_dir, None, keep_audio=keep_source_audio
                     )
                     return video_only
 
                 def process_audio():
                     nonlocal audio_full
-                    music_loop = audio_processor.create_music_loop(chosen_tracks, total_seconds)
-                    if chosen_bgs:
-                        bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                        audio_full = audio_processor.mix_tracks(
-                            music_loop, bg_processed, total_seconds
-                        )
+                    
+                    # Determine tracks for this job
+                    job_tracks = []
+                    if music_mode == 1: # Random
+                         # Shuffle local copy
+                         import random
+                         shuffled = list(tracks)
+                         random.shuffle(shuffled)
+                         job_tracks = shuffled
+                    else: # Sorted, Manual (Global), or None
+                         job_tracks = global_tracks
+
+                    if not job_tracks:
+                        # If no music, return None (muxer will handle just video audio if present)
+                        # But wait, create_music_loop might fail with empty list
+                        # If bg exists, we still need audio chain
+                        pass
+
+                    if job_tracks:
+                        music_loop = audio_processor.create_music_loop(job_tracks, total_seconds)
+                        if chosen_bgs:
+                            bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                            audio_full = audio_processor.mix_tracks(
+                                music_loop, bg_processed, total_seconds
+                            )
+                        else:
+                            audio_full = music_loop
+                    elif chosen_bgs:
+                         # Only BG
+                         # We need a silent base or just mix BGs? 
+                         # AudioProcessor.mix_tracks expects main_track. 
+                         # Let's create silent base if no music but BGs
+                         # For now assuming user picks music if they pick BG, or just use first BG as base?
+                         # Simplest: Just use first BG as base and mix others
+                         bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                         if bg_processed:
+                            audio_full = bg_processed[0]
+                            if len(bg_processed) > 1:
+                                audio_full = audio_processor.mix_tracks(audio_full, bg_processed[1:], total_seconds)
                     else:
-                        audio_full = music_loop
+                        audio_full = None
+
                     return audio_full
+
 
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     video_future = executor.submit(encode_video)
@@ -743,10 +829,83 @@ def run_batch() -> int:
                     audio_full = audio_future.result()
 
                 # Final mux
-                mux_video_audio(runner, video_only, audio_full, out_path)
+                # If audio_full is None (no music/bg), mux_video_audio handles it (uses video audio if present)
+                if audio_full is None:
+                     # Create silence
+                     silence_path = tmp_dir / "silence.w64"
+                     subprocess.run([
+                         "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", 
+                         "-t", str(total_seconds), "-c:a", "pcm_s16le", "-f", "w64", str(silence_path)
+                     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                     audio_full = silence_path
+
+                time.sleep(0.5) # Allow handles to close
+                mux_runner = FFmpegRunner(tmp_dir / "run_log_mux.txt")
+                mux_video_audio(
+                    mux_runner, video_only, audio_full, out_path, 
+                    keep_video_audio=keep_source_audio,
+                    apply_audio_fades=apply_fades,
+                    fade_in_sec=audio_fade_in,
+                    fade_out_sec=audio_fade_out
+                )
 
                 print_success(f"[{i}/{len(pairs)}] {pair.name} tamamlandı: {out_path.name}")
                 results.append((pair.name, True, out_path))
+            
+            # ════════════════════════════════════════════════════════════════════
+            # MOVED OUTSIDE EXECUTOR/TRY CONTEXT (DEDENTED)
+            # ════════════════════════════════════════════════════════════════════
+            
+            # Metadata / Archive logic
+            try:
+                meta = {
+                    "source": pair.name,
+                    "intro": pair.intro.name,
+                    "loop": pair.loop.name,
+                    "codec": codec_family,
+                    "duration": total_seconds,
+                    "music_mode": music_mode,
+                    "music_tracks": [t.name for t in (job_tracks if 'job_tracks' in locals() else [])],
+                    "keep_source_audio": keep_source_audio,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+                
+                if post_action == "archive":
+                    archive_dir = base / "archive" # Shared archive root
+                    job_archive = archive_dir / f"{time.strftime('%Y%m%d')}_{pair.name}"
+                    job_archive.mkdir(parents=True, exist_ok=True)
+                    
+                    # Move sources
+                    if pair.intro.exists():
+                        shutil.move(str(pair.intro), str(job_archive / pair.intro.name))
+                    if pair.loop.exists():
+                        shutil.move(str(pair.loop), str(job_archive / pair.loop.name))
+                        
+                    # Save meta
+                    (job_archive / "render_info.json").write_text(json.dumps(meta, indent=2))
+                    print_success(f"  Arsivlendi: {job_archive.name}")
+                    
+                elif post_action == "delete":
+                    if pair.intro.exists(): pair.intro.unlink()
+                    if pair.loop.exists(): pair.loop.unlink()
+                    print_success("  Kaynak dosyalar silindi.")
+                    
+                # Save meta to logs
+                log_archive = base / "archive" / "logs"
+                log_archive.mkdir(parents=True, exist_ok=True)
+                (log_archive / f"meta_{out_path.stem}.json").write_text(json.dumps(meta, indent=2))
+                
+            except Exception as e:
+                print_warning(f"Islem sonrasi hata: {e}")
+            
+            # Final cleanup of tmp (audio/video segments)
+            for f in tmp_dir.glob("*"):
+                 if f.is_file() and f != out_path and f.suffix.lower() not in ['.txt', '.log']: # Keep logs
+                     try: f.unlink()
+                     except: pass
+
+
+
 
             except Exception as e:
                 print_error(f"[{i}/{len(pairs)}] {pair.name} HATA: {e}")

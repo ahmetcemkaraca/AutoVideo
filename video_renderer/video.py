@@ -288,6 +288,7 @@ class VideoEncoder:
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
         scale_algo: str = "lanczos",
         bitrate: Optional[str] = None,
+        keep_audio: bool = False,
     ) -> Path:
         """
         OPTIMIZED: Normalize a video to target specs.
@@ -304,6 +305,7 @@ class VideoEncoder:
             progress_callback: Optional progress callback
             scale_algo: Scaling algorithm (lanczos, bicubic, bilinear)
             bitrate: Optional target bitrate (e.g. "5000k", "5M") to override defaults
+            keep_audio: Whether to preserve (and normalize) audio tracks
 
         Returns:
             Path to normalized video
@@ -339,7 +341,9 @@ class VideoEncoder:
         print(f"  [Re-encode] {source.name}: {reason}")
 
         # Build optimized FFmpeg command
-        cmd = self._build_normalize_command(source, output, scale_algo, bitrate=bitrate)
+        cmd = self._build_normalize_command(
+            source, output, scale_algo, bitrate=bitrate, keep_audio=keep_audio
+        )
 
         gpu_error = None
         try:
@@ -354,7 +358,7 @@ class VideoEncoder:
                 print(f"  [WARN] Hardware encoding failed: {e}. Falling back to software...")
                 try:
                     cmd_software = self._build_normalize_command(
-                        source, output, scale_algo, force_software=True, bitrate=bitrate
+                        source, output, scale_algo, force_software=True, bitrate=bitrate, keep_audio=keep_audio
                     )
                     self.runner.run(cmd_software, capture_progress=bool(progress_callback))
                 except Exception as sw_error:
@@ -401,7 +405,8 @@ class VideoEncoder:
         output: Path, 
         scale_algo: str, 
         force_software: bool = False,
-        bitrate: Optional[str] = None
+        bitrate: Optional[str] = None,
+        keep_audio: bool = False,
     ) -> List[str]:
         """Build optimized FFmpeg command for video normalization.
 
@@ -543,8 +548,18 @@ class VideoEncoder:
             ]
         )
 
-        # No audio (video only)
-        cmd.extend(["-an", str(output)])
+        if keep_audio:
+            # Encode audio to standard AAC to ensure compatibility during concat
+            cmd.extend([
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-ac", "2",
+                "-ar", "48000",
+                str(output)
+            ])
+        else:
+            # No audio (video only)
+            cmd.extend(["-an", str(output)])
 
         return cmd
 
@@ -666,14 +681,19 @@ class VideoEncoder:
         # AV1, VP9 etc. do not need a bitstream filter for TS remux
         return None
 
-    def _remux_to_ts(self, mp4_path: Path, ts_path: Path) -> None:
+    def _remux_to_ts(self, mp4_path: Path, ts_path: Path, keep_audio: bool = False) -> None:
         """Remux an MP4 file to MPEG-TS format (stream copy, no re-encode)."""
         cmd = [
             "ffmpeg", "-y",
             "-i", str(mp4_path),
             "-c:v", "copy",
-            "-an",
         ]
+        
+        if keep_audio:
+            cmd.extend(["-c:a", "copy"])
+        else:
+            cmd.append("-an")
+
         bsf = self._get_bsf_for_codec()
         if bsf:
             cmd.extend(["-bsf:v", bsf])
@@ -688,6 +708,7 @@ class VideoEncoder:
         tmp_dir: Path,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
         on_duration_error: Optional[Callable[[float, float], bool]] = None,
+        keep_audio: bool = False,
     ) -> Path:
         """
         Concatenate intro + repeated loop to reach target duration.
@@ -725,10 +746,10 @@ class VideoEncoder:
             # Remux MP4 → MPEG-TS (stream copy, instant)
             if not intro_ts.exists():
                 print(f"  [TS Remux] intro -> .ts")
-                self._remux_to_ts(intro, intro_ts)
+                self._remux_to_ts(intro, intro_ts, keep_audio=keep_audio)
             if not loop_ts.exists():
                 print(f"  [TS Remux] loop -> .ts")
-                self._remux_to_ts(loop, loop_ts)
+                self._remux_to_ts(loop, loop_ts, keep_audio=keep_audio)
 
             # Concat demuxer on TS files → MP4 (frame-exact via -vframes)
             concat_list_ts = tmp_dir / "video_list_ts.txt"
@@ -741,12 +762,20 @@ class VideoEncoder:
                 "-r", str(self.fps),  # Reset FPS for proper frame counting
                 "-f", "concat", "-safe", "0",
                 "-i", str(concat_list_ts),
-                "-c:v", "copy", "-an",
+                "-c:v", "copy",
+            ]
+            
+            if keep_audio:
+                cmd.extend(["-c:a", "copy"])
+            else:
+                cmd.append("-an")
+            
+            cmd.extend([
                 "-fps_mode", "cfr",  # Constant frame rate
                 "-vframes", str(target_frames),  # Frame-exact (1728000 @ 60fps for 8h)
                 "-movflags", "+faststart",
                 str(output),
-            ]
+            ])
             self.runner.run(cmd, capture_progress=False)
 
             # Verify output exists
@@ -790,10 +819,18 @@ class VideoEncoder:
             cmd_raw = [
                 "ffmpeg", "-y",
                 "-f", "concat", "-safe", "0",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_list_ts),  # Fixed: Use concat_list (txt) not ts logic here? Ah, raw uses concat_list
                 "-i", str(concat_list),
-                "-c:v", "copy", "-an",
-                str(raw_output),
+                "-c:v", "copy",
             ]
+
+            if keep_audio:
+                cmd_raw.extend(["-c:a", "copy"])
+            else:
+                cmd_raw.append("-an")
+
+            cmd_raw.append(str(raw_output))
             self.runner.run(cmd_raw, capture_progress=False)
 
             if not raw_output.exists():
