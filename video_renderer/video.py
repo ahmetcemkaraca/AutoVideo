@@ -844,11 +844,19 @@ class VideoEncoder:
                 "-r", str(self.fps),
                 "-fflags", "+genpts",
                 "-i", str(raw_output),
-                "-c:v", "copy", "-an",
+                "-c:v", "copy",
+            ]
+            
+            if keep_audio:
+                cmd_fix.extend(["-c:a", "copy"])
+            else:
+                cmd_fix.append("-an")
+                
+            cmd_fix.extend([
                 "-vframes", str(target_frames),  # Frame-exact trim
                 "-movflags", "+faststart",
                 str(output),
-            ]
+            ])
             self.runner.run(cmd_fix, capture_progress=False)
 
             # Cleanup raw
@@ -890,8 +898,15 @@ class VideoEncoder:
         cmd.extend([
             "-f", "concat", "-safe", "0",
             "-i", str(concat_list),
-            "-an", "-fps_mode", "cfr", "-r", str(self.fps),
+            "-fps_mode", "cfr", "-r", str(self.fps),
         ])
+        
+        if keep_audio:
+             # Re-encode audio to AAC if we're re-encoding video
+             cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+        else:
+             cmd.append("-an")
+
         cmd.extend(self._get_fast_concat_codec_args())
         cmd.extend(self.color.to_ffmpeg_args())
         cmd.extend([
