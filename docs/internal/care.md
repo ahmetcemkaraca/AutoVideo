@@ -2,3 +2,6 @@
 
 ## main.py run_batch() Redefinition Bug
 Encountered an issue where `run_batch` was redefined later in `main.py`, overriding the main wizard logic. This caused a `NameError` crash during batch processing because the overridden `run_batch_wizard` wasn't defined in the same scope. The fix was removing the redundant, empty 3-line `def run_batch(): return run_batch_wizard()` block, which was blocking execution.
+
+## ENOSPC Disk Space Exhaustion Bug
+Encountered an ENOSPC (228) error where the disk ran out of space during long (9-hour) video batch renders. This happened because audio temp files were stored as uncompressed Wave64 (`.w64`) using `pcm_s16le`, which consumed 6.2GB per audio stream. Fixed by converting the intermediate codec to use `aac` compressed `.m4a` files at `320k` bitrates, cutting temporary size by roughly 80%.

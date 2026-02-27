@@ -108,8 +108,9 @@ class AudioProcessor:
     """
 
     # Audio format for intermediate processing (high quality, large file support)
-    INTERMEDIATE_FORMAT = "w64"  # Wave64 for >4GB files
-    INTERMEDIATE_CODEC = "pcm_s16le"
+    INTERMEDIATE_FORMAT = "m4a"  # m4a for compact high-quality intermediate files
+    INTERMEDIATE_CODEC = "aac"
+    INTERMEDIATE_BITRATE = "320k"
     SAMPLE_RATE = 48000
 
     def __init__(self, runner: FFmpegRunner, tmp_dir: Path, max_workers: Optional[int] = None):
@@ -372,6 +373,8 @@ class AudioProcessor:
             str(track),
             "-c:a",
             self.INTERMEDIATE_CODEC,
+            "-b:a",
+            self.INTERMEDIATE_BITRATE,
             "-ar",
             str(self.SAMPLE_RATE),
             "-ac",
@@ -565,6 +568,8 @@ class AudioProcessor:
                     f"atrim={silence_start}:",
                     "-c:a",
                     self.INTERMEDIATE_CODEC,
+                    "-b:a",
+                    self.INTERMEDIATE_BITRATE,
                     "-ar",
                     str(self.SAMPLE_RATE),
                     str(output),
@@ -671,6 +676,8 @@ class AudioProcessor:
                 f"volume={global_music_db}dB",
                 "-c:a",
                 self.INTERMEDIATE_CODEC,
+                "-b:a",
+                self.INTERMEDIATE_BITRATE,
             ]
 
         # Optimized FFmpeg command with threading
@@ -742,6 +749,8 @@ class AudioProcessor:
             f"volume={gain_db}dB",
             "-c:a",
             self.INTERMEDIATE_CODEC,
+            "-b:a",
+            self.INTERMEDIATE_BITRATE,
             "-ar",
             str(self.SAMPLE_RATE),
             "-f",
@@ -832,6 +841,8 @@ class AudioProcessor:
                 str(total_seconds),
                 "-c:a",
                 self.INTERMEDIATE_CODEC,
+                "-b:a",
+                self.INTERMEDIATE_BITRATE,
                 "-ar",
                 str(self.SAMPLE_RATE),
                 "-f",
@@ -1161,7 +1172,7 @@ def _coerce_effect(effect: dict) -> dict:
 
 
 def _build_effect_output_path(tmp_dir: Path) -> Path:
-    return tmp_dir / "timed_effects.w64"
+    return tmp_dir / "timed_effects.m4a"
 
 
 def create_timed_effects_track(
@@ -1252,13 +1263,15 @@ def create_timed_effects_track(
             "-map",
             "[mix]",
             "-c:a",
-            "pcm_s16le",
+            "aac",
+            "-b:a",
+            "320k",
             "-ar",
             str(sample_rate),
             "-ac",
             "2",
             "-f",
-            "w64",
+            "m4a",
             str(output),
         ]
     )
