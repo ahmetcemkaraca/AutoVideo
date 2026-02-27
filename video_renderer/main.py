@@ -658,6 +658,14 @@ def run_batch() -> int:
             global_tracks = [tracks[i-1] for i in selected_indices]
         elif music_mode == 4: # None
             global_tracks = []
+        
+        global_music_db = 0.0
+        if music_mode != 4:
+            db_s = ask_text("Müziklerin Ses Seviyesi (dB, örn: 0 veya -5)", "0")
+            try:
+                global_music_db = float(db_s)
+            except ValueError:
+                global_music_db = 0.0
 
         # Source Audio Option
         # User wants source audio kept by default sometimes, ask preference
@@ -796,7 +804,7 @@ def run_batch() -> int:
                         pass
 
                     if job_tracks:
-                        music_loop = audio_processor.create_music_loop(job_tracks, total_seconds)
+                        music_loop = audio_processor.create_music_loop(job_tracks, total_seconds, global_music_db)
                         if chosen_bgs:
                             bg_processed = audio_processor.process_backgrounds(chosen_bgs)
                             audio_full = audio_processor.mix_tracks(
@@ -1114,6 +1122,10 @@ def configure_render_settings(
                 i_info = probe_video(intro_path)
                 l_info = probe_video(loop_path)
 
+                i_fps = float(i_info.fps.split("/")[0]) / float(i_info.fps.split("/")[1]) if "/" in i_info.fps else float(i_info.fps)
+                l_fps = float(l_info.fps.split("/")[0]) / float(l_info.fps.split("/")[1]) if "/" in l_info.fps else float(l_info.fps)
+
+                # Cozunurluk karsilastirmasi
                 if i_info.width == l_info.width and i_info.height == l_info.height:
                     target_width, target_height = i_info.width, i_info.height
                     smart_res_found = True
@@ -1122,6 +1134,28 @@ def configure_render_settings(
                     )
                 else:
                     print_info("Intro ve Loop cozunurlukleri farkli. 1080p standardi uygulaniyor.")
+
+                # FPS karsilastirmasi
+                if abs(i_fps - l_fps) < 0.1:  # Neredeyse ayni ise (ornek 29.97 ve 30.0)
+                    target_fps = i_fps
+                    print_success(f"Intro/Loop FPS eslesiyor: {target_fps:.2f}fps. Kaynak FPS kullanilacak.")
+                else:
+                    fps_choice = ask_choice(
+                        "Intro ve Loop FPS degerleri farkli. Hangisi kullanilsin?",
+                        [
+                            f"60 FPS (Varsayilan, Zorla)",
+                            f"Intro FPS'i kullan ({i_fps:.2f})",
+                            f"Loop FPS'i kullan ({l_fps:.2f})"
+                        ],
+                        1
+                    )
+                    if fps_choice == 2:
+                        target_fps = i_fps
+                    elif fps_choice == 3:
+                        target_fps = l_fps
+                    else:
+                        target_fps = 60
+
             except Exception as e:
                 print_warning(f"Analiz hatasi: {e}")
 
@@ -1724,8 +1758,9 @@ def render_pipeline(
 
             # Audio (sequential for single mode)
             t0 = time.perf_counter()
+            global_music_db = s.get("global_music_db", 0.0)
             music_loop = audio_processor.create_music_loop(
-                chosen_tracks, total_seconds, pre_validated=True
+                chosen_tracks, total_seconds, global_music_db, pre_validated=True
             )
 
             if chosen_bgs:
@@ -1780,8 +1815,9 @@ def render_pipeline(
                 nonlocal audio_full
 
                 t0 = time.perf_counter()
+                global_music_db = s.get("global_music_db", 0.0)
                 music_loop = audio_processor.create_music_loop(
-                    chosen_tracks, total_seconds, pre_validated=True
+                    chosen_tracks, total_seconds, global_music_db, pre_validated=True
                 )
 
                 if chosen_bgs:
@@ -2259,8 +2295,6 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
     return 0
 
 
-def run_batch() -> int:
-    return run_batch_wizard()
 
 
 def handle_post_render_actions(
@@ -2503,6 +2537,14 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             pass
         s["chosen_tracks"] = chosen
         
+        s["global_music_db"] = 0.0
+        if chosen:
+            db_s = ask_text("Müziklerin Ses Seviyesi (dB, örn: 0 veya -5)", "0")
+            try:
+                s["global_music_db"] = float(db_s)
+            except ValueError:
+                s["global_music_db"] = 0.0
+        
         # BG Selection
         chosen_bgs = []
         bg_opts = ["BG kullanma"] + ([f"Mevcut BG ({len(all_bgs)})"] if all_bgs else []) + ["Track listesinden"]
@@ -2670,6 +2712,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             "duration_sec": s["total_seconds"],
             "tracks": [p.as_posix() for p in s["chosen_tracks"]],
             "tracks_validated": True,
+            "global_music_db": s.get("global_music_db", 0.0),
             "bgs": [{"path": p.as_posix(), "db": db} for p, db in s["chosen_bgs"]],
             "timed_effects": s.get("timed_effects", []),
             "out": s["out_path"].as_posix(),

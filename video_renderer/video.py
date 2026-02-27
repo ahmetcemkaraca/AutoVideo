@@ -819,8 +819,6 @@ class VideoEncoder:
             cmd_raw = [
                 "ffmpeg", "-y",
                 "-f", "concat", "-safe", "0",
-                "-f", "concat", "-safe", "0",
-                "-i", str(concat_list_ts),  # Fixed: Use concat_list (txt) not ts logic here? Ah, raw uses concat_list
                 "-i", str(concat_list),
                 "-c:v", "copy",
             ]

@@ -590,6 +590,7 @@ class AudioProcessor:
         self,
         tracks: List[Path],
         total_seconds: int,
+        global_music_db: float = 0.0,
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
         pre_validated: bool = False,
         trim_silence: bool = False,
@@ -606,6 +607,7 @@ class AudioProcessor:
         Args:
             tracks: List of music tracks to loop (or pre-validated w64 files)
             total_seconds: Target duration
+            global_music_db: Audio gain/volume level for music tracks
             progress_callback: Optional progress callback
             pre_validated: If True, tracks are already validated w64 files
             trim_silence: If True, trim silence from track beginnings/ends
@@ -662,6 +664,15 @@ class AudioProcessor:
             self.runner.set_total_duration(total_seconds)
             self.runner.set_progress_callback(progress_callback)
 
+        filter_args = ["-c:a", "copy"]
+        if global_music_db != 0.0:
+            filter_args = [
+                "-filter:a",
+                f"volume={global_music_db}dB",
+                "-c:a",
+                self.INTERMEDIATE_CODEC,
+            ]
+
         # Optimized FFmpeg command with threading
         cmd = [
             "ffmpeg",
@@ -676,12 +687,13 @@ class AudioProcessor:
             str(total_seconds),
             "-threads",
             str(self._max_workers),  # Optimal threading
-            "-c:a",
-            "copy",  # Copy since already in correct format
+        ]
+        cmd.extend(filter_args)
+        cmd.extend([
             "-f",
             self.INTERMEDIATE_FORMAT,
             str(output),
-        ]
+        ])
 
         self.runner.run(cmd, capture_progress=bool(progress_callback))
 
@@ -1059,7 +1071,7 @@ def mux_video_audio(
         ext_chain += "[ext]"
 
         filter_complex = (
-            "[0:a]aresample=48000,asetpts=PTS-STARTPTS[vin];"
+            "[0:a:0]aresample=48000,asetpts=PTS-STARTPTS[vin];"
             f"{ext_chain};"
             "[vin][ext]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]"
         )

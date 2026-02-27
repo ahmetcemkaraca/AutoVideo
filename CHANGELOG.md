@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-02-06
 
 ### Added
+- **Global Music dB Control**: Tüm arka plan müzikleri için merkezi dB ayar seviyesi belirlenmesi kontrolü.
+- **Smart FPS Detection**: Basit ayar modunda Intro/Loop FPS karşılaştırması ve fps seçimi.
 - **Unified Render Mode System**: Single codebase with multiple render modes (standard, ramtest, ramdisk, high_vram)
 - **Render Mode Selection**: `--mode` flag for selecting optimized render mode
 - **Memory Tracking**: Optional memory usage tracking in ramtest mode
@@ -53,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Error Reporting**: Centralized error reporting infrastructure
 
 ### Fixed
+- **Source Audio Retention**: Session müzikleri eklenirken "Müzikleri tut" özelliğinin video audio stream'ini (0:a) ezmesi düzeltildi.
+- **run_batch Redefinition Crash**: Gereksiz run_batch tanımı sebebiyle wizard koduna engel olunması sorunu çözüldü.
 - **check_compatibility Logic Error**: Fixed result overwrite bug in video compatibility check
 - **Progress Parsing Time Calculation**: Fixed time calculation in FFmpeg progress parser
 - **FPS Parsing**: Fixed FPS parsing to use ALLOWED_FPS set
