@@ -297,7 +297,7 @@ class AudioProcessor:
                 except Exception:
                     pass
 
-            cmd.extend(["-f", self.INTERMEDIATE_FORMAT, str(temp_output)])
+            cmd.extend([str(temp_output)])
 
             subprocess.run(cmd, capture_output=True, check=True, timeout=120)
 
@@ -381,8 +381,6 @@ class AudioProcessor:
             str(channels),  # Preserve original channels (mono/stereo)
             "-map_metadata",
             "-1",  # Strip metadata for faster processing
-            "-f",
-            self.INTERMEDIATE_FORMAT,
             str(output),
         ]
 
@@ -697,8 +695,6 @@ class AudioProcessor:
         ]
         cmd.extend(filter_args)
         cmd.extend([
-            "-f",
-            self.INTERMEDIATE_FORMAT,
             str(output),
         ])
 
@@ -753,8 +749,6 @@ class AudioProcessor:
             self.INTERMEDIATE_BITRATE,
             "-ar",
             str(self.SAMPLE_RATE),
-            "-f",
-            self.INTERMEDIATE_FORMAT,
             str(output),
         ]
 
@@ -845,8 +839,6 @@ class AudioProcessor:
                 self.INTERMEDIATE_BITRATE,
                 "-ar",
                 str(self.SAMPLE_RATE),
-                "-f",
-                self.INTERMEDIATE_FORMAT,
                 str(output),
             ]
         )
@@ -1270,8 +1262,6 @@ def create_timed_effects_track(
             str(sample_rate),
             "-ac",
             "2",
-            "-f",
-            "m4a",
             str(output),
         ]
     )
