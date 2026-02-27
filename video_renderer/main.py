@@ -1652,6 +1652,7 @@ def render_pipeline(
     audio_fade_out_sec: float = 4.0,
     suppress_progress: bool = False,
     video_bitrate: Optional[str] = None,
+    global_music_db: float = 0.0,
 ) -> Tuple[Path, dict]:
     """
     Execute the render pipeline.
@@ -1758,7 +1759,6 @@ def render_pipeline(
 
             # Audio (sequential for single mode)
             t0 = time.perf_counter()
-            global_music_db = s.get("global_music_db", 0.0)
             music_loop = audio_processor.create_music_loop(
                 chosen_tracks, total_seconds, global_music_db, pre_validated=True
             )
@@ -1815,7 +1815,6 @@ def render_pipeline(
                 nonlocal audio_full
 
                 t0 = time.perf_counter()
-                global_music_db = s.get("global_music_db", 0.0)
                 music_loop = audio_processor.create_music_loop(
                     chosen_tracks, total_seconds, global_music_db, pre_validated=True
                 )
@@ -2746,6 +2745,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             audio_fade_in_sec=s.get("audio_fade_in_sec", 2.0),
             audio_fade_out_sec=s.get("audio_fade_out_sec", 4.0),
             video_bitrate=s.get("video_bitrate"),
+            global_music_db=s.get("global_music_db", 0.0),
         )
 
         run_post_render_review_cli(
