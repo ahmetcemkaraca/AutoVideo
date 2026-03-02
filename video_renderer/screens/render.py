@@ -446,7 +446,8 @@ class RenderScreen(Screen):
             video_only_concat = tmp_dir / "video_only.mp4"
 
             # Create encoder
-            encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=30)
+            target_fps = getattr(app, "target_fps", 60.0)
+            encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=target_fps)
 
             # ═══════════════════════════════════════════════════════════════════
             # STEP 1-3: Video Processing (Intro/Loop or Single)

@@ -62,6 +62,7 @@ class RenderJob:
     single_video_path: Optional[Path] = None
     mode: str = "intro_loop"  # intro_loop or single
     codec_family: str = "av1"
+    target_fps: float = 60.0
     video_bitrate: Optional[str] = None  # e.g., "5000k" or "5M"
     duration_str: str = "9:00:00"
     total_seconds: int = 32400
@@ -87,6 +88,7 @@ class RenderJob:
             "single_video": str(self.single_video_path) if self.single_video_path else None,
             "mode": self.mode,
             "codec": self.codec_family,
+            "target_fps": self.target_fps,
             "duration": self.duration_str,
             "duration_sec": self.total_seconds,
             "tracks": [str(t) for t in self.tracks],
@@ -112,6 +114,7 @@ class RenderJob:
         job.single_video_path = Path(data["single_video"]) if data.get("single_video") else None
         job.mode = data.get("mode", "intro_loop")
         job.codec_family = data.get("codec", "av1")
+        job.target_fps = data.get("target_fps", 60.0)
         job.duration_str = data.get("duration", "9:00:00")
         job.total_seconds = data.get("duration_sec", 32400)
         job.tracks = [Path(t) for t in data.get("tracks", [])]

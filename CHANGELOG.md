@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Error Reporting**: Centralized error reporting infrastructure
 
 ### Fixed
+- **Target FPS Calculation Bug**: Fixed an issue where 60fps videos were truncated (rendering twice as fast) due to a hardcoded 30fps `VideoEncoder` initialization during batch and render sequences. The encoder now dynamically uses `target_fps`.
 - **Source Audio Retention**: Session müzikleri eklenirken "Müzikleri tut" özelliğinin video audio stream'ini (0:a) ezmesi düzeltildi.
 - **run_batch Redefinition Crash**: Gereksiz run_batch tanımı sebebiyle wizard koduna engel olunması sorunu çözüldü.
 - **check_compatibility Logic Error**: Fixed result overwrite bug in video compatibility check

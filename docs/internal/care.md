@@ -8,3 +8,6 @@ Encountered an ENOSPC (228) error where the disk ran out of space during long (9
 
 ## FFmpeg Muxer Initialization Bug
 Encountered an issue where FFmpeg failed to initialize the muxer, resulting in "Requested output format 'm4a' is not a suitable output format". This caused all audio track validations to fail, raising a `ValueError: No valid audio tracks` exception. Fixed by removing the explicit `-f m4a` format flag from `audio.py` commands, since FFmpeg correctly infers the `ipod` muxer from the `.m4a` extension without it.
+
+## Hardcoded Target FPS Bug
+Encountered an issue where 60fps videos rendered much faster than expected because they were truncated during concatenation. This happened because `VideoEncoder` was initialized with a hardcoded `fps=30`, causing the frame count calculation to be halved for 60fps videos. Fixed by dynamically passing target fps into the encoder initialization.

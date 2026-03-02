@@ -170,6 +170,9 @@ class BatchScreen(Screen):
         # Store job id in app
         self.app.batch_job_id = job.id
 
+        # Populate target_fps from app if available
+        job.target_fps = getattr(self.app, "target_fps", 60.0)
+
         # Populate upload config from app if available
         if hasattr(self.app, "enable_upload"):
             job.upload_enabled = self.app.enable_upload
@@ -272,7 +275,7 @@ class BatchScreen(Screen):
         codec_config = get_best_encoder(job.codec_family)
 
         # Create encoder
-        encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=30)
+        encoder = VideoEncoder(runner, codec_config, width=1920, height=1080, fps=job.target_fps)
 
         video_only = None
 
