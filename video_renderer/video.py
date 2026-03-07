@@ -672,6 +672,13 @@ class VideoEncoder:
         return self.codec.to_ffmpeg_args()
 
     def _get_bsf_for_codec(self) -> Optional[str]:
+        """Get the bitstream filter needed to remux MP4 → MPEG-TS for this codec."""
+        enc = self.codec.encoder.lower()
+        if "h264" in enc or "x264" in enc:
+            return "h264_mp4toannexb"
+        if "hevc" in enc or "x265" in enc or "h265" in enc:
+            return "hevc_mp4toannexb"
+        # AV1, VP9 etc. do not need a bitstream filter for TS remux
         return None
 
     def _remux_to_ts(self, mp4_path: Path, ts_path: Path, keep_audio: bool = False) -> None:

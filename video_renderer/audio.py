@@ -108,9 +108,8 @@ class AudioProcessor:
     """
 
     # Audio format for intermediate processing (high quality, large file support)
-    INTERMEDIATE_FORMAT = "m4a"  # m4a for compact high-quality intermediate files
-    INTERMEDIATE_CODEC = "aac"
-    INTERMEDIATE_BITRATE = "320k"
+    INTERMEDIATE_FORMAT = "w64"  # Wave64 for >4GB files
+    INTERMEDIATE_CODEC = "pcm_s16le"
     SAMPLE_RATE = 48000
 
     def __init__(self, runner: FFmpegRunner, tmp_dir: Path, max_workers: Optional[int] = None):
@@ -297,7 +296,7 @@ class AudioProcessor:
                 except Exception:
                     pass
 
-            cmd.extend([str(temp_output)])
+            cmd.extend(["-f", self.INTERMEDIATE_FORMAT, str(temp_output)])
 
             subprocess.run(cmd, capture_output=True, check=True, timeout=120)
 
@@ -373,14 +372,14 @@ class AudioProcessor:
             str(track),
             "-c:a",
             self.INTERMEDIATE_CODEC,
-            "-b:a",
-            self.INTERMEDIATE_BITRATE,
             "-ar",
             str(self.SAMPLE_RATE),
             "-ac",
             str(channels),  # Preserve original channels (mono/stereo)
             "-map_metadata",
             "-1",  # Strip metadata for faster processing
+            "-f",
+            self.INTERMEDIATE_FORMAT,
             str(output),
         ]
 
@@ -566,10 +565,10 @@ class AudioProcessor:
                     f"atrim={silence_start}:",
                     "-c:a",
                     self.INTERMEDIATE_CODEC,
-                    "-b:a",
-                    self.INTERMEDIATE_BITRATE,
                     "-ar",
                     str(self.SAMPLE_RATE),
+                    "-f",
+                    self.INTERMEDIATE_FORMAT,
                     str(output),
                 ]
                 subprocess.run(trim_cmd, capture_output=True, check=True, timeout=120)
@@ -674,8 +673,6 @@ class AudioProcessor:
                 f"volume={global_music_db}dB",
                 "-c:a",
                 self.INTERMEDIATE_CODEC,
-                "-b:a",
-                self.INTERMEDIATE_BITRATE,
             ]
 
         # Optimized FFmpeg command with threading
@@ -695,6 +692,7 @@ class AudioProcessor:
         ]
         cmd.extend(filter_args)
         cmd.extend([
+            "-f", self.INTERMEDIATE_FORMAT,
             str(output),
         ])
 
@@ -745,10 +743,10 @@ class AudioProcessor:
             f"volume={gain_db}dB",
             "-c:a",
             self.INTERMEDIATE_CODEC,
-            "-b:a",
-            self.INTERMEDIATE_BITRATE,
             "-ar",
             str(self.SAMPLE_RATE),
+            "-f",
+            self.INTERMEDIATE_FORMAT,
             str(output),
         ]
 
@@ -835,10 +833,10 @@ class AudioProcessor:
                 str(total_seconds),
                 "-c:a",
                 self.INTERMEDIATE_CODEC,
-                "-b:a",
-                self.INTERMEDIATE_BITRATE,
                 "-ar",
                 str(self.SAMPLE_RATE),
+                "-f",
+                self.INTERMEDIATE_FORMAT,
                 str(output),
             ]
         )
@@ -1164,7 +1162,7 @@ def _coerce_effect(effect: dict) -> dict:
 
 
 def _build_effect_output_path(tmp_dir: Path) -> Path:
-    return tmp_dir / "timed_effects.m4a"
+    return tmp_dir / "timed_effects.w64"
 
 
 def create_timed_effects_track(
@@ -1255,13 +1253,13 @@ def create_timed_effects_track(
             "-map",
             "[mix]",
             "-c:a",
-            "aac",
-            "-b:a",
-            "320k",
+            "pcm_s16le",
             "-ar",
             str(sample_rate),
             "-ac",
             "2",
+            "-f",
+            "w64",
             str(output),
         ]
     )

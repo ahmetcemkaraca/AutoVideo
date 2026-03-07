@@ -1702,6 +1702,15 @@ def render_pipeline(
         def update(self, *args, **kwargs): pass
         def complete_step(self, *args, **kwargs): pass
 
+    # ── Resume helper: find existing intermediate files ──
+    def _find_existing(pattern: str) -> Optional[Path]:
+        """Find an existing intermediate file matching glob pattern in tmp_dir."""
+        matches = sorted(tmp_dir.glob(pattern), key=lambda p: p.stat().st_size, reverse=True)
+        for m in matches:
+            if m.stat().st_size > 1000:
+                return m
+        return None
+
     progress_ctx = MultiStepProgress(steps) if not suppress_progress else DummyProgress()
     
     with progress_ctx as progress:
@@ -1742,37 +1751,56 @@ def render_pipeline(
 
         if mode == "single" and single_video_path:
             # Single video encode (no concat)
-            t0 = time.perf_counter()
-            video_only = encoder.normalize_video(
-                single_video_path,
-                video_only_single,
-                make_progress_callback(0),
-                scale_algo=scale_algo,
-                bitrate=video_bitrate,
-            )
-            step_times["Intro encode"] = time.perf_counter() - t0
-            progress.complete_step(0)
-            step_times["Loop encode"] = 0
-            progress.complete_step(1)
-            step_times["Video concat"] = 0
-            progress.complete_step(2)
-
-            # Audio (sequential for single mode)
-            t0 = time.perf_counter()
-            music_loop = audio_processor.create_music_loop(
-                chosen_tracks, total_seconds, global_music_db, pre_validated=True
-            )
-
-            if chosen_bgs:
-                bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                audio_full = audio_processor.mix_tracks(music_loop, bg_processed, total_seconds)
+            # Resume: check if video already exists
+            existing_single = _find_existing(f"video_only_single_*.mp4")
+            if existing_single:
+                video_only = existing_single
+                console.print(f"[bold green]  [RESUME] {existing_single.name} mevcut ({existing_single.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                step_times["Intro encode"] = 0
+                step_times["Loop encode"] = 0
+                step_times["Video concat"] = 0
+                progress.complete_step(0)
+                progress.complete_step(1)
+                progress.complete_step(2)
             else:
-                audio_full = music_loop
+                t0 = time.perf_counter()
+                video_only = encoder.normalize_video(
+                    single_video_path,
+                    video_only_single,
+                    make_progress_callback(0),
+                    scale_algo=scale_algo,
+                    bitrate=video_bitrate,
+                )
+                step_times["Intro encode"] = time.perf_counter() - t0
+                progress.complete_step(0)
+                step_times["Loop encode"] = 0
+                progress.complete_step(1)
+                step_times["Video concat"] = 0
+                progress.complete_step(2)
 
-            audio_full = apply_audio_extras(audio_full)
+            # Resume: check if audio already exists
+            existing_audio = _find_existing("audio_mixed.*") or _find_existing("music_loop.*")
+            if existing_audio:
+                audio_full = existing_audio
+                console.print(f"[bold green]  [RESUME] {existing_audio.name} mevcut ({existing_audio.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                step_times["Audio isleme"] = 0
+                progress.complete_step(3)
+            else:
+                t0 = time.perf_counter()
+                music_loop = audio_processor.create_music_loop(
+                    chosen_tracks, total_seconds, global_music_db, pre_validated=True
+                )
 
-            step_times["Audio isleme"] = time.perf_counter() - t0
-            progress.complete_step(3)
+                if chosen_bgs:
+                    bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                    audio_full = audio_processor.mix_tracks(music_loop, bg_processed, total_seconds)
+                else:
+                    audio_full = music_loop
+
+                audio_full = apply_audio_extras(audio_full)
+
+                step_times["Audio isleme"] = time.perf_counter() - t0
+                progress.complete_step(3)
         else:
             # Parallel execution
             from concurrent.futures import ThreadPoolExecutor
@@ -1780,25 +1808,48 @@ def render_pipeline(
             video_only = None
             audio_full = None
 
+            # Resume: check for existing video_only.mp4
+            existing_video = _find_existing("video_only.mp4")
+            # Resume: check for existing audio (try most-processed first)
+            existing_audio = _find_existing("audio_mixed.*") or _find_existing("music_loop.*")
+
             def encode_video_branch():
                 """Encode intro, loop, then concat."""
                 nonlocal video_only
 
-                # Encode intro
-                t0 = time.perf_counter()
-                encoder.normalize_video(
-                    intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, bitrate=video_bitrate
-                )
-                intro_time = time.perf_counter() - t0
-                progress.complete_step(0)
+                if existing_video:
+                    video_only = existing_video
+                    console.print(f"[bold green]  [RESUME] video_only.mp4 mevcut ({existing_video.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                    progress.complete_step(0)
+                    progress.complete_step(1)
+                    progress.complete_step(2)
+                    return 0, 0, 0
 
-                # Encode loop
-                t0 = time.perf_counter()
-                encoder.normalize_video(
-                    loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, bitrate=video_bitrate
-                )
-                loop_time = time.perf_counter() - t0
-                progress.complete_step(1)
+                # Resume: check intro_norm
+                if intro_norm.exists() and intro_norm.stat().st_size > 1000:
+                    console.print(f"[bold green]  [RESUME] {intro_norm.name} mevcut, atlaniyor[/bold green]")
+                    intro_time = 0
+                    progress.complete_step(0)
+                else:
+                    t0 = time.perf_counter()
+                    encoder.normalize_video(
+                        intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, bitrate=video_bitrate
+                    )
+                    intro_time = time.perf_counter() - t0
+                    progress.complete_step(0)
+
+                # Resume: check loop_norm
+                if loop_norm.exists() and loop_norm.stat().st_size > 1000:
+                    console.print(f"[bold green]  [RESUME] {loop_norm.name} mevcut, atlaniyor[/bold green]")
+                    loop_time = 0
+                    progress.complete_step(1)
+                else:
+                    t0 = time.perf_counter()
+                    encoder.normalize_video(
+                        loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, bitrate=video_bitrate
+                    )
+                    loop_time = time.perf_counter() - t0
+                    progress.complete_step(1)
 
                 # Concat
                 t0 = time.perf_counter()
@@ -1813,6 +1864,11 @@ def render_pipeline(
             def process_audio_branch():
                 """Create music loop and mix with backgrounds."""
                 nonlocal audio_full
+
+                if existing_audio:
+                    audio_full = existing_audio
+                    console.print(f"[bold green]  [RESUME] {existing_audio.name} mevcut ({existing_audio.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                    return 0
 
                 t0 = time.perf_counter()
                 music_loop = audio_processor.create_music_loop(
