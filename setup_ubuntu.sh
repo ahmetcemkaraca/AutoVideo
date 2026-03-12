@@ -80,21 +80,8 @@ fi
 
 # 8. Permission fix
 chmod +x run.py 2>/dev/null || true
+chmod +x run.sh 2>/dev/null || true
 chmod +x setup_ubuntu.sh 2>/dev/null || true
-
-# 9. Create run script
-cat > "$APP_DIR/run.sh" << 'EOF'
-#!/bin/bash
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$DIR"
-
-if [ -d "venv" ]; then
-    source venv/bin/activate
-fi
-
-python3 run.py
-EOF
-chmod +x "$APP_DIR/run.sh"
 
 echo "----------------------------------------"
 echo -e "${GREEN}✅ Kurulum Tamamlandı!${NC}"
@@ -102,9 +89,14 @@ echo ""
 echo -e "${BLUE}Kullanım:${NC}"
 echo "1. Videolarınızı '$APP_DIR' klasörüne atın."
 echo "2. Programı başlatın:"
-echo -e "${GREEN}    ./run.sh${NC}"
+echo -e "${GREEN}    bash run.sh${NC}"
+echo ""
+echo -e "${BLUE}Alternatif kullanım:${NC}"
+echo -e "${GREEN}    python3 run.py              # Interaktif menu${NC}"
+echo -e "${GREEN}    python3 run.py --tui        # TUI modu${NC}"
+echo -e "${GREEN}    python3 run.py --batch      # Smart Batch modu${NC}"
 echo ""
 if lspci | grep -i nvidia > /dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ GPU kullanmak için sunucuyu yeniden başlatın: reboot${NC}"
+    echo -e "${YELLOW}⚠ GPU kullanmak için sunucuyu yeniden başlatın: sudo reboot${NC}"
 fi
 echo "----------------------------------------"

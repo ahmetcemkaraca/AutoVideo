@@ -9,6 +9,7 @@ OPTIMIZED VERSION:
 - Added retry mechanism and graceful degradation
 - Improved GPU utilization through hardware acceleration options
 - Better error handling with detailed diagnostics
+- Clean terminal output formatting
 """
 
 import re
@@ -16,6 +17,7 @@ import shlex
 import subprocess
 import time
 import threading
+import sys
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -132,6 +134,65 @@ class FFmpegRunner:
     def set_total_duration(self, duration: float):
         """Set total duration for percent calculation."""
         self._total_duration = duration
+
+    def _should_display_stderr_line(self, line: str) -> bool:
+        """
+        Determine if a stderr line should be displayed to the user.
+        
+        Filters out noise, duplicate info, and repetitive FFmpeg output.
+        Shows only meaningful errors, warnings, and status info.
+        """
+        # Empty lines - skip
+        if not line or line.isspace():
+            return False
+        
+        # Progress lines - skip (handled separately)
+        if "frame=" in line and "fps=" in line:
+            return False
+        
+        # Skip duplicate/verbose FFmpeg startup messages
+        verbose_patterns = [
+            "configuration:",
+            "built with",
+            "bitstream filter",
+            "libavformat",
+            "libavcodec",
+            "license:",
+            "Unknown encoder",
+            "deprecated pixel format",
+        ]
+        
+        line_lower = line.lower()
+        if any(pattern in line_lower for pattern in verbose_patterns):
+            return False
+        
+        # Skip lines that are just formatting
+        if all(c in "=- " for c in line):
+            return False
+        
+        # Show errors, warnings, info
+        show_patterns = [
+            "error",
+            "warning",
+            "failed",
+            "cannot",
+            "invalid",
+            "[",  # FFmpeg section markers
+            "output",
+            "unable",
+            "no such",
+            "duration",
+        ]
+        
+        if any(pattern in line_lower for pattern in show_patterns):
+            return True
+        
+        # Show lines with actual information (longer messages)
+        if len(line) > 30:
+            return True
+        
+        return False
+
 
     def _log_command(self, cmd: List[str]):
         """Log a command to the log file."""
@@ -346,10 +407,12 @@ class FFmpegRunner:
                 # Process ended, read remaining output
                 for line in process.stderr.readlines():
                     self._stderr_buffer.append(line)
-                    # Log callback
-                    with self._callback_lock:
-                        if self._log_callback:
-                            self._log_callback(line)
+                    # Log callback for important messages only
+                    cleaned_line = line.strip()
+                    if self._should_display_stderr_line(cleaned_line):
+                        with self._callback_lock:
+                            if self._log_callback:
+                                self._log_callback(cleaned_line)
                             
                     if progress := self._parse_progress_line(line):
                         with self._callback_lock:
@@ -372,10 +435,12 @@ class FFmpegRunner:
             # Only keep recent lines in memory (circular buffer)
             self._stderr_buffer.append(line)
 
-            # Log callback
-            with self._callback_lock:
-                if self._log_callback:
-                    self._log_callback(line)
+            # Log callback for important messages only
+            cleaned_line = line.strip()
+            if self._should_display_stderr_line(cleaned_line):
+                with self._callback_lock:
+                    if self._log_callback:
+                        self._log_callback(cleaned_line)
 
             # Parse progress (fast-path on non-progress lines)
             if progress := self._parse_progress_line(line):

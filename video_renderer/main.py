@@ -14,7 +14,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 
 # Fix: Ensure project root is in Python path for config imports
 # This resolves the issue where files import from root `config/` which may not be in Python path
@@ -133,6 +133,77 @@ def list_video_files(base: Path) -> List[Tuple[Path, VideoInfo]]:
     return files
 
 
+def discover_music_directories(base: Path) -> Dict[str, Path]:
+    """
+    Discover all music directories in the project root.
+    Returns a dict of {dir_name: path} excluding those without music files.
+    
+    Scans: base directory for folders containing audio files
+    """
+    music_dirs = {}
+    
+    # Standard candidates
+    candidates = [base / "music", base / "Music", base / "MUSIC"]
+    
+    # Also scan all subdirectories of base for music files
+    try:
+        for item in sorted(base.iterdir()):
+            if item.is_dir() and item.name not in [".git", "__pycache__", "tmp", "archive", "venv", ".venv"]:
+                candidates.append(item)
+    except (OSError, PermissionError):
+        pass
+    
+    # Filter to only dirs with audio files
+    for dir_path in candidates:
+        try:
+            has_audio = any(
+                f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS 
+                for f in dir_path.iterdir()
+            )
+            if has_audio:
+                music_dirs[dir_path.name] = dir_path
+        except (OSError, PermissionError):
+            pass
+    
+    return music_dirs
+
+
+def select_music_directory(base: Path) -> Path:
+    """
+    Let user select which music directory to use if multiple exist.
+    Returns the selected music directory path.
+    """
+    music_dirs = discover_music_directories(base)
+    
+    if not music_dirs:
+        print_error("Müzik dosyası içeren klasör bulunamadı!")
+        raise ValueError("No music directories found")
+    
+    if len(music_dirs) == 1:
+        selected_dir = list(music_dirs.values())[0]
+        print_info(f"Müzik klasörü: {selected_dir.name}")
+        return selected_dir
+    
+    # Multiple dirs - ask user
+    console.print()
+    print_info(f"{len(music_dirs)} müzik klasörü bulundu. Hangisini kullanmak istersiniz?")
+    console.print()
+    
+    dir_names = list(music_dirs.keys())
+    for i, name in enumerate(dir_names, 1):
+        count_audio = sum(
+            1 for f in music_dirs[name].iterdir() 
+            if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS
+        )
+        console.print(f"  [{i}] {name} ({count_audio} dosya)")
+    
+    selected_idx = ask_int("Klasör seçimi", 1, len(dir_names))
+    selected_dir = music_dirs[dir_names[selected_idx - 1]]
+    
+    print_success(f"Seçilen: {selected_dir.name}")
+    return selected_dir
+
+
 def list_audio_files(music_dir: Path) -> Tuple[List[Path], List[Path]]:
     """
     List audio files, separating tracks from backgrounds.
@@ -152,6 +223,33 @@ def list_audio_files(music_dir: Path) -> Tuple[List[Path], List[Path]]:
                 tracks.append(p)
 
     return tracks, backgrounds
+
+
+def discover_background_files(base: Path) -> List[Path]:
+    """
+    Discover background audio files from all root directories.
+    Returns deduplicated list (by filename) of background files.
+    """
+    bg_files_map = {}  # name -> first path (for dedup)
+    
+    # Scan all directories in base
+    try:
+        for item in sorted(base.iterdir()):
+            if not item.is_dir() or item.name in [".git", "__pycache__", "tmp", "archive", "venv", ".venv"]:
+                continue
+            
+            try:
+                for f in item.iterdir():
+                    if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS and is_background_file(f):
+                        # Deduplicate by name, keeping first occurrence
+                        if f.name not in bg_files_map:
+                            bg_files_map[f.name] = f
+            except (OSError, PermissionError):
+                pass
+    except (OSError, PermissionError):
+        pass
+    
+    return sorted(bg_files_map.values())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -193,6 +291,64 @@ def create_run_tmp_dir(base: Path) -> Tuple[str, Path]:
     run_dir = base / "tmp" / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_id, run_dir
+
+
+def cleanup_processes_after_render() -> None:
+    """
+    Cleanup all ffmpeg and ffprobe processes after render is complete.
+    This ensures no hanging processes on Windows or other platforms.
+    """
+    try:
+        import platform
+        current_pid = os.getpid()
+        
+        if platform.system() == "Windows":
+            # Windows: use taskkill
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/IM", "ffmpeg.exe"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+            
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/IM", "ffprobe.exe"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+        else:
+            # Unix: use pkill
+            try:
+                subprocess.run(
+                    ["pkill", "-9", "-f", "ffmpeg"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+            
+            try:
+                subprocess.run(
+                    ["pkill", "-9", "-f", "ffprobe"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+        
+        time.sleep(0.5)  # Allow processes to be killed
+        
+    except Exception as e:
+        print(f"[WARN] Process cleanup hatası: {e}")
 
 
 def run_post_render_review_cli(out_path: Path, target_seconds: int, target_specs: dict) -> None:
@@ -357,6 +513,7 @@ def run_resume() -> int:
                         video_only_single,
                         make_progress_callback(0),
                         scale_algo=scale_algo,
+                        keep_audio=keep_video_audio,
                     )
                 progress.complete_step(0)
                 progress.complete_step(1)
@@ -368,7 +525,7 @@ def run_resume() -> int:
                     progress.complete_step(0)
                 else:
                     encoder.normalize_video(
-                        intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo
+                        intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, keep_audio=keep_video_audio
                     )
                     progress.complete_step(0)
 
@@ -378,7 +535,7 @@ def run_resume() -> int:
                     progress.complete_step(1)
                 else:
                     encoder.normalize_video(
-                        loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo
+                        loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, keep_audio=keep_video_audio
                     )
                     progress.complete_step(1)
 
@@ -393,6 +550,39 @@ def run_resume() -> int:
                         intro_norm, loop_norm, total_seconds, tmp_dir, make_progress_callback(2)
                     )
                     progress.complete_step(2)
+
+            # ─────────────────────────────────────────────────────────────────
+            # CRITICAL: POST ACTION (delete/archive) BEFORE AUDIO PROCESSING
+            # This ensures source files are handled BEFORE audio mixing starts
+            # ─────────────────────────────────────────────────────────────────
+            if post_action == "delete":
+                try:
+                    if mode == "single" and single_video_path:
+                        single_video_path.unlink(missing_ok=True)
+                        print_success("Kaynak video silindi.")
+                    else:
+                        intro_path.unlink(missing_ok=True)
+                        loop_path.unlink(missing_ok=True)
+                        print_success("Kaynak intro/loop silindi.")
+                except Exception as e:
+                    print_warning(f"Kaynak silme hatasi: {e}")
+
+            elif post_action == "archive":
+                archive_dir = base / "archive" / time.strftime("%Y%m%d_%H%M%S")
+                archive_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    if mode == "single" and single_video_path:
+                        if single_video_path.exists():
+                            single_video_path.rename(archive_dir / single_video_path.name)
+                        print_success(f"Kaynak video arsivlendi: {archive_dir.as_posix()}")
+                    else:
+                        if intro_path.exists():
+                            intro_path.rename(archive_dir / intro_path.name)
+                        if loop_path.exists():
+                            loop_path.rename(archive_dir / loop_path.name)
+                        print_success(f"Kaynak intro/loop arsivlendi: {archive_dir.as_posix()}")
+                except Exception as e:
+                    print_warning(f"Arsivleme hatasi: {e}")
 
             # Step 4: Audio (check for music_loop or audio_mixed)
             audio_processor = AudioProcessor(runner, tmp_dir)
@@ -473,37 +663,6 @@ def run_resume() -> int:
             },
         )
 
-
-        # Post action
-        if post_action == "delete":
-            try:
-                if mode == "single" and single_video_path:
-                    single_video_path.unlink(missing_ok=True)
-                    print_success("Kaynak video silindi.")
-                else:
-                    intro_path.unlink(missing_ok=True)
-                    loop_path.unlink(missing_ok=True)
-                    print_success("Kaynak intro/loop silindi.")
-            except Exception as e:
-                print_warning(f"Kaynak silme hatasi: {e}")
-
-        elif post_action == "archive":
-            archive_dir = base / "archive" / time.strftime("%Y%m%d_%H%M%S")
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            try:
-                if mode == "single" and single_video_path:
-                    if single_video_path.exists():
-                        single_video_path.rename(archive_dir / single_video_path.name)
-                    print_success(f"Kaynak video arsivlendi: {archive_dir.as_posix()}")
-                else:
-                    if intro_path.exists():
-                        intro_path.rename(archive_dir / intro_path.name)
-                    if loop_path.exists():
-                        loop_path.rename(archive_dir / loop_path.name)
-                    print_success(f"Kaynak intro/loop arsivlendi: {archive_dir.as_posix()}")
-            except Exception as e:
-                print_warning(f"Arsivleme hatasi: {e}")
-
         # ──────────────────────────────────────────────────────────────
         # Drive Upload
         # ──────────────────────────────────────────────────────────────
@@ -530,6 +689,7 @@ def run_resume() -> int:
     except KeyboardInterrupt:
         console.print()
         print_warning("Kullanici tarafindan iptal edildi.")
+        cleanup_processes_after_render()
         return 130
 
     except Exception as e:
@@ -541,7 +701,12 @@ def run_resume() -> int:
         print_error(f"Hata olustu: {e}")
         print_info(f"Detaylar: {err_log.as_posix()}")
         print_info("Hatayi duzelttikten sonra --resume ile devam edebilirsiniz.")
+        cleanup_processes_after_render()
         return 4
+    
+    finally:
+        # Ensure cleanup happens even in unexpected cases
+        cleanup_processes_after_render()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -580,15 +745,10 @@ def run_batch() -> int:
         # Confirmaton removed as requested
 
 
-        # Check music directory
-        music_candidates = [base / "music", base / "Music"]
-        for candidate in music_candidates:
-            if candidate.exists() and candidate.is_dir():
-                music_dir = candidate
-                break
-
-        if not music_dir.exists():
-            print_error("music/ klasörü bulunamadı!")
+        # Check and select music directory
+        try:
+            music_dir = select_music_directory(base)
+        except ValueError:
             return 2
 
         # Get shared settings for all batches
@@ -676,23 +836,11 @@ def run_batch() -> int:
         console.print()
         chosen_bgs = []
         if ask_confirm("Arka plan sesi eklemek ister misiniz?", False):
-            # Collect bg files from both background/ directory and music/ directory
-            bg_files_list = []
-
-            # Check background/ directory first
-            bg_audio = base / "background"
-            if bg_audio.exists():
-                bg_files_list.extend([f for f in bg_audio.iterdir() if f.suffix.lower() in track_exts])
-
-            # Also check music/ directory for bg files (files starting with "bg" or containing "_bg_")
-            bg_from_music = sorted([f for f in music_dir.iterdir()
-                                   if f.suffix.lower() in track_exts and is_background_file(f)])
-            bg_files_list.extend(bg_from_music)
-
-            # Remove duplicates (by name) and sort
-            bg_files = sorted({bg.name: bg for bg in bg_files_list}.values())
+            # Discover background files from all root directories (deduplicated)
+            bg_files = discover_background_files(base)
 
             if bg_files:
+                console.print("[info]Bulunan background ses dosyaları:[/]")
                 for bg in bg_files:
                     console.print(f"  [muted]- {bg.name}[/]")
                 bg_gain = ask_text("Arka plan gain (dB, örn: -13)", "-13")
@@ -936,16 +1084,19 @@ def run_batch() -> int:
             else:
                 console.print(f"  [error]✗[/] {name}: {path}")
 
+        cleanup_processes_after_render()
         return 0
 
     except KeyboardInterrupt:
         print_warning("\nBatch kullanıcı tarafından iptal edildi.")
+        cleanup_processes_after_render()
         return 130
     except Exception as e:
         import traceback
 
         print_error(f"Batch hatası: {e}")
         traceback.print_exc()
+        cleanup_processes_after_render()
         return 4
 
 
@@ -1770,6 +1921,7 @@ def render_pipeline(
                     make_progress_callback(0),
                     scale_algo=scale_algo,
                     bitrate=video_bitrate,
+                    keep_audio=keep_video_audio,
                 )
                 step_times["Intro encode"] = time.perf_counter() - t0
                 progress.complete_step(0)
@@ -1833,7 +1985,7 @@ def render_pipeline(
                 else:
                     t0 = time.perf_counter()
                     encoder.normalize_video(
-                        intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, bitrate=video_bitrate
+                        intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, bitrate=video_bitrate, keep_audio=keep_video_audio
                     )
                     intro_time = time.perf_counter() - t0
                     progress.complete_step(0)
@@ -1846,7 +1998,7 @@ def render_pipeline(
                 else:
                     t0 = time.perf_counter()
                     encoder.normalize_video(
-                        loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, bitrate=video_bitrate
+                        loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, bitrate=video_bitrate, keep_audio=keep_video_audio
                     )
                     loop_time = time.perf_counter() - t0
                     progress.complete_step(1)
@@ -2496,16 +2648,10 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         print_working_directory(s["base"])
         if not check_ffmpeg_install(): return 2
         
-        # Check music dir
-        music_candidates = [s["base"] / "music", s["base"] / "Music"]
-        found = False
-        for c in music_candidates:
-            if c.exists() and c.is_dir():
-                s["music_dir"] = c
-                found = True
-                break
-        if not found:
-            print_error(f"'{s['music_dir'].name}/' klasoru bulunamadi!")
+        # Check and select music directory
+        try:
+            s["music_dir"] = select_music_directory(s["base"])
+        except ValueError:
             return 2
             
         # List videos

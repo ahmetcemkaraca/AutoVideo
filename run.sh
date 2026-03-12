@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Video Renderer Startup Script
-# Robust dependency checking and environment setup
+# Video Renderer Startup Script (Linux/macOS)
+# Robust dependency checking and environment setup with proper terminal handling
 
 # ANSI Colors
 RED='\033[0;31m'
@@ -9,6 +9,20 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Terminal cleanup handler
+cleanup_terminal() {
+    # Restore terminal settings
+    if command -v stty &> /dev/null; then
+        stty sane 2>/dev/null
+    fi
+    # Flush output streams
+    sync
+}
+
+# Register cleanup on exit
+trap cleanup_terminal EXIT
+trap 'echo -e "\n${YELLOW}İptal edildi.${NC}"; exit 130' INT TERM
 
 # 0. Check for Updates
 echo -e "${BLUE}Checking for updates...${NC}"
@@ -36,7 +50,9 @@ else
     echo -e "${YELLOW}Git not found, skipping update check.${NC}"
 fi
 
-echo -e "${BLUE}=== Video Renderer Baslatiliyor ===${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}  Video Renderer Başlatıcı${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
 
 # 1. Check Python 3
 echo -n "Checking Python 3... "
@@ -97,14 +113,27 @@ else
 fi
 
 # 4. Run Application
-echo -e "${GREEN}Uygulama baslatiliyor...${NC}"
+echo -e "${GREEN}▶ Uygulama başlatılıyor...${NC}\n"
+
 source "$VENV_DIR/bin/activate"
 
 # Check if run.py exists
-if [ -f "run.py" ]; then
-    python3 run.py "$@"
-else
-    echo -e "${RED}HATA: run.py bulunamadi!${NC}"
-    read -p "Cikis icin Enter'a basin..."
+if [ ! -f "run.py" ]; then
+    echo -e "${RED}✗ HATA: run.py bulunamadi!${NC}"
+    read -p "Çıkış için Enter'a basın..."
     exit 1
 fi
+
+# Run Python application with proper subprocess handling
+if [ $# -gt 0 ]; then
+    # Passthrough mode with arguments
+    python3 run.py "$@"
+    EXIT_CODE=$?
+else
+    # Interactive mode
+    python3 run.py
+    EXIT_CODE=$?
+fi
+
+# Exit with the application's exit code
+exit $EXIT_CODE
