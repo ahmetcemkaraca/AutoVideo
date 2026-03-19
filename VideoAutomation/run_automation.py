@@ -139,6 +139,18 @@ Examples:
         help="Force re-download all files during sync"
     )
 
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Clean up temporary files before running"
+    )
+
+    parser.add_argument(
+        "--cleanup-dry-run",
+        action="store_true",
+        help="Show what would be cleaned without deleting"
+    )
+
     args = parser.parse_args()
 
     # Handle --init
@@ -198,6 +210,42 @@ Examples:
         
         if not args.continuous:
             return 0 if not result.errors else 1
+
+    # Handle --cleanup
+    if args.cleanup or args.cleanup_dry_run:
+        print_banner()
+        console.print("[cyan]🧹 Cleaning up temporary files...[/]")
+        
+        from video_renderer.ffmpeg import cleanup_temp_files, get_tmp_dir_size
+        
+        tmp_dir = (config.work_dir or Path.cwd()) / "tmp"
+        
+        if args.cleanup_dry_run:
+            result = cleanup_temp_files(
+                tmp_dir=tmp_dir,
+                min_age_hours=0,
+                dry_run=True
+            )
+            console.print(f"[yellow]DRY RUN - No files deleted[/]")
+        else:
+            result = cleanup_temp_files(
+                tmp_dir=tmp_dir,
+                min_age_hours=1.0
+            )
+        
+        console.print(f"[green]✓ Cleanup complete:[/]")
+        console.print(f"  [dim]Files: {len(result.deleted_files)}[/]")
+        console.print(f"  [dim]Size: {result.deleted_size_mb:.1f} MB[/]")
+        
+        if result.skipped_files:
+            console.print(f"  [dim]Skipped: {len(result.skipped_files)} files (too recent)[/]")
+        
+        if result.errors:
+            console.print(f"[yellow]  Errors: {len(result.errors)}[/]")
+            for err in result.errors:
+                console.print(f"    [red]• {err}[/]")
+        
+        return 0
 
     # Handle --stats
     if args.stats:

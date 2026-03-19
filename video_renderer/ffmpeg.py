@@ -407,9 +407,9 @@ class FFmpegRunner:
                 # Process ended, read remaining output
                 for line in process.stderr.readlines():
                     self._stderr_buffer.append(line)
-                    # Log callback for important messages only
+                    # Log callback for each non-empty stderr line.
                     cleaned_line = line.strip()
-                    if self._should_display_stderr_line(cleaned_line):
+                    if cleaned_line:
                         with self._callback_lock:
                             if self._log_callback:
                                 self._log_callback(cleaned_line)
@@ -435,9 +435,9 @@ class FFmpegRunner:
             # Only keep recent lines in memory (circular buffer)
             self._stderr_buffer.append(line)
 
-            # Log callback for important messages only
+            # Log callback for each non-empty stderr line.
             cleaned_line = line.strip()
-            if self._should_display_stderr_line(cleaned_line):
+            if cleaned_line:
                 with self._callback_lock:
                     if self._log_callback:
                         self._log_callback(cleaned_line)
@@ -565,12 +565,177 @@ def write_concat_list(files: List[Path], output_path: Path, repeat_count: int = 
         repeat_count: Number of times to repeat the file list (default: 1)
     """
     if repeat_count == 1:
-        # Simple case: just write the list once
         lines = [f"file '{p.resolve().as_posix()}'" for p in files]
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     else:
-        # Memory-efficient: write directly to file in chunks
         with open(output_path, "w", encoding="utf-8") as f:
             for _ in range(repeat_count):
                 for file_path in files:
                     f.write(f"file '{file_path.resolve().as_posix()}'\n")
+
+
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CleanupResult:
+    """Result of a temp cleanup operation."""
+    
+    deleted_files: List[str] = None
+    deleted_size_bytes: int = 0
+    errors: List[str] = None
+    skipped_files: List[str] = None
+    
+    def __post_init__(self):
+        if self.deleted_files is None:
+            self.deleted_files = []
+        if self.errors is None:
+            self.errors = []
+        if self.skipped_files is None:
+            self.skipped_files = []
+    
+    @property
+    def deleted_size_mb(self) -> float:
+        return self.deleted_size_bytes / (1024 * 1024)
+    
+    @property
+    def success(self) -> bool:
+        return len(self.errors) == 0
+
+
+def cleanup_temp_files(
+    tmp_dir: Path,
+    min_age_hours: float = 1.0,
+    preserve_patterns: List[str] = None,
+    delete_patterns: List[str] = None,
+    max_size_gb: float = 20.0,
+    dry_run: bool = False
+) -> CleanupResult:
+    """
+    Clean up temporary files from render operations.
+    
+    Args:
+        tmp_dir: Path to temp directory
+        min_age_hours: Minimum file age in hours before deletion (default: 1)
+        preserve_patterns: Glob patterns for files to preserve (default: last_session.json)
+        delete_patterns: Glob patterns for files to delete (default: *.mp4, *.w64, etc.)
+        max_size_gb: Auto-cleanup threshold in GB (default: 20)
+        dry_run: Only report what would be deleted
+        
+    Returns:
+        CleanupResult with lists of deleted/skipped files and errors
+    """
+    result = CleanupResult()
+    
+    if not tmp_dir.exists():
+        return result
+    
+    preserve_patterns = preserve_patterns or ["last_session.json", "*.state", "batch_queue.json"]
+    delete_patterns = delete_patterns or ["*.mp4", "*.w64", "*.wav", "video_list.txt", "run_log_*.txt"]
+    
+    min_age_seconds = min_age_hours * 3600
+    current_time = time.time()
+    total_size = 0
+    preserved_files = set()
+    
+    for pattern in preserve_patterns:
+        for f in tmp_dir.glob(pattern):
+            preserved_files.add(f.name)
+    
+    for pattern in delete_patterns:
+        for f in tmp_dir.glob(pattern):
+            if f.name in preserved_files:
+                result.skipped_files.append(f.name)
+                continue
+            
+            try:
+                file_stat = f.stat()
+                file_age = current_time - file_stat.st_mtime
+                
+                if file_age < min_age_seconds:
+                    result.skipped_files.append(f.name)
+                    continue
+                
+                result.deleted_size_bytes += file_stat.st_size
+                total_size += file_stat.st_size
+                
+                if dry_run:
+                    logger.info(f"[DRY RUN] Would delete: {f.name}")
+                    result.deleted_files.append(f.name)
+                else:
+                    f.unlink()
+                    logger.info(f"Deleted: {f.name}")
+                    result.deleted_files.append(f.name)
+                    
+            except FileNotFoundError:
+                pass
+            except PermissionError as e:
+                result.errors.append(f"{f.name}: Permission denied")
+                logger.error(f"Permission denied: {f.name}")
+            except Exception as e:
+                result.errors.append(f"{f.name}: {e}")
+                logger.error(f"Error deleting {f.name}: {e}")
+    
+    logger.info(
+        f"Cleanup complete: {len(result.deleted_files)} files, "
+        f"{result.deleted_size_mb:.1f} MB freed"
+    )
+    
+    return result
+
+
+def get_tmp_dir_size(tmp_dir: Path) -> Tuple[int, int]:
+    """
+    Get total size and file count of temp directory.
+    
+    Args:
+        tmp_dir: Path to temp directory
+        
+    Returns:
+        Tuple of (size_bytes, file_count)
+    """
+    if not tmp_dir.exists():
+        return 0, 0
+    
+    total_size = 0
+    file_count = 0
+    
+    for f in tmp_dir.iterdir():
+        if f.is_file():
+            try:
+                total_size += f.stat().st_size
+                file_count += 1
+            except (FileNotFoundError, PermissionError):
+                pass
+    
+    return total_size, file_count
+
+
+def check_disk_space(tmp_dir: Path, warn_threshold_gb: float = 10.0, auto_cleanup_threshold_gb: float = 20.0) -> Tuple[bool, bool]:
+    """
+    Check disk space usage and determine if cleanup is needed.
+    
+    Args:
+        tmp_dir: Path to temp directory
+        warn_threshold_gb: Size threshold for warning (default: 10 GB)
+        auto_cleanup_threshold_gb: Size threshold for auto-cleanup (default: 20 GB)
+        
+    Returns:
+        Tuple of (should_warn, should_auto_cleanup)
+    """
+    size_bytes, _ = get_tmp_dir_size(tmp_dir)
+    size_gb = size_bytes / (1024 ** 3)
+    
+    should_warn = size_gb >= warn_threshold_gb
+    should_auto_cleanup = size_gb >= auto_cleanup_threshold_gb
+    
+    if should_warn:
+        logger.warning(f"Temp directory size ({size_gb:.1f} GB) exceeds warning threshold ({warn_threshold_gb} GB)")
+    
+    if should_auto_cleanup:
+        logger.warning(f"Temp directory size ({size_gb:.1f} GB) exceeds auto-cleanup threshold ({auto_cleanup_threshold_gb} GB)")
+    
+    return should_warn, should_auto_cleanup

@@ -32,6 +32,7 @@ import logging
 
 from .state_manager import StateManager
 from .hash_ledger import HashLedger
+from .ffmpeg import cleanup_temp_files, check_disk_space
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +222,7 @@ class BatchQueue:
         )
 
         # Initialize HashLedger for duplicate prevention
-        ledger_file = self._queue_file.parent / "hash_ledger.json"
+        ledger_file = Path.cwd() / "config" / "ledger.json"
         self.hash_ledger = HashLedger(
             ledger_file=ledger_file,
             enable_locking=enable_locking
@@ -616,6 +617,36 @@ class BatchQueue:
             self._on_job_complete = on_complete
             self._on_job_error = on_error
             self._on_progress = on_progress
+
+    def cleanup_temp_files(self, min_age_hours: float = 1.0) -> dict:
+        """
+        Clean up temporary files from render operations.
+        
+        Args:
+            min_age_hours: Minimum file age in hours before deletion
+            
+        Returns:
+            Dict with cleanup results
+        """
+        from .ffmpeg import cleanup_temp_files as do_cleanup, check_disk_space
+        
+        tmp_dir = self._queue_file.parent
+        
+        should_warn, should_auto = check_disk_space(tmp_dir)
+        
+        if should_auto:
+            min_age_hours = 0.5
+        
+        result = do_cleanup(
+            tmp_dir=tmp_dir,
+            min_age_hours=min_age_hours
+        )
+        
+        return {
+            "deleted": len(result.deleted_files),
+            "size_mb": result.deleted_size_mb,
+            "errors": result.errors
+        }
 
     @property
     def queue_file(self) -> Path:
