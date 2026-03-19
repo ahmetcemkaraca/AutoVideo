@@ -775,10 +775,10 @@ def run_batch() -> int:
             dur_str = f"{total_seconds // 3600}:{(total_seconds % 3600) // 60:02d}:{total_seconds % 60:02d}"
         elif dur_idx == 5:
             dur_str = ask_text("Süre (H:MM:SS)", "9:00:00")
-            total_seconds = parse_time(dur_str)
+            total_seconds = parse_duration(dur_str)
         else:
             dur_str = dur_options[dur_idx - 1]
-            total_seconds = parse_time(dur_str)
+            total_seconds = parse_duration(dur_str)
 
         # Get music tracks (exclude background files)
         console.print()
