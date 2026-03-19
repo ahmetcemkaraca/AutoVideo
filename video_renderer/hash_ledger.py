@@ -191,7 +191,8 @@ class HashLedger:
             ledger_file: Path to ledger JSON file
             enable_locking: Enable cross-process file locking
         """
-        self._ledger_file = ledger_file or Path.cwd() / "tmp" / "hash_ledger.json"
+        # Keep the default ledger in config/ so renders share one human-readable registry.
+        self._ledger_file = ledger_file or Path.cwd() / "config" / "ledger.json"
         self._enable_locking = enable_locking
         self._lock = threading.RLock()
         

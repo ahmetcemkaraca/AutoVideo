@@ -165,6 +165,14 @@ class TestSourcePair:
 class TestHashLedger:
     """Test suite for HashLedger class."""
 
+    def test_hash_ledger_default_location(self, temp_dir, monkeypatch):
+        """Test default ledger location resolves to config/ledger.json."""
+        monkeypatch.chdir(temp_dir)
+
+        ledger = HashLedger()
+
+        assert ledger.ledger_file == temp_dir / "config" / "ledger.json"
+
     def test_hash_ledger_init(self, temp_dir):
         """Test HashLedger initialization."""
         ledger_file = temp_dir / "hash_ledger.json"
