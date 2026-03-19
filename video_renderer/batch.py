@@ -31,6 +31,7 @@ import contextlib
 import logging
 
 from .state_manager import StateManager
+from .hash_ledger import HashLedger
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,8 @@ class RenderJob:
     upload_folder_id: Optional[str] = None
     upload_status: str = "pending"  # pending, uploading, complete, error
     upload_file_id: Optional[str] = None
+    skip_duplicate: bool = True  # Skip if source already rendered
+    force_render: bool = False  # Force render even if duplicate
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to serializable dict."""
@@ -103,6 +106,8 @@ class RenderJob:
             "upload_folder_id": self.upload_folder_id,
             "upload_status": self.upload_status,
             "upload_file_id": self.upload_file_id,
+            "skip_duplicate": self.skip_duplicate,
+            "force_render": self.force_render,
         }
 
     @classmethod
@@ -129,6 +134,8 @@ class RenderJob:
         job.upload_folder_id = data.get("upload_folder_id")
         job.upload_status = data.get("upload_status", "pending")
         job.upload_file_id = data.get("upload_file_id")
+        job.skip_duplicate = data.get("skip_duplicate", True)
+        job.force_render = data.get("force_render", False)
         return job
 
     def copy(self) -> "RenderJob":
@@ -211,6 +218,13 @@ class BatchQueue:
             version=self.STATE_VERSION,
             auto_save=False,  # We'll save explicitly
             enable_locking=enable_locking,
+        )
+
+        # Initialize HashLedger for duplicate prevention
+        ledger_file = self._queue_file.parent / "hash_ledger.json"
+        self.hash_ledger = HashLedger(
+            ledger_file=ledger_file,
+            enable_locking=enable_locking
         )
 
         # Load existing queue
@@ -535,6 +549,57 @@ class BatchQueue:
             for job in self._jobs:
                 summary[job.status.value] += 1
             return summary
+
+    def should_render_job(self, job: RenderJob) -> bool:
+        """
+        Check if job should be rendered (duplicate check).
+
+        Args:
+            job: Render job to check
+
+        Returns:
+            True if should render, False if duplicate (skip)
+        """
+        if not job.skip_duplicate or job.force_render:
+            return True
+
+        if job.mode == "single" and job.single_video_path:
+            return self.hash_ledger.check_and_register(
+                single_path=job.single_video_path,
+                force=False
+            )
+        elif job.intro_path and job.loop_path:
+            return self.hash_ledger.check_and_register(
+                intro_path=job.intro_path,
+                loop_path=job.loop_path,
+                force=False
+            )
+
+        return True
+
+    def register_render_complete(self, job: RenderJob) -> bool:
+        """
+        Register a completed render in the hash ledger.
+
+        Args:
+            job: Completed render job
+
+        Returns:
+            True if registered successfully
+        """
+        if job.mode == "single" and job.single_video_path:
+            return self.hash_ledger.register(
+                single_path=job.single_video_path,
+                output_path=job.output_path
+            )
+        elif job.intro_path and job.loop_path:
+            return self.hash_ledger.register(
+                intro_path=job.intro_path,
+                loop_path=job.loop_path,
+                output_path=job.output_path
+            )
+
+        return False
 
     def set_callbacks(
         self,

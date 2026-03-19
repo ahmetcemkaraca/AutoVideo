@@ -9,7 +9,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from rich.console import Console
 from rich.panel import Panel
@@ -18,6 +18,7 @@ from rich.table import Table
 from rich import box
 
 from .config import PipelineConfig
+from .audio_rules import select_audio_for_theme
 from .youtube import YouTubeUploader, upload_with_exponential_backoff, CATEGORY_MUSIC
 from .state import StateManager
 
@@ -28,6 +29,7 @@ from video_renderer.main import run_interactive
 from video_renderer.ffmpeg import FFmpegRunner, get_duration
 from video_renderer.video import VideoEncoder
 from video_renderer.audio import AudioProcessor, mux_video_audio
+from video_renderer.hash_ledger import HashLedger
 from config import get_best_encoder, COLOR_BT709
 
 
@@ -109,6 +111,10 @@ class AutomationPipeline:
             config.youtube.client_secrets_file,
             config.youtube.credentials_file
         )
+        
+        # Initialize hash ledger for duplicate prevention
+        ledger_file = config.work_dir / "hash_ledger.json" if config.work_dir else None
+        self.hash_ledger = HashLedger(ledger_file=ledger_file) if ledger_file else None
 
         # Create directories
         config.music_dir.mkdir(parents=True, exist_ok=True)
@@ -135,9 +141,29 @@ class AutomationPipeline:
             genre = "ambient"
         return style, genre
 
+    def _scheduled_publish_at(self) -> str:
+        """Calculate the scheduled publish timestamp in UTC."""
+        scheduled = datetime.now(timezone.utc) + timedelta(days=self.config.youtube.publish_days)
+        return scheduled.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
     def _render_video(self, style: str, genre: str) -> Optional[Path]:
         """Render video using video_renderer."""
         console.print("[cyan]🎬 Rendering video...[/]")
+
+        # Check for duplicate source videos
+        if self.hash_ledger and self.config.intro_video and self.config.loop_video:
+            if self.hash_ledger.is_registered(
+                intro_path=self.config.intro_video,
+                loop_path=self.config.loop_video
+            ):
+                console.print("[yellow]⚠ Source videos already rendered, skipping duplicate...[/]")
+                existing = self.hash_ledger.get_pair(
+                    self.config.intro_video,
+                    self.config.loop_video
+                )
+                if existing and existing.output_path:
+                    console.print(f"[dim]  Previous output: {existing.output_path}[/]")
+                return None
 
         # Check music directory
         track_files = self._get_track_files()
@@ -213,6 +239,19 @@ class AutomationPipeline:
             )
             progress.update(task, completed=100)
 
+            audio_selection = select_audio_for_theme(
+                track_files,
+                theme=self.config.theme,
+                visual_inspection_enabled=False,
+            )
+
+            if audio_selection.theme:
+                console.print(f"[dim]  Theme rules applied: {audio_selection.theme}[/]")
+            if audio_selection.music_db is not None:
+                console.print(f"[dim]  Background music gain: {audio_selection.music_db} dB[/]")
+            if audio_selection.background_profile:
+                console.print(f"[dim]  Background profile: {audio_selection.background_profile}[/]")
+
             # Process audio
             audio_processor = AudioProcessor(runner, tmp_dir)
 
@@ -226,6 +265,16 @@ class AutomationPipeline:
             progress.update(task, completed=100)
 
         console.print(f"[green]✓ Video rendered: {output_path.name}[/]")
+        
+        # Register successful render in hash ledger
+        if self.hash_ledger and self.config.intro_video and self.config.loop_video:
+            self.hash_ledger.register(
+                intro_path=self.config.intro_video,
+                loop_path=self.config.loop_video,
+                output_path=output_path
+            )
+            console.print(f"[dim]  Registered source hash in ledger[/]")
+        
         return output_path
 
     def _upload_video(
@@ -233,6 +282,7 @@ class AutomationPipeline:
         video_path: Path,
         style: str,
         genre: str,
+        scheduled_publish_at: Optional[str] = None,
     ) -> Optional[str]:
         """Upload video to YouTube."""
         console.print("[cyan]📤 Uploading to YouTube...[/]")
@@ -254,6 +304,8 @@ class AutomationPipeline:
         )
 
         tags = self.config.youtube.default_tags + [style, genre]
+        if scheduled_publish_at is None:
+            scheduled_publish_at = self._scheduled_publish_at()
 
         # Authenticate if needed
         if not self.youtube.youtube:
@@ -279,12 +331,16 @@ class AutomationPipeline:
                 title,
                 description,
                 tags,
+                category_id=self.config.youtube.default_category,
+                privacy_status="private",
+                scheduled_publish_at=scheduled_publish_at,
                 progress_callback=update_progress
             )
 
         if video_id:
             console.print(f"[green]✓ Uploaded! Video ID: {video_id}[/]")
             console.print(f"[dim]  https://youtube.com/watch?v={video_id}[/]")
+            console.print(f"[dim]  Scheduled publish: {scheduled_publish_at}[/]")
 
         return video_id
 
@@ -315,18 +371,21 @@ class AutomationPipeline:
                 return False
 
             # Upload to YouTube
-            video_id = self._upload_video(video_path, style, genre)
+            scheduled_publish_at = self._scheduled_publish_at()
+            video_id = self._upload_video(video_path, style, genre, scheduled_publish_at)
 
             if video_id:
                 # Record video
                 self.state.add_video(
                     video_id=video_id,
                     title=f"{style} {genre}",
+                    scheduled_publish_at=scheduled_publish_at,
                     genre=genre,
                     style=style,
                     duration=self.config.target_duration,
                     local_path=str(video_path)
                 )
+                self.state.mark_video_scheduled(video_id, scheduled_publish_at)
 
             console.print("\n[bold green]✓ Pipeline iteration complete![/]\n")
             return True
