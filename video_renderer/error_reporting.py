@@ -24,7 +24,7 @@ from .exceptions import (
     get_user_message,
     create_error_report,
 )
-from .logging import get_logger, LogContext, generate_request_id
+from .video_logging import get_logger, LogContext, generate_request_id
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Reporter Configuration
@@ -679,7 +679,7 @@ def format_cli_error(exception: Exception, show_traceback: bool = False) -> str:
     Returns:
         Formatted error string for CLI
     """
-    from .logging import LogLevel
+    from .video_logging import LogLevel
 
     config = ErrorReportConfig(
         mode=ErrorReportingMode.DEBUG if show_traceback else ErrorReportingMode.USER_FRIENDLY,

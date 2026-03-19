@@ -24,7 +24,7 @@ from .exceptions import (
     get_user_message,
 )
 
-from .logging import (
+from .video_logging import (
     VideoRendererLogger,
     LogLevel,
     LogContext,

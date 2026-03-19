@@ -196,9 +196,13 @@ class DriveUploader:
             print(f"Authentication error: {e}")
             return False
 
-    def list_folders(self, page_size: int = 10) -> List[Dict[str, str]]:
+    def list_folders(self, page_size: int = 10, parent_folder_id: Optional[str] = None) -> List[Dict[str, str]]:
         """
-        List folders in root or last accessed.
+        List folders in root or a specific parent folder.
+
+        Args:
+            page_size: Maximum number of folders to return.
+            parent_folder_id: Optional parent folder ID to list subfolders from.
 
         Returns:
             List of folder dictionaries with 'id' and 'name' keys
@@ -209,11 +213,15 @@ class DriveUploader:
             return []
 
         try:
+            if parent_folder_id:
+                q = f"'{parent_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            else:
+                q = "mimeType='application/vnd.google-apps.folder' and trashed=false"
             results = (
                 self.service.files()
                 .list(
                     pageSize=page_size,
-                    q="mimeType='application/vnd.google-apps.folder' and trashed=false",
+                    q=q,
                     fields="nextPageToken, files(id, name)",
                     orderBy="folder,name",
                 )
