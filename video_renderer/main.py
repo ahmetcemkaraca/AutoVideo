@@ -3083,6 +3083,37 @@ Ornekler:
         help="Smart Batch modu - Otomatik intro/loop ciftlerini tespit et ve sirali render yap",
     )
 
+    # Orchestration Layer (End-to-End Automation)
+    orch_group = parser.add_argument_group("End-to-End Orchestration")
+    orch_group.add_argument(
+        "--auto", action="store_true",
+        help="Full automation: sync + render + upload to YouTube (5-day schedule)"
+    )
+    orch_group.add_argument(
+        "--sync", action="store_true",
+        help="Sync assets from Google Drive only"
+    )
+    orch_group.add_argument(
+        "--render-only", action="store_true",
+        help="Render videos without uploading to YouTube"
+    )
+    orch_group.add_argument(
+        "--status", action="store_true",
+        help="Show current orchestration pipeline status"
+    )
+    orch_group.add_argument(
+        "--dry-run", action="store_true",
+        help="Simulate orchestration without making changes"
+    )
+    orch_group.add_argument(
+        "--folder-id", dest="folder_id", type=str, default="1KIzD1pnY6Kat-HIIAsCcGH_uqNXQnzp6",
+        help="Google Drive root folder ID"
+    )
+    orch_group.add_argument(
+        "--scheduled-days", dest="scheduled_days", type=int, default=5,
+        help="Days until YouTube publish (default: 5)"
+    )
+
     # Unified render mode selection
     parser.add_argument(
         "--mode",
@@ -3162,6 +3193,25 @@ Ornekler:
     # Smart Batch mode
     if args.batch:
         return run_batch()
+
+    # End-to-End Orchestration Layer
+    if args.auto or args.sync or args.render_only or args.status:
+        from .orchestrator import Orchestrator, run as run_orchestrator
+        orchestrator = Orchestrator(
+            drive_folder_id=args.folder_id,
+            scheduled_days=args.scheduled_days,
+            dry_run=args.dry_run,
+        )
+        if args.status:
+            orchestrator.status()
+            return 0
+        if args.sync:
+            return 0 if orchestrator.run_sync_only() else 1
+        if args.render_only:
+            orchestrator.run_render_only()
+            return 0
+        if args.auto:
+            return 0 if orchestrator.run_full() else 1
 
     # Direct resume mode
     if args.resume:
