@@ -77,6 +77,7 @@ Examples:
   python run_automation.py --init                    # Create sample config
   python run_automation.py --config config.json     # Run once
   python run_automation.py --config config.json -c  # Run continuously
+  python run_automation.py --config config.json --publish-days 5
   python run_automation.py --stats                   # Show statistics
         """
     )
@@ -112,6 +113,32 @@ Examples:
         help="Authenticate with YouTube (run once to setup)"
     )
 
+    parser.add_argument(
+        "--publish-days",
+        type=int,
+        default=None,
+        help="Override scheduled publish delay in days"
+    )
+
+    parser.add_argument(
+        "--theme",
+        type=str,
+        default=None,
+        help="Apply deterministic audio rules for a theme such as jazz, medieval, or lofi"
+    )
+
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Sync assets from Google Drive folder before running"
+    )
+
+    parser.add_argument(
+        "--sync-force",
+        action="store_true",
+        help="Force re-download all files during sync"
+    )
+
     args = parser.parse_args()
 
     # Handle --init
@@ -131,6 +158,46 @@ Examples:
     except Exception as e:
         console.print(f"[red]Error loading config: {e}[/]")
         return 1
+
+    if args.publish_days is not None:
+        if args.publish_days < 0:
+            console.print("[red]publish-days must be zero or greater[/]")
+            return 1
+        config.youtube.scheduled_publish_days = args.publish_days
+
+    if args.theme is not None:
+        config.theme = args.theme.lower()
+
+    # Handle --sync
+    if args.sync:
+        print_banner()
+        console.print("[cyan]🔄 Syncing assets from Google Drive...[/]")
+        
+        from video_renderer.drive_sync import DriveSyncService
+        
+        folder_id = getattr(config, 'drive_folder_id', None)
+        if not folder_id:
+            folder_id = "1KIzD1pnY6Kat-HIIAsCcGH_uqNXQnzp6"
+        
+        work_dir = config.work_dir or Path.cwd()
+        sync_service = DriveSyncService(
+            root_folder_id=folder_id,
+            base_dir=work_dir
+        )
+        
+        result = sync_service.sync()
+        
+        console.print(f"[green]✓ Sync complete:[/]")
+        console.print(f"  [dim]Downloaded: {len(result.downloaded)} files[/]")
+        console.print(f"  [dim]Skipped: {len(result.skipped)} files[/]")
+        
+        if result.errors:
+            console.print(f"[yellow]  Errors: {len(result.errors)}[/]")
+            for err in result.errors:
+                console.print(f"    [red]• {err}[/]")
+        
+        if not args.continuous:
+            return 0 if not result.errors else 1
 
     # Handle --stats
     if args.stats:

@@ -41,6 +41,7 @@ class YouTubeConfig:
     # Upload settings
     default_category: str = "10"  # Music category
     default_privacy: str = "public"  # public, private, unlisted
+    scheduled_publish_days: int = 5
 
     # Video metadata templates
     title_template: str = "{duration} {style} Music | {genre} | Relaxing Background"
@@ -57,6 +58,15 @@ class YouTubeConfig:
         "relaxing music", "ambient", "sleep music", "study music",
         "meditation music", "peaceful", "calming", "background music"
     ])
+
+    @property
+    def publish_days(self) -> int:
+        """Backward-compatible alias for scheduled_publish_days."""
+        return self.scheduled_publish_days
+
+    @publish_days.setter
+    def publish_days(self, value: int) -> None:
+        self.scheduled_publish_days = value
 
     @classmethod
     def from_env(cls) -> "YouTubeConfig":
@@ -88,6 +98,8 @@ class PipelineConfig:
     # Pipeline settings
     continuous_mode: bool = False  # Run continuously
     delay_between_videos: int = 300  # Seconds between video generations
+    theme: Optional[str] = None
+    drive_folder_id: Optional[str] = None  # Google Drive folder for asset sync
 
     # Style and genre options (replaces Jamendo moods/genres)
     styles: List[str] = field(default_factory=lambda: [
@@ -121,6 +133,8 @@ class PipelineConfig:
             codec=data.get("codec", "av1"),
             continuous_mode=data.get("continuous_mode", False),
             delay_between_videos=data.get("delay_between_videos", 300),
+            theme=data.get("theme"),
+            drive_folder_id=data.get("drive_folder_id"),
         )
 
         if "intro_video" in data:
@@ -138,6 +152,13 @@ class PipelineConfig:
         if "youtube" in data:
             y = data["youtube"]
             config.youtube.client_secrets_file = y.get("client_secrets_file", "client_secrets.json")
+            config.youtube.credentials_file = y.get("credentials_file", "youtube_credentials.json")
+            config.youtube.default_category = y.get("default_category", config.youtube.default_category)
+            config.youtube.default_privacy = y.get("default_privacy", config.youtube.default_privacy)
+            config.youtube.scheduled_publish_days = y.get(
+                "scheduled_publish_days",
+                y.get("publish_days", config.youtube.scheduled_publish_days)
+            )
             if "title_template" in y:
                 config.youtube.title_template = y["title_template"]
             if "description_template" in y:
@@ -155,10 +176,16 @@ class PipelineConfig:
             "codec": self.codec,
             "continuous_mode": self.continuous_mode,
             "delay_between_videos": self.delay_between_videos,
+            "theme": self.theme,
+            "drive_folder_id": self.drive_folder_id,
             "styles": self.styles,
             "genres": self.genres,
             "youtube": {
                 "client_secrets_file": self.youtube.client_secrets_file,
+                "credentials_file": self.youtube.credentials_file,
+                "default_category": self.youtube.default_category,
+                "default_privacy": self.youtube.default_privacy,
+                "scheduled_publish_days": self.youtube.scheduled_publish_days,
                 "title_template": self.youtube.title_template,
                 "description_template": self.youtube.description_template,
                 "tags": self.youtube.default_tags,
@@ -186,10 +213,15 @@ DEFAULT_CONFIG_TEMPLATE = """{
   "codec": "av1",
   "continuous_mode": false,
   "delay_between_videos": 300,
+  "theme": null,
   "styles": ["relaxing", "calm", "peaceful", "meditative"],
   "genres": ["ambient", "classical", "electronic", "jazz", "chillout"],
-  "youtube": {
+    "youtube": {
     "client_secrets_file": "client_secrets.json",
+    "credentials_file": "youtube_credentials.json",
+    "default_category": "10",
+    "default_privacy": "public",
+    "scheduled_publish_days": 5,
     "title_template": "{duration} {style} Music | {genre} | Relaxing Background",
     "description_template": "🎵 {duration} of {style} {genre} music...",
     "tags": ["relaxing music", "ambient", "sleep music", "study music"]
