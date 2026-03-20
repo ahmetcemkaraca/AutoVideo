@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 AutoVideo Bootstrap and Launcher
 
@@ -7,18 +6,18 @@ Ensures virtual environment exists, dependencies are installed,
 and properly launches the application with clean terminal handling.
 """
 
-import sys
-import subprocess
-import os
-import shutil
 import atexit
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 
 def is_venv():
     """Check if running inside a virtual environment."""
-    return (hasattr(sys, 'real_prefix') or
-            (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix))
+    return hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    )
 
 
 def get_venv_python():
@@ -33,7 +32,7 @@ def _cleanup_on_exit():
     try:
         sys.stdout.flush()
         sys.stderr.flush()
-        
+
         # Linux: Restore terminal settings
         if sys.platform != "win32":
             try:
@@ -48,15 +47,15 @@ def bootstrap():
     """Ensure venv exists and deps are installed, then re-exec."""
     # Register cleanup handler
     atexit.register(_cleanup_on_exit)
-    
+
     print(">> Ortam kontrolu yapiliyor...")
-    
+
     venv_dir = Path("venv")
     venv_python = get_venv_python()
-    
+
     # 1. Create Venv if missing
     if not venv_dir.exists():
-        print(f"[!] Sanal ortam (venv) bulunamadi. Olusturuluyor...")
+        print("[!] Sanal ortam (venv) bulunamadi. Olusturuluyor...")
         try:
             subprocess.check_call([sys.executable, "-m", "venv", "venv"])
             print("[+] Venv olusturuldu.")
@@ -65,25 +64,34 @@ def bootstrap():
             sys.exit(1)
 
     if not is_venv():
-        print(f">> Sanal ortam baslatiliyor...")
-        
+        print(">> Sanal ortam baslatiliyor...")
+
         # Check permissions on linux
         if sys.platform != "win32":
             if os.path.exists(venv_python):
                 os.chmod(venv_python, 0o755)
-        
+
         if not os.path.exists(venv_python):
             print(f"[ERROR] Python venv binary bulunamadi: {venv_python}")
             print("Lutfen 'venv' klasorunu silip tekrar deneyin.")
             sys.exit(1)
 
         print(">> Paket kontrolu...")
-        pip_cmd = [venv_python, "-m", "pip", "install", "-r", "requirements.txt", "--quiet", "--disable-pip-version-check"]
+        pip_cmd = [
+            venv_python,
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            "requirements.txt",
+            "--quiet",
+            "--disable-pip-version-check",
+        ]
         try:
             subprocess.check_call(pip_cmd)
         except subprocess.CalledProcessError:
             print("[!] Gereksinimler yuklenemedi. 'requirements.txt' dosyasini kontrol edin.")
-        
+
         # Re-exec in venv
         os.execv(venv_python, [venv_python] + sys.argv)
 
@@ -91,11 +99,12 @@ def bootstrap():
 def check_dependencies():
     """Check imports inside the venv."""
     try:
-        import textual
-        import rich
-        from googleapiclient.discovery import build
-        import google_auth_oauthlib
         import google.auth.transport.requests
+        import google_auth_oauthlib
+        import rich
+        import textual
+        from googleapiclient.discovery import build
+
         return True
     except ImportError as e:
         return e.name
@@ -104,7 +113,7 @@ def check_dependencies():
 def main():
     # Register cleanup handler
     atexit.register(_cleanup_on_exit)
-    
+
     # Only bootstrap if not already in venv
     if not is_venv():
         bootstrap()
@@ -112,13 +121,15 @@ def main():
         return
 
     # If we are here, we are IN venv
-    
+
     missing = check_dependencies()
     if missing is not True:
         print(f"\n[!] Venv icinde eksik kutuphane: {missing}")
         print("Otomatik yukleniyor...")
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]
+            )
         except subprocess.CalledProcessError:
             print("[!] Paket yüklemesi başarısız oldu, devam ediliyor...")
 
@@ -152,32 +163,32 @@ def main():
     print("  3. Smart Batch (Otomatik Intro/Loop Tespiti)")
     print("  q. Cikis")
     print("=" * 70)
-    
+
     choice = input("\nSeciminiz (1/2/3/q) [1]: ").strip().lower()
-    
-    if choice == 'q':
+
+    if choice == "q":
         sys.exit(0)
-        
+
     if not choice:
-        choice = '1'
-        
+        choice = "1"
+
     cmd = []
-    
-    if choice == '1':
+
+    if choice == "1":
         # CLI Interactive Mode (DEFAULT)
         print("\n>> CLI Interaktif Mod baslatiliyor...\n")
         cmd = [sys.executable, "-m", "video_renderer"]
-        
-    elif choice == '2':
+
+    elif choice == "2":
         # TUI Mode (Textual)
         print("\n>> TUI Mod baslatiliyor...\n")
         cmd = [sys.executable, "-m", "video_renderer", "--tui"]
-        
-    elif choice == '3':
+
+    elif choice == "3":
         # Smart Batch Mode
         print("\n>> Smart Batch Mod baslatiliyor...\n")
         cmd = [sys.executable, "-m", "video_renderer", "--batch"]
-        
+
     else:
         print("Gecersiz secim!")
         sys.exit(1)

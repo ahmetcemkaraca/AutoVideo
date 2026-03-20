@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for FFmpegRunner and related functions.
 
@@ -12,18 +11,19 @@ Tests cover:
 - Command logging
 """
 
-import pytest
 import subprocess
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch, mock_open, call
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
 from video_renderer.ffmpeg import (
-    FFmpegRunner,
     FFmpegProgress,
+    FFmpegRunner,
     VideoInfo,
-    probe_video,
     get_duration,
-    write_concat_list
+    probe_video,
+    write_concat_list,
 )
 
 
@@ -52,7 +52,7 @@ class TestFFmpegProgress:
             speed=1.5,
             size_kb=1024,
             bitrate_kbps=500.0,
-            percent=25.0
+            percent=25.0,
         )
 
         assert progress.frame == 1000
@@ -80,7 +80,7 @@ class TestVideoInfo:
             color_space="bt709",
             color_primaries="bt709",
             color_transfer="bt709",
-            profile="High"
+            profile="High",
         )
 
         assert info.codec == "h264"
@@ -149,14 +149,21 @@ class TestFFmpegRunner:
         assert "ffmpeg" in content
         assert "input.mp4" in content
 
-    @pytest.mark.parametrize("line, expected_progress", [
-        ("frame=  123 fps= 45.6 q=28.0 size=    1234kB time=00:01:23.45 bitrate= 123.4kbits/s speed=1.23x",
-         FFmpegProgress(frame=123, fps=45.6, time_seconds=83.45, speed=1.23)),
-        ("frame=  456 fps= 60.0 time=00:02:00.00 speed=1.00x",
-         FFmpegProgress(frame=456, fps=60.0, time_seconds=120.0, speed=1.0)),
-        ("No progress here", None),
-        ("", None),
-    ])
+    @pytest.mark.parametrize(
+        "line, expected_progress",
+        [
+            (
+                "frame=  123 fps= 45.6 q=28.0 size=    1234kB time=00:01:23.45 bitrate= 123.4kbits/s speed=1.23x",
+                FFmpegProgress(frame=123, fps=45.6, time_seconds=83.45, speed=1.23),
+            ),
+            (
+                "frame=  456 fps= 60.0 time=00:02:00.00 speed=1.00x",
+                FFmpegProgress(frame=456, fps=60.0, time_seconds=120.0, speed=1.0),
+            ),
+            ("No progress here", None),
+            ("", None),
+        ],
+    )
     def test_parse_progress_line(self, line, expected_progress):
         """Test parsing various progress line formats."""
         runner = FFmpegRunner()
@@ -207,7 +214,7 @@ class TestFFmpegRunner:
         runner = FFmpegRunner()
         cmd = ["echo", "test"]
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0)
 
             result = runner.run(cmd, capture_progress=False)
@@ -220,7 +227,7 @@ class TestFFmpegRunner:
         runner = FFmpegRunner()
         cmd = ["echo", "test"]
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0)
 
             result = runner.run(cmd, capture_progress=True)
@@ -237,14 +244,16 @@ class TestFFmpegRunner:
 
         cmd = ["ffmpeg", "-i", "input.mp4", "output.mp4"]
 
-        with patch('subprocess.Popen') as mock_popen:
+        with patch("subprocess.Popen") as mock_popen:
             # Mock process that outputs progress
             process = Mock()
             process.returncode = 0
-            process.stderr = iter([
-                "frame=   50 fps= 60.0 time=00:00:01.00 speed=1.00x\n",
-                "frame=  100 fps= 60.0 time=00:00:02.00 speed=1.00x\n",
-            ])
+            process.stderr = iter(
+                [
+                    "frame=   50 fps= 60.0 time=00:00:01.00 speed=1.00x\n",
+                    "frame=  100 fps= 60.0 time=00:00:02.00 speed=1.00x\n",
+                ]
+            )
             mock_popen.return_value = process
 
             result = runner.run(cmd, capture_progress=True)
@@ -256,7 +265,7 @@ class TestFFmpegRunner:
         runner = FFmpegRunner()
         cmd = ["ffmpeg", "-i", "nonexistent.mp4", "output.mp4"]
 
-        with patch('subprocess.Popen') as mock_popen:
+        with patch("subprocess.Popen") as mock_popen:
             process = Mock()
             process.returncode = 1
             process.stderr = iter(["Error: File not found\n"])
@@ -271,15 +280,13 @@ class TestFFmpegRunner:
         runner = FFmpegRunner()
         cmd = ["echo", "test"]
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0, stdout="test", stderr="")
 
             result = runner.run_simple(cmd)
 
             assert result.returncode == 0
-            mock_run.assert_called_once_with(
-                cmd, check=True, capture_output=True, text=True
-            )
+            mock_run.assert_called_once_with(cmd, check=True, capture_output=True, text=True)
 
 
 @pytest.mark.unit
@@ -298,13 +305,10 @@ color_primaries=bt709
 color_transfer=bt709
 profile=High"""
 
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = Mock(
-                returncode=0,
-                stdout=ffprobe_output
-            )
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=ffprobe_output)
 
-            with patch('video_renderer.ffmpeg.get_duration') as mock_duration:
+            with patch("video_renderer.ffmpeg.get_duration") as mock_duration:
                 mock_duration.return_value = 120.0
 
                 info = probe_video(Path("test.mp4"))
@@ -320,13 +324,10 @@ profile=High"""
         """Test probing video with missing fields."""
         ffprobe_output = "codec_name=h264\nwidth=1920"
 
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = Mock(
-                returncode=0,
-                stdout=ffprobe_output
-            )
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=ffprobe_output)
 
-            with patch('video_renderer.ffmpeg.get_duration') as mock_duration:
+            with patch("video_renderer.ffmpeg.get_duration") as mock_duration:
                 mock_duration.return_value = 120.0
 
                 info = probe_video(Path("test.mp4"))
@@ -338,7 +339,7 @@ profile=High"""
 
     def test_probe_video_error(self):
         """Test probing video that fails."""
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.CalledProcessError(1, "ffprobe")
 
             with pytest.raises(subprocess.CalledProcessError):
@@ -349,19 +350,19 @@ profile=High"""
 class TestGetDuration:
     """Test suite for get_duration function."""
 
-    @pytest.mark.parametrize("duration_str, expected", [
-        ("120.5", 120.5),
-        ("3600.0", 3600.0),
-        ("0.0", 0.0),
-        ("1", 1.0),
-    ])
+    @pytest.mark.parametrize(
+        "duration_str, expected",
+        [
+            ("120.5", 120.5),
+            ("3600.0", 3600.0),
+            ("0.0", 0.0),
+            ("1", 1.0),
+        ],
+    )
     def test_get_duration_valid(self, duration_str, expected):
         """Test getting duration from valid output."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = Mock(
-                returncode=0,
-                stdout=duration_str
-            )
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=duration_str)
 
             result = get_duration(Path("test.mp4"))
 
@@ -369,11 +370,8 @@ class TestGetDuration:
 
     def test_get_duration_invalid(self):
         """Test getting duration with invalid output."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = Mock(
-                returncode=0,
-                stdout="invalid"
-            )
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="invalid")
 
             result = get_duration(Path("test.mp4"))
 
@@ -381,7 +379,7 @@ class TestGetDuration:
 
     def test_get_duration_error(self):
         """Test getting duration when command fails."""
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.CalledProcessError(1, "ffprobe")
 
             with pytest.raises(subprocess.CalledProcessError):
@@ -394,11 +392,7 @@ class TestWriteConcatList:
 
     def test_write_concat_list_basic(self, temp_dir):
         """Test writing basic concat list."""
-        files = [
-            temp_dir / "video1.mp4",
-            temp_dir / "video2.mp4",
-            temp_dir / "video3.mp4"
-        ]
+        files = [temp_dir / "video1.mp4", temp_dir / "video2.mp4", temp_dir / "video3.mp4"]
         output = temp_dir / "list.txt"
 
         for f in files:
@@ -460,7 +454,7 @@ class TestFFmpegRunnerIntegration:
 
         cmd = ["echo", "test"]
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0)
 
             runner.run(cmd, capture_progress=False)
@@ -492,12 +486,15 @@ class TestFFmpegRunnerIntegration:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("fps_str, expected_value", [
-    ("60/1", 60.0),
-    ("30000/1001", pytest.approx(29.97, rel=0.01)),
-    ("24000/1001", pytest.approx(23.98, rel=0.01)),
-    ("60000/1001", pytest.approx(59.94, rel=0.01)),
-])
+@pytest.mark.parametrize(
+    "fps_str, expected_value",
+    [
+        ("60/1", 60.0),
+        ("30000/1001", pytest.approx(29.97, rel=0.01)),
+        ("24000/1001", pytest.approx(23.98, rel=0.01)),
+        ("60000/1001", pytest.approx(59.94, rel=0.01)),
+    ],
+)
 def test_fps_parsing_edge_cases(fps_str, expected_value):
     """Test parsing various FPS string formats."""
     # This is implicitly tested through probe_video
@@ -520,7 +517,7 @@ def test_videoinfo_optional_fields():
         pix_fmt="yuv420p",
         color_space=None,
         color_primaries=None,
-        color_transfer=None
+        color_transfer=None,
     )
 
     assert info.color_space is None

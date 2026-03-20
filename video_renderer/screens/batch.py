@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Batch Screen - Batch rendering queue management.
 """
 
+import threading
 from pathlib import Path
-from typing import Optional
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer, DataTable, Input, Label
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, DataTable, Footer, Label, Static
 from textual.worker import Worker, get_current_worker
 
-from ..batch import BatchQueue, RenderJob, JobStatus, parse_duration
-from ..ffmpeg import FFmpegRunner, get_duration
-from ..audio import AudioProcessor, mux_video_audio
-from ..video import VideoEncoder
-from ..video import VideoEncoder
 from config import get_best_encoder
+
+from ..audio import AudioProcessor, mux_video_audio
+from ..batch import JobStatus, RenderJob
 from ..drive import DriveUploader
-import threading
+from ..ffmpeg import FFmpegRunner, get_duration
+from ..video import VideoEncoder
 
 
 class BatchScreen(Screen):
@@ -58,26 +56,26 @@ class BatchScreen(Screen):
                 with Container(classes="panel"):
                     yield Static("Is Kuyrugu", classes="panel-title")
                     yield DataTable(id="queue_table")
-                
+
                 # Summary
                 with Container(classes="panel"):
                     yield Static("", id="queue_summary", classes="info-text")
 
             with TabPane("Canli Izleme", id="monitor_tab"):
-                 with Horizontal(classes="monitor-container"):
-                     for i in range(3):
-                         # Create 3 columns for logs
-                         with Vertical(classes="log-pane"):
-                             yield Label(f"Worker {i+1}", classes="log-label")
-                             # RichLog for streaming output
-                             yield RichLog(
-                                 id=f"log_{i}", 
-                                 markup=True, 
-                                 highlight=True, 
-                                 classes="log-widget",
-                                 wrap=True,
-                                 max_lines=1000
-                             )
+                with Horizontal(classes="monitor-container"):
+                    for i in range(3):
+                        # Create 3 columns for logs
+                        with Vertical(classes="log-pane"):
+                            yield Label(f"Worker {i+1}", classes="log-label")
+                            # RichLog for streaming output
+                            yield RichLog(
+                                id=f"log_{i}",
+                                markup=True,
+                                highlight=True,
+                                classes="log-widget",
+                                wrap=True,
+                                max_lines=1000,
+                            )
 
         # Actions
         with Horizontal(classes="action-bar"):
@@ -194,7 +192,7 @@ class BatchScreen(Screen):
 
         self.is_processing = True
         self.process_workers = []
-        
+
         # Start 3 concurrent workers
         for i in range(3):
             # Pass worker_id to track logs
@@ -210,7 +208,7 @@ class BatchScreen(Screen):
             return
 
         await self.app.workers.wait_for_group("batch_workers")
-        
+
         self.is_processing = False
         self.process_workers.clear()
         self.call_from_thread(self._update_table)
@@ -253,12 +251,14 @@ class BatchScreen(Screen):
             log_widget = self.query_one(f"#log_{worker_id}", RichLog)
             self.call_from_thread(log_widget.clear)
             self.call_from_thread(log_widget.write, f"[bold green]Starting Job #{job.id}[/]")
-            self.call_from_thread(log_widget.write, f"Render: {job.output_path.name if job.output_path else 'Auto'}")
-            
+            self.call_from_thread(
+                log_widget.write, f"Render: {job.output_path.name if job.output_path else 'Auto'}"
+            )
+
             # Helper for thread-safe logging
             def log_callback(line: str):
                 self.call_from_thread(log_widget.write, line.rstrip())
-                
+
         except Exception:
             log_callback = None
 
@@ -271,7 +271,7 @@ class BatchScreen(Screen):
         runner = FFmpegRunner(run_log)
         if log_callback:
             runner.set_log_callback(log_callback)
-            
+
         codec_config = get_best_encoder(job.codec_family)
 
         # Create encoder
@@ -290,9 +290,7 @@ class BatchScreen(Screen):
                 # Normalize/Encode video (simple copy/convert)
                 # We reuse normalize_video for this
                 encoder.normalize_video(
-                    job.single_video_path, 
-                    video_only, 
-                    bitrate=job.video_bitrate
+                    job.single_video_path, video_only, bitrate=job.video_bitrate
                 )
 
             self.queue.update_progress(job.id, 60)  # Jump to 60 directly
@@ -304,11 +302,7 @@ class BatchScreen(Screen):
             # Step 1: Encode intro
             intro_norm = tmp_dir / f"batch_{job.id}_intro_{job.codec_family}.mp4"
             if not intro_norm.exists():
-                encoder.normalize_video(
-                    job.intro_path, 
-                    intro_norm, 
-                    bitrate=job.video_bitrate
-                )
+                encoder.normalize_video(job.intro_path, intro_norm, bitrate=job.video_bitrate)
             self.queue.update_progress(job.id, 20)
             self.call_from_thread(self._update_table)
 
@@ -318,11 +312,7 @@ class BatchScreen(Screen):
             # Step 2: Encode loop
             loop_norm = tmp_dir / f"batch_{job.id}_loop_{job.codec_family}.mp4"
             if not loop_norm.exists():
-                encoder.normalize_video(
-                    job.loop_path, 
-                    loop_norm, 
-                    bitrate=job.video_bitrate
-                )
+                encoder.normalize_video(job.loop_path, loop_norm, bitrate=job.video_bitrate)
             self.queue.update_progress(job.id, 40)
             self.call_from_thread(self._update_table)
 
@@ -355,7 +345,7 @@ class BatchScreen(Screen):
         if job.backgrounds:
             bg_processed = audio_processor.process_backgrounds(job.backgrounds)
             audio_full = audio_processor.mix_tracks(music_loop, bg_processed, job.total_seconds)
-            
+
             # Cleanup background optimization files
             for bg_file in bg_processed:
                 try:
@@ -397,6 +387,7 @@ class BatchScreen(Screen):
 
         # Cleanup Job Tmp
         import shutil
+
         try:
             shutil.rmtree(tmp_dir)
         except:

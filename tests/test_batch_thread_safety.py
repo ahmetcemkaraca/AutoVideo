@@ -1,28 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Thread-Safety Tests for BatchQueue.
 
 Tests concurrent access patterns and race condition prevention.
 """
 
-import pytest
+import json
 import threading
 import time
-import tempfile
-import shutil
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List
-import json
+from pathlib import Path
 
-from video_renderer.batch import (
-    BatchQueue,
-    RenderJob,
-    JobStatus,
-    BatchPair,
-    SmartBatchDetector
-)
+import pytest
+
+from video_renderer.batch import BatchPair, BatchQueue, JobStatus, RenderJob
 
 
 @pytest.fixture
@@ -50,7 +41,7 @@ def sample_job() -> RenderJob:
         mode="intro_loop",
         codec_family="av1",
         duration_str="9:00:00",
-        total_seconds=32400
+        total_seconds=32400,
     )
 
 
@@ -126,10 +117,7 @@ class TestBatchQueueThreadSafety:
             queue.update_progress(job.id, value)
 
         with ThreadPoolExecutor(max_workers=20) as executor:
-            futures = [
-                executor.submit(update_progress, i * 5.0)
-                for i in range(1, 21)
-            ]
+            futures = [executor.submit(update_progress, i * 5.0) for i in range(1, 21)]
             for future in as_completed(futures):
                 future.result()
 
@@ -187,7 +175,7 @@ class TestBatchQueueThreadSafety:
             futures = [
                 executor.submit(try_start),
                 executor.submit(try_complete),
-                executor.submit(try_fail)
+                executor.submit(try_fail),
             ]
             for future in as_completed(futures):
                 future.result()
@@ -238,10 +226,7 @@ class TestBatchQueueThreadSafety:
                 summaries.append(summary)
 
         with ThreadPoolExecutor(max_workers=20) as executor:
-            futures = [
-                executor.submit(create_and_track)
-                for _ in range(50)
-            ]
+            futures = [executor.submit(create_and_track) for _ in range(50)]
             for future in as_completed(futures):
                 future.result()
 
@@ -271,11 +256,7 @@ class TestBatchQueueThreadSafety:
             with callback_lock:
                 callback_count["progress"] += 1
 
-        queue.set_callbacks(
-            on_complete=on_complete,
-            on_error=on_error,
-            on_progress=on_progress
-        )
+        queue.set_callbacks(on_complete=on_complete, on_error=on_error, on_progress=on_progress)
 
         # Process multiple jobs
         def process_job():
@@ -345,10 +326,7 @@ class TestFileWriteLock:
                 pass
 
         # Multiple threads trying to acquire
-        threads = [
-            threading.Thread(target=acquire_lock)
-            for _ in range(5)
-        ]
+        threads = [threading.Thread(target=acquire_lock) for _ in range(5)]
 
         for t in threads:
             t.start()
@@ -387,9 +365,8 @@ class TestFileWriteLock:
         time.sleep(0.1)  # Let thread acquire lock
 
         # Try to acquire with short timeout
-        with pytest.raises(TimeoutError):
-            with FileWriteLock(lock_file, timeout=0.1):
-                pass
+        with pytest.raises(TimeoutError), FileWriteLock(lock_file, timeout=0.1):
+            pass
 
         thread.join()
 
@@ -418,10 +395,7 @@ class TestPersistenceThreadSafety:
 
         # Create jobs from multiple threads but single queue instance
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [
-                executor.submit(create_and_save)
-                for _ in range(5)
-            ]
+            futures = [executor.submit(create_and_save) for _ in range(5)]
             for future in as_completed(futures):
                 future.result()
 
@@ -493,10 +467,7 @@ class TestRenderJobCopy:
 
     def test_deep_copy_tracks(self):
         """Test that tracks list is deep copied."""
-        job = RenderJob(
-            id=1,
-            tracks=[Path("track1.mp3"), Path("track2.mp3")]
-        )
+        job = RenderJob(id=1, tracks=[Path("track1.mp3"), Path("track2.mp3")])
 
         copy = job.copy()
         copy.tracks.append(Path("track3.mp3"))
@@ -506,10 +477,7 @@ class TestRenderJobCopy:
 
     def test_deep_copy_backgrounds(self):
         """Test that backgrounds list is deep copied."""
-        job = RenderJob(
-            id=1,
-            backgrounds=[(Path("bg1.mp3"), -10.0)]
-        )
+        job = RenderJob(id=1, backgrounds=[(Path("bg1.mp3"), -10.0)])
 
         copy = job.copy()
         copy.backgrounds.append((Path("bg2.mp3"), -5.0))
@@ -523,11 +491,7 @@ class TestBatchPairThreadSafety:
 
     def test_batch_pair_immutable(self):
         """Test that BatchPair is immutable."""
-        pair = BatchPair(
-            name="test",
-            intro=Path("/intro.mp4"),
-            loop=Path("/loop.mp4")
-        )
+        pair = BatchPair(name="test", intro=Path("/intro.mp4"), loop=Path("/loop.mp4"))
 
         # Should not be able to modify
         with pytest.raises(Exception):  # FrozenInstanceError
@@ -535,11 +499,7 @@ class TestBatchPairThreadSafety:
 
     def test_batch_pair_thread_safe(self):
         """Test accessing BatchPair from multiple threads."""
-        pair = BatchPair(
-            name="test",
-            intro=Path("/intro.mp4"),
-            loop=Path("/loop.mp4")
-        )
+        pair = BatchPair(name="test", intro=Path("/intro.mp4"), loop=Path("/loop.mp4"))
 
         results = []
 
@@ -550,10 +510,7 @@ class TestBatchPairThreadSafety:
                 loop = pair.loop
                 results.append((name, intro, loop))
 
-        threads = [
-            threading.Thread(target=access_pair)
-            for _ in range(10)
-        ]
+        threads = [threading.Thread(target=access_pair) for _ in range(10)]
 
         for t in threads:
             t.start()
@@ -580,10 +537,7 @@ class TestStressScenarios:
             queue.complete_job(job.id)
 
         with ThreadPoolExecutor(max_workers=20) as executor:
-            futures = [
-                executor.submit(rapid_cycle)
-                for _ in range(100)
-            ]
+            futures = [executor.submit(rapid_cycle) for _ in range(100)]
             for future in as_completed(futures):
                 future.result()
 
@@ -603,14 +557,24 @@ class TestStressScenarios:
 
         def random_operation():
             job_id = random.choice(job_ids)
-            operation = random.choice([
-                lambda: queue.get_job(job_id),
-                lambda: queue.get_queued_jobs(),
-                lambda: queue.get_summary(),
-                lambda: queue.start_job(job_id) if queue.get_job(job_id).status == JobStatus.QUEUED else None,
-                lambda: queue.update_progress(job_id, random.random() * 100),
-                lambda: queue.complete_job(job_id) if queue.get_job(job_id).status == JobStatus.RUNNING else None,
-            ])
+            operation = random.choice(
+                [
+                    lambda: queue.get_job(job_id),
+                    lambda: queue.get_queued_jobs(),
+                    lambda: queue.get_summary(),
+                    lambda: (
+                        queue.start_job(job_id)
+                        if queue.get_job(job_id).status == JobStatus.QUEUED
+                        else None
+                    ),
+                    lambda: queue.update_progress(job_id, random.random() * 100),
+                    lambda: (
+                        queue.complete_job(job_id)
+                        if queue.get_job(job_id).status == JobStatus.RUNNING
+                        else None
+                    ),
+                ]
+            )
 
             try:
                 operation()
@@ -618,10 +582,7 @@ class TestStressScenarios:
                 pass  # Some operations may fail legitimately
 
         with ThreadPoolExecutor(max_workers=20) as executor:
-            futures = [
-                executor.submit(random_operation)
-                for _ in range(500)
-            ]
+            futures = [executor.submit(random_operation) for _ in range(500)]
             for future in as_completed(futures):
                 future.result()
 

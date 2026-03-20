@@ -1,22 +1,16 @@
 """Tests for BatchQueue thread-safety and functionality."""
 
-import json
-import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import List
-
-import pytest
 
 from video_renderer.batch import (
-    BatchQueue,
-    RenderJob,
-    JobStatus,
-    parse_duration,
-    SmartBatchDetector,
     BatchPair,
+    BatchQueue,
+    JobStatus,
+    RenderJob,
+    SmartBatchDetector,
+    parse_duration,
 )
 
 
@@ -494,6 +488,7 @@ class TestParseDuration:
     def test_parse_random(self):
         """Test parsing random_8_10 special value."""
         import random
+
         random.seed(42)  # For reproducibility
         duration = parse_duration("random_8_10")
         assert 28800 <= duration <= 36000

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Audio processing: looping, mixing, gain adjustment.
 
@@ -10,26 +9,24 @@ OPTIMIZED VERSION:
 - Streaming operations for large files
 """
 
-import re
-import os
-import subprocess
 import json
-from pathlib import Path
-from typing import List, Tuple, Optional, Callable, Set
+import os
+import re
+import subprocess
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from .ffmpeg import FFmpegRunner, FFmpegProgress, get_duration, write_concat_list
+from pathlib import Path
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Audio Utilities
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
 # Import AudioProcessingError from exceptions module instead of defining it here
 # This prevents duplicate exception definitions and maintains proper exception hierarchy
 from .exceptions import AudioProcessingError
+from .ffmpeg import FFmpegProgress, FFmpegRunner, get_duration, write_concat_list
 
 
-def get_duration_safe(path: Path) -> Optional[float]:
+def get_duration_safe(path: Path) -> float | None:
     """
     Get duration with error handling for corrupted files.
 
@@ -77,7 +74,7 @@ def parse_background_gain_db(path: Path) -> float:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def get_ffmpeg_version() -> Tuple[int, int, int]:
+def get_ffmpeg_version() -> tuple[int, int, int]:
     """
     Get FFmpeg version as (major, minor, patch).
 
@@ -112,17 +109,17 @@ class AudioProcessor:
     INTERMEDIATE_CODEC = "pcm_s16le"
     SAMPLE_RATE = 48000
 
-    def __init__(self, runner: FFmpegRunner, tmp_dir: Path, max_workers: Optional[int] = None):
+    def __init__(self, runner: FFmpegRunner, tmp_dir: Path, max_workers: int | None = None):
         self.runner = runner
         self.tmp_dir = tmp_dir
         # Optimal worker count for parallel audio processing
         self._max_workers = max_workers or min(4, os.cpu_count() or 4)
         # Cache for validated files to avoid re-processing
-        self._validated_cache: Set[str] = set()
+        self._validated_cache: set[str] = set()
         # FFmpeg version cache
-        self._ffmpeg_version: Optional[Tuple[int, int, int]] = None
+        self._ffmpeg_version: tuple[int, int, int] | None = None
 
-    def _get_ffmpeg_version(self) -> Tuple[int, int, int]:
+    def _get_ffmpeg_version(self) -> tuple[int, int, int]:
         """
         Get FFmpeg version with caching.
 
@@ -143,7 +140,6 @@ class AudioProcessor:
         Returns:
             Number of audio channels (1 for mono, 2 for stereo, etc.)
         """
-        import json
 
         try:
             cmd = [
@@ -178,7 +174,6 @@ class AudioProcessor:
         Returns:
             Dictionary with title, artist, album, and cover art data
         """
-        import json
 
         metadata = {"title": "", "artist": "", "album": "", "cover_data": None}
 
@@ -318,7 +313,7 @@ class AudioProcessor:
 
     def validate_and_convert_track(
         self, track: Path, use_cache: bool = True, preserve_metadata: bool = True
-    ) -> Tuple[Path, bool, str]:
+    ) -> tuple[Path, bool, str]:
         """
         OPTIMIZED: Validate and convert a single audio track.
 
@@ -420,10 +415,10 @@ class AudioProcessor:
 
     def validate_tracks(
         self,
-        tracks: List[Path],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
+        tracks: list[Path],
+        progress_callback: Callable[[str, int, int], None] | None = None,
         parallel: bool = True,
-    ) -> Tuple[List[Path], List[Tuple[Path, str]]]:
+    ) -> tuple[list[Path], list[tuple[Path, str]]]:
         """
         OPTIMIZED: Validate and convert all tracks.
 
@@ -449,9 +444,9 @@ class AudioProcessor:
 
     def _validate_tracks_sequential(
         self,
-        tracks: List[Path],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
-    ) -> Tuple[List[Path], List[Tuple[Path, str]]]:
+        tracks: list[Path],
+        progress_callback: Callable[[str, int, int], None] | None = None,
+    ) -> tuple[list[Path], list[tuple[Path, str]]]:
         """Sequential track validation (memory-efficient)."""
         valid = []
         invalid = []
@@ -471,9 +466,9 @@ class AudioProcessor:
 
     def _validate_tracks_parallel(
         self,
-        tracks: List[Path],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
-    ) -> Tuple[List[Path], List[Tuple[Path, str]]]:
+        tracks: list[Path],
+        progress_callback: Callable[[str, int, int], None] | None = None,
+    ) -> tuple[list[Path], list[tuple[Path, str]]]:
         """Parallel track validation (performance-optimized)."""
         valid = []
         invalid = []
@@ -517,7 +512,6 @@ class AudioProcessor:
         Returns:
             True if trimming was successful, False otherwise
         """
-        import json
 
         try:
             # Detect silence at the beginning
@@ -590,10 +584,10 @@ class AudioProcessor:
 
     def create_music_loop(
         self,
-        tracks: List[Path],
+        tracks: list[Path],
         total_seconds: int,
         global_music_db: float = 0.0,
-        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
+        progress_callback: Callable[[FFmpegProgress], None] | None = None,
         pre_validated: bool = False,
         trim_silence: bool = False,
     ) -> Path:
@@ -691,10 +685,13 @@ class AudioProcessor:
             str(self._max_workers),  # Optimal threading
         ]
         cmd.extend(filter_args)
-        cmd.extend([
-            "-f", self.INTERMEDIATE_FORMAT,
-            str(output),
-        ])
+        cmd.extend(
+            [
+                "-f",
+                self.INTERMEDIATE_FORMAT,
+                str(output),
+            ]
+        )
 
         self.runner.run(cmd, capture_progress=bool(progress_callback))
 
@@ -716,7 +713,7 @@ class AudioProcessor:
 
         return output
 
-    def apply_gain(self, source: Path, gain_db: float, output_name: Optional[str] = None) -> Path:
+    def apply_gain(self, source: Path, gain_db: float, output_name: str | None = None) -> Path:
         """
         Apply gain adjustment to an audio file.
 
@@ -756,9 +753,9 @@ class AudioProcessor:
     def mix_tracks(
         self,
         main_track: Path,
-        background_tracks: List[Path],
+        background_tracks: list[Path],
         total_seconds: int,
-        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
+        progress_callback: Callable[[FFmpegProgress], None] | None = None,
     ) -> Path:
         """
         OPTIMIZED: Mix main track with background tracks.
@@ -844,7 +841,7 @@ class AudioProcessor:
         self.runner.run(cmd, capture_progress=bool(progress_callback))
         return output
 
-    def process_backgrounds(self, backgrounds: List[Tuple[Path, float]]) -> List[Path]:
+    def process_backgrounds(self, backgrounds: list[tuple[Path, float]]) -> list[Path]:
         """
         Process background audio files with gain adjustment.
 
@@ -863,10 +860,10 @@ class AudioProcessor:
 
     def standardize_tracks(
         self,
-        tracks: List[Path],
+        tracks: list[Path],
         archive_dir: Path,
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
-    ) -> List[Path]:
+        progress_callback: Callable[[str, int, int], None] | None = None,
+    ) -> list[Path]:
         """
         Convert tracks to standard HQ format (MP3 320k 48kHz) and archive originals.
 
@@ -987,7 +984,7 @@ def mux_video_audio(
     audio: Path,
     output: Path,
     audio_bitrate: str = "192k",
-    progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
+    progress_callback: Callable[[FFmpegProgress], None] | None = None,
     keep_video_audio: bool = False,
     apply_audio_fades: bool = True,
     fade_in_sec: float = 2.0,
@@ -1123,7 +1120,7 @@ def _normalize_effect_timeline(
     total_seconds: int,
     start_after_sec: float,
     interval_sec: float,
-) -> List[float]:
+) -> list[float]:
     """Build event timeline for one-shot effects."""
     timeline = []
     start = max(0.0, float(start_after_sec))
@@ -1168,10 +1165,10 @@ def _build_effect_output_path(tmp_dir: Path) -> Path:
 def create_timed_effects_track(
     runner: FFmpegRunner,
     tmp_dir: Path,
-    effects: List[dict],
+    effects: list[dict],
     total_seconds: int,
     sample_rate: int = 48000,
-) -> Optional[Path]:
+) -> Path | None:
     """Create one-shot timed effects track mixed over silence timeline."""
     if not effects:
         return None

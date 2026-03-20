@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Custom exception hierarchy for video renderer.
 
@@ -7,12 +6,11 @@ Provides structured exception handling with detailed error context,
 user-friendly messages, and debug information.
 """
 
-import sys
 import traceback
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Severity Levels
@@ -56,20 +54,20 @@ class ErrorContext:
     """
 
     severity: ErrorSeverity = ErrorSeverity.ERROR
-    component: Optional[str] = None
-    operation: Optional[str] = None
-    file_path: Optional[Path] = None
-    command: Optional[List[str]] = None
-    exit_code: Optional[int] = None
-    stdout: Optional[str] = None
-    stderr: Optional[str] = None
-    stack_trace: Optional[str] = None
-    timestamp: Optional[str] = None
-    user_action: Optional[str] = None
-    technical_details: Dict[str, Any] = field(default_factory=dict)
+    component: str | None = None
+    operation: str | None = None
+    file_path: Path | None = None
+    command: list[str] | None = None
+    exit_code: int | None = None
+    stdout: str | None = None
+    stderr: str | None = None
+    stack_trace: str | None = None
+    timestamp: str | None = None
+    user_action: str | None = None
+    technical_details: dict[str, Any] = field(default_factory=dict)
     recovery_possible: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for serialization."""
         return {
             "severity": (
@@ -112,9 +110,9 @@ class VideoRendererError(Exception):
     def __init__(
         self,
         message: str,
-        details: Optional[Dict[str, Any]] = None,
-        context: Optional[ErrorContext] = None,
-        original_exception: Optional[Exception] = None,
+        details: dict[str, Any] | None = None,
+        context: ErrorContext | None = None,
+        original_exception: Exception | None = None,
     ):
         self.message = message
         self.details = details or {}
@@ -156,7 +154,7 @@ class VideoRendererError(Exception):
 
         return "".join(parts)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert exception to dictionary for logging/serialization."""
         return {
             "exception_type": self.__class__.__name__,
@@ -186,10 +184,10 @@ class FFmpegError(VideoRendererError):
     def __init__(
         self,
         message: str,
-        command: Optional[List[str]] = None,
-        exit_code: Optional[int] = None,
-        stderr: Optional[str] = None,
-        file_path: Optional[Path] = None,
+        command: list[str] | None = None,
+        exit_code: int | None = None,
+        stderr: str | None = None,
+        file_path: Path | None = None,
         **kwargs,
     ):
         context = kwargs.pop("context", ErrorContext())
@@ -215,7 +213,7 @@ class FFmpegNotFoundError(FFmpegError):
     Suggested action: Install FFmpeg and ensure it's in PATH.
     """
 
-    def __init__(self, ffmpeg_path: Optional[str] = None):
+    def __init__(self, ffmpeg_path: str | None = None):
         message = (
             f"FFmpeg not found at {ffmpeg_path}" if ffmpeg_path else "FFmpeg not found in PATH"
         )
@@ -241,10 +239,10 @@ class FFmpegCommandError(FFmpegError):
     def __init__(
         self,
         message: str,
-        command: List[str],
+        command: list[str],
         exit_code: int,
         stderr: str,
-        file_path: Optional[Path] = None,
+        file_path: Path | None = None,
     ):
         # Parse common FFmpeg errors for user-friendly messages
         user_action = self._parse_ffmpeg_error(stderr)
@@ -270,7 +268,7 @@ class FFmpegCommandError(FFmpegError):
             context=context,
         )
 
-    def _parse_ffmpeg_error(self, stderr: str) -> Optional[str]:
+    def _parse_ffmpeg_error(self, stderr: str) -> str | None:
         """Parse FFmpeg stderr to provide helpful user actions."""
         stderr_lower = stderr.lower()
 
@@ -300,7 +298,7 @@ class FFmpegTimeoutError(FFmpegError):
     Raised when an FFmpeg command times out.
     """
 
-    def __init__(self, command: List[str], timeout_seconds: int, file_path: Optional[Path] = None):
+    def __init__(self, command: list[str], timeout_seconds: int, file_path: Path | None = None):
         message = f"FFmpeg command timed out after {timeout_seconds} seconds"
 
         context = ErrorContext(
@@ -328,7 +326,7 @@ class AudioProcessingError(VideoRendererError):
     Base exception for audio processing errors.
     """
 
-    def __init__(self, message: str, file_path: Optional[Path] = None, **kwargs):
+    def __init__(self, message: str, file_path: Path | None = None, **kwargs):
         context = kwargs.pop("context", ErrorContext())
         context.file_path = file_path
         context.operation = "audio_processing"
@@ -362,7 +360,7 @@ class AudioMixingError(AudioProcessingError):
     Raised when audio mixing fails.
     """
 
-    def __init__(self, tracks: List[Path], reason: str):
+    def __init__(self, tracks: list[Path], reason: str):
         track_names = [t.name for t in tracks]
         message = f"Failed to mix audio tracks: {', '.join(track_names)}"
 
@@ -413,7 +411,7 @@ class VideoProcessingError(VideoRendererError):
     Base exception for video processing errors.
     """
 
-    def __init__(self, message: str, file_path: Optional[Path] = None, **kwargs):
+    def __init__(self, message: str, file_path: Path | None = None, **kwargs):
         context = kwargs.pop("context", ErrorContext())
         context.file_path = file_path
 
@@ -425,9 +423,7 @@ class VideoCompatibilityError(VideoProcessingError):
     Raised when video compatibility check fails.
     """
 
-    def __init__(
-        self, file_path: Path, reason: str, current_specs: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, file_path: Path, reason: str, current_specs: dict[str, Any] | None = None):
         message = f"Video compatibility check failed: {reason}"
 
         context = ErrorContext(
@@ -501,7 +497,7 @@ class ValidationError(VideoRendererError):
     Base exception for validation errors.
     """
 
-    def __init__(self, message: str, field: Optional[str] = None, **kwargs):
+    def __init__(self, message: str, field: str | None = None, **kwargs):
         context = kwargs.pop("context", ErrorContext())
         context.operation = "validation"
 
@@ -538,7 +534,7 @@ class ConfigValidationError(ValidationError):
     Raised when configuration validation fails.
     """
 
-    def __init__(self, config_path: Optional[Path], field: str, reason: str):
+    def __init__(self, config_path: Path | None, field: str, reason: str):
         message = f"Configuration validation failed: {field} - {reason}"
 
         context = ErrorContext(
@@ -586,7 +582,7 @@ class StateError(VideoRendererError):
     Base exception for state management errors.
     """
 
-    def __init__(self, message: str, state_path: Optional[Path] = None, **kwargs):
+    def __init__(self, message: str, state_path: Path | None = None, **kwargs):
         context = kwargs.pop("context", ErrorContext())
         context.operation = "state_management"
         context.file_path = state_path
@@ -668,7 +664,7 @@ class BatchProcessingError(VideoRendererError):
     Base exception for batch processing errors.
     """
 
-    def __init__(self, message: str, job_id: Optional[str] = None, **kwargs):
+    def __init__(self, message: str, job_id: str | None = None, **kwargs):
         context = kwargs.pop("context", ErrorContext())
         context.operation = "batch_processing"
 
@@ -742,7 +738,7 @@ class YouTubeError(ExternalServiceError):
     Raised when YouTube operations fail.
     """
 
-    def __init__(self, operation: str, reason: str, status_code: Optional[int] = None):
+    def __init__(self, operation: str, reason: str, status_code: int | None = None):
         message = f"YouTube {operation} failed: {reason}"
 
         context = ErrorContext(
@@ -785,8 +781,8 @@ class DriveError(ExternalServiceError):
 def wrap_exception(
     exception: Exception,
     message: str,
-    component: Optional[str] = None,
-    operation: Optional[str] = None,
+    component: str | None = None,
+    operation: str | None = None,
 ) -> VideoRendererError:
     """
     Wrap a generic exception in a VideoRendererError.
@@ -810,7 +806,7 @@ def wrap_exception(
     return VideoRendererError(message=message, context=context, original_exception=exception)
 
 
-def create_error_report(exception: Exception, include_traceback: bool = True) -> Dict[str, Any]:
+def create_error_report(exception: Exception, include_traceback: bool = True) -> dict[str, Any]:
     """
     Create a comprehensive error report from an exception.
 

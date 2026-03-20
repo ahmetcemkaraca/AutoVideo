@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Audit ve logging modülü.
 
@@ -8,12 +7,12 @@ Bu modül güvenlik olaylarını loglamak ve audit trail oluşturmak için kulla
 
 import json
 import logging
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, asdict
-from enum import Enum
 import threading
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +83,13 @@ class AuditEvent:
     event_type: AuditEventType
     timestamp: str
     source: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     severity: str = "INFO"  # INFO, WARNING, ERROR, CRITICAL
-    user_id: Optional[str] = None
-    ip_address: Optional[str] = None
-    session_id: Optional[str] = None
+    user_id: str | None = None
+    ip_address: str | None = None
+    session_id: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Dict olarak döndürür."""
         return {
             "event_type": self.event_type.value,
@@ -121,7 +120,7 @@ class AuditLogger:
 
     def __init__(
         self,
-        log_dir: Optional[Path] = None,
+        log_dir: Path | None = None,
         app_name: str = "video_renderer",
         enable_console: bool = True,
         enable_sensitive_filter: bool = True,
@@ -158,11 +157,11 @@ class AuditLogger:
         self,
         event_type: AuditEventType,
         source: str,
-        details: Dict[str, Any],
+        details: dict[str, Any],
         severity: str = "INFO",
-        user_id: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        session_id: Optional[str] = None,
+        user_id: str | None = None,
+        ip_address: str | None = None,
+        session_id: str | None = None,
     ) -> None:
         """
         Audit olayını loglar.
@@ -238,7 +237,7 @@ class AuditLogger:
                     logger.info(log_msg)
 
     def log_file_access(
-        self, action: str, filepath: Path, source: str, user_id: Optional[str] = None
+        self, action: str, filepath: Path, source: str, user_id: str | None = None
     ) -> None:
         """
         Dosya erişimini loglar.
@@ -269,7 +268,7 @@ class AuditLogger:
         )
 
     def log_auth_event(
-        self, success: bool, service: str, source: str, error: Optional[str] = None
+        self, success: bool, service: str, source: str, error: str | None = None
     ) -> None:
         """
         Authentication olayını loglar.
@@ -293,7 +292,7 @@ class AuditLogger:
         self.log_event(event_type=event_type, source=source, details=details, severity=severity)
 
     def log_security_violation(
-        self, violation_type: str, details: Dict[str, Any], source: str, severity: str = "WARNING"
+        self, violation_type: str, details: dict[str, Any], source: str, severity: str = "WARNING"
     ) -> None:
         """
         Güvenlik ihlalini loglar.
@@ -315,8 +314,8 @@ class AuditLogger:
         self,
         video_path: Path,
         success: bool,
-        duration: Optional[float] = None,
-        error: Optional[str] = None,
+        duration: float | None = None,
+        error: str | None = None,
         source: str = "video_encoder",
     ) -> None:
         """
@@ -349,8 +348,8 @@ class AuditLogger:
         self.log_event(event_type=event_type, source=source, details=details, severity=severity)
 
     def get_recent_events(
-        self, event_type: Optional[AuditEventType] = None, limit: int = 100
-    ) -> List[Dict[str, Any]]:
+        self, event_type: AuditEventType | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
         """
         Son olayları okur.
 
@@ -364,7 +363,7 @@ class AuditLogger:
         events = []
 
         try:
-            with open(self.audit_log_file, "r", encoding="utf-8") as f:
+            with open(self.audit_log_file, encoding="utf-8") as f:
                 lines = f.readlines()
 
             # Son N satırı al
@@ -381,7 +380,7 @@ class AuditLogger:
 
         return events
 
-    def get_security_events(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_security_events(self, limit: int = 100) -> list[dict[str, Any]]:
         """
         Güvenlik olaylarını okur.
 
@@ -394,7 +393,7 @@ class AuditLogger:
         events = []
 
         try:
-            with open(self.security_log_file, "r", encoding="utf-8") as f:
+            with open(self.security_log_file, encoding="utf-8") as f:
                 lines = f.readlines()
 
             for line in reversed(lines[-limit:]):
@@ -414,7 +413,7 @@ class AuditLogger:
 # Global Audit Logger Instance
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_global_audit_logger: Optional[AuditLogger] = None
+_global_audit_logger: AuditLogger | None = None
 
 
 def get_audit_logger() -> AuditLogger:
@@ -433,7 +432,7 @@ def get_audit_logger() -> AuditLogger:
 
 
 def init_audit_logger(
-    log_dir: Optional[Path] = None, app_name: str = "video_renderer", enable_console: bool = True
+    log_dir: Path | None = None, app_name: str = "video_renderer", enable_console: bool = True
 ) -> AuditLogger:
     """
     Global audit logger'ı başlatır.

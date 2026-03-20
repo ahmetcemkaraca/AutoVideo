@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Complete Screen - Render completion summary with validation report export.
 """
 
-from pathlib import Path
-from datetime import datetime
 import json
+from datetime import datetime
+from pathlib import Path
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, Footer, Static
 
 
 class CompleteScreen(Screen):
@@ -63,7 +62,9 @@ class CompleteScreen(Screen):
                 yield Static(f"💾 Boyut: {size_mb:.1f} MB", classes="info-text")
 
             # Show validation status
-            yield Static(f"🔍 Doğrulama: {validation_status}", classes=f"info-text {validation_class}")
+            yield Static(
+                f"🔍 Doğrulama: {validation_status}", classes=f"info-text {validation_class}"
+            )
 
             if post_result and post_result.issues:
                 issues_count = len(post_result.issues)
@@ -71,7 +72,7 @@ class CompleteScreen(Screen):
                 warnings_count = len(post_result.warnings)
                 yield Static(
                     f"   - {errors_count} hata, {warnings_count} uyarı (toplam {issues_count})",
-                    classes="subtitle"
+                    classes="subtitle",
                 )
 
         with Container(classes="panel"):
@@ -106,7 +107,9 @@ class CompleteScreen(Screen):
             self.action_export_report()
         elif event.button.id == "new":
             # Clear session and start fresh
-            session_path = getattr(self.app, "session_file", Path.cwd() / "tmp" / "last_session.json")
+            session_path = getattr(
+                self.app, "session_file", Path.cwd() / "tmp" / "last_session.json"
+            )
             session_path.unlink(missing_ok=True)
 
             # Clear app state
@@ -146,8 +149,12 @@ class CompleteScreen(Screen):
             return
 
         if self._review_mode == "summary":
-            output_meta = post_result.metadata.get("output", {}) if hasattr(post_result, "metadata") else {}
-            youtube_meta = post_result.metadata.get("youtube", {}) if hasattr(post_result, "metadata") else {}
+            output_meta = (
+                post_result.metadata.get("output", {}) if hasattr(post_result, "metadata") else {}
+            )
+            youtube_meta = (
+                post_result.metadata.get("youtube", {}) if hasattr(post_result, "metadata") else {}
+            )
 
             summary_lines = [
                 f"Durum: {'✅ Uygun' if post_result.valid else '❌ Sorunlu'}",
@@ -194,9 +201,7 @@ class CompleteScreen(Screen):
 
             if not post_result:
                 self.app.notify(
-                    "Dışa aktarılacak doğrulama verisi bulunamadı",
-                    title="Hata",
-                    severity="error"
+                    "Dışa aktarılacak doğrulama verisi bulunamadı", title="Hata", severity="error"
                 )
                 return
 
@@ -222,7 +227,9 @@ class CompleteScreen(Screen):
                     "post_render": validation.get("post_render", False),
                     "issues_count": validation.get("issues", 0),
                 },
-                "validation_result": post_result.to_dict() if hasattr(post_result, "to_dict") else {}
+                "validation_result": (
+                    post_result.to_dict() if hasattr(post_result, "to_dict") else {}
+                ),
             }
 
             with open(report_file, "w", encoding="utf-8") as f:
@@ -232,15 +239,11 @@ class CompleteScreen(Screen):
                 f"Rapor kaydedildi: {report_file.name}",
                 title="Başarılı",
                 severity="information",
-                timeout=5
+                timeout=5,
             )
 
         except Exception as e:
-            self.app.notify(
-                f"Rapor dışa aktarılamadı: {str(e)}",
-                title="Hata",
-                severity="error"
-            )
+            self.app.notify(f"Rapor dışa aktarılamadı: {str(e)}", title="Hata", severity="error")
 
     def action_show_summary(self) -> None:
         self._review_mode = "summary"

@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Audio Selection Screen - Select music tracks and backgrounds.
 """
 
 from pathlib import Path
-from typing import List, Set
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer, DataTable, Input, Label
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, DataTable, Footer, Static
 
-from ..ffmpeg import get_duration
 from ..audio import is_background_file, parse_background_gain_db
+from ..ffmpeg import get_duration
 
 
 class AudioSelectScreen(Screen):
@@ -26,10 +24,10 @@ class AudioSelectScreen(Screen):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.tracks: List[Path] = []
-        self.backgrounds: List[Path] = []
-        self.selected_tracks: Set[int] = set()
-        self.selected_bgs: Set[int] = set()
+        self.tracks: list[Path] = []
+        self.backgrounds: list[Path] = []
+        self.selected_tracks: set[int] = set()
+        self.selected_bgs: set[int] = set()
         self.bg_gains: dict = {}  # bg index -> gain in dB
         self.current_table = "tracks"
 

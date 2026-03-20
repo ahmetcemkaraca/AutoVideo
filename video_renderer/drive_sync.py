@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Google Drive sync support for shared asset folders.
 
@@ -11,20 +10,19 @@ duplicate downloads.
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
+from .config import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 from .drive import DriveUploader
 from .state_manager import StateManager
-from .config import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class DriveSyncResult:
-    downloaded: List[Path] = field(default_factory=list)
-    skipped: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    downloaded: list[Path] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class DriveSyncService:
@@ -33,8 +31,8 @@ class DriveSyncService:
     def __init__(
         self,
         root_folder_id: str,
-        base_dir: Optional[Path] = None,
-        state_file: Optional[Path] = None,
+        base_dir: Path | None = None,
+        state_file: Path | None = None,
     ):
         self.root_folder_id = root_folder_id
         self.base_dir = base_dir or Path.cwd()
@@ -44,7 +42,7 @@ class DriveSyncService:
             auto_save=True,
         )
 
-    def _folder_id(self, folder_name: str) -> Optional[str]:
+    def _folder_id(self, folder_name: str) -> str | None:
         folders = self.uploader.list_folders(page_size=100, parent_folder_id=self.root_folder_id)
         for folder in folders:
             if folder.get("name") == folder_name:
@@ -56,14 +54,14 @@ class DriveSyncService:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def _state_for(self, folder_name: str) -> Dict[str, dict]:
+    def _state_for(self, folder_name: str) -> dict[str, dict]:
         state = self.state.get(self.STATE_KEY, {})
         folder_state = state.get(folder_name, {})
         if not isinstance(folder_state, dict):
             return {}
         return folder_state
 
-    def _save_folder_state(self, folder_name: str, folder_state: Dict[str, dict]) -> None:
+    def _save_folder_state(self, folder_name: str, folder_state: dict[str, dict]) -> None:
         state = self.state.get(self.STATE_KEY, {})
         if not isinstance(state, dict):
             state = {}
@@ -119,6 +117,6 @@ class DriveSyncService:
         return result
 
 
-def sync_drive_assets(root_folder_id: str, base_dir: Optional[Path] = None) -> DriveSyncResult:
+def sync_drive_assets(root_folder_id: str, base_dir: Path | None = None) -> DriveSyncResult:
     service = DriveSyncService(root_folder_id=root_folder_id, base_dir=base_dir)
     return service.sync()

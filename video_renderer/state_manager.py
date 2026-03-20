@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unified State Management System.
 
@@ -16,14 +15,15 @@ Key Features:
 """
 
 import json
-import time
-import threading
+import logging
 import os
 import tempfile
-from dataclasses import dataclass, asdict, field
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Dict, List, Callable
-import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +42,15 @@ class StateSnapshot:
 
     version: str
     timestamp: float
-    data: Dict[str, Any]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StateSnapshot":
+    def from_dict(cls, data: dict[str, Any]) -> "StateSnapshot":
         """Create from dictionary."""
         return cls(**data)
 
@@ -173,11 +173,11 @@ class StateManager:
         self._enable_locking = enable_locking
 
         # Internal state storage
-        self._state: Dict[str, Any] = {}
+        self._state: dict[str, Any] = {}
         self._lock = threading.RLock()
 
         # Change callbacks
-        self._on_changed: Optional[Callable[[str, Any], None]] = None
+        self._on_changed: Callable[[str, Any], None] | None = None
 
         # Load existing state
         self.load()
@@ -196,7 +196,7 @@ class StateManager:
         with self._lock:
             return self._state.get(key, default)
 
-    def set(self, key: str, value: Any, save: Optional[bool] = None) -> None:
+    def set(self, key: str, value: Any, save: bool | None = None) -> None:
         """
         Set state value.
 
@@ -221,7 +221,7 @@ class StateManager:
             if save:
                 self._save()
 
-    def update(self, data: Dict[str, Any], save: Optional[bool] = None) -> None:
+    def update(self, data: dict[str, Any], save: bool | None = None) -> None:
         """
         Update multiple state values at once.
 
@@ -243,7 +243,7 @@ class StateManager:
             if save:
                 self._save()
 
-    def delete(self, key: str, save: Optional[bool] = None) -> bool:
+    def delete(self, key: str, save: bool | None = None) -> bool:
         """
         Delete state value.
 
@@ -267,7 +267,7 @@ class StateManager:
 
             return True
 
-    def clear(self, save: Optional[bool] = None) -> None:
+    def clear(self, save: bool | None = None) -> None:
         """
         Clear all state.
 
@@ -282,12 +282,12 @@ class StateManager:
             if save:
                 self._save()
 
-    def keys(self) -> List[str]:
+    def keys(self) -> list[str]:
         """Get all state keys."""
         with self._lock:
             return list(self._state.keys())
 
-    def items(self) -> List[tuple[str, Any]]:
+    def items(self) -> list[tuple[str, Any]]:
         """Get all state key-value pairs."""
         with self._lock:
             return list(self._state.items())
@@ -404,7 +404,7 @@ class StateManager:
             if save:
                 self._save()
 
-    def set_change_callback(self, callback: Optional[Callable[[str, Any], None]]) -> None:
+    def set_change_callback(self, callback: Callable[[str, Any], None] | None) -> None:
         """
         Set callback for state changes.
 
@@ -483,7 +483,7 @@ class TypedStateManager(StateManager):
             return value
         return str(value).lower() in ("true", "1", "yes", "on")
 
-    def get_list(self, key: str, default: Optional[List] = None) -> List:
+    def get_list(self, key: str, default: list | None = None) -> list:
         """Get list value."""
         value = self.get(key)
         if value is None:
@@ -492,7 +492,7 @@ class TypedStateManager(StateManager):
             return value
         return []
 
-    def get_dict(self, key: str, default: Optional[Dict] = None) -> Dict:
+    def get_dict(self, key: str, default: dict | None = None) -> dict:
         """Get dict value."""
         value = self.get(key)
         if value is None:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for Security module.
 
@@ -10,19 +9,19 @@ Tests cover:
 - File size validation
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
+
 from video_renderer.security import (
-    validate_path,
-    validate_video_path,
-    validate_audio_path,
+    ALLOWED_VIDEO_EXTENSIONS,
+    MAX_FILE_SIZE,
     PathSecurityError,
     sanitize_filename,
-    ALLOWED_VIDEO_EXTENSIONS,
-    ALLOWED_AUDIO_EXTENSIONS,
-    MAX_FILE_SIZE,
-    MIN_FILE_SIZE,
+    validate_audio_path,
+    validate_path,
+    validate_video_path,
 )
 
 
@@ -82,10 +81,7 @@ class TestValidatePath:
         video = temp_dir / "test.mp4"
         video.write_bytes(b"0" * 2048)
 
-        result = validate_path(
-            video,
-            allowed_extensions=ALLOWED_VIDEO_EXTENSIONS
-        )
+        result = validate_path(video, allowed_extensions=ALLOWED_VIDEO_EXTENSIONS)
         assert result.suffix == ".mp4"
 
     def test_validate_path_invalid_extension(self, temp_dir):
@@ -94,10 +90,7 @@ class TestValidatePath:
         video.write_bytes(b"0" * 2048)
 
         with pytest.raises(PathSecurityError, match="İzin verilmeyen"):
-            validate_path(
-                video,
-                allowed_extensions=ALLOWED_VIDEO_EXTENSIONS
-            )
+            validate_path(video, allowed_extensions=ALLOWED_VIDEO_EXTENSIONS)
 
     def test_validate_path_with_exists_check(self, temp_dir):
         """Test file existence check."""
@@ -126,7 +119,7 @@ class TestValidatePath:
         """Test file larger than maximum raises error."""
         large_file = temp_dir / "large.mp4"
 
-        with patch('pathlib.Path.stat') as mock_stat:
+        with patch("pathlib.Path.stat") as mock_stat:
             mock_stat.return_value.st_size = MAX_FILE_SIZE + 1
 
             with pytest.raises(PathSecurityError, match="çok büyük"):
@@ -137,10 +130,7 @@ class TestValidatePath:
         video = temp_dir / "test.MP4"
         video.write_bytes(b"0" * 2048)
 
-        result = validate_path(
-            video,
-            allowed_extensions=ALLOWED_VIDEO_EXTENSIONS
-        )
+        result = validate_path(video, allowed_extensions=ALLOWED_VIDEO_EXTENSIONS)
         assert result == video.resolve()
 
 

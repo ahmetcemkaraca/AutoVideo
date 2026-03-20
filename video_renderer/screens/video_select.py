@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Video Selection Screen - Select intro and loop videos.
 """
 
 from pathlib import Path
-from typing import List, Tuple
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer, DataTable, Label
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, DataTable, Footer, Static
 
-from ..ffmpeg import probe_video, VideoInfo
+from ..ffmpeg import VideoInfo, probe_video
 
 
 class VideoSelectScreen(Screen):
@@ -26,7 +24,7 @@ class VideoSelectScreen(Screen):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.videos: List[Tuple[Path, VideoInfo]] = []
+        self.videos: list[tuple[Path, VideoInfo]] = []
         self.intro_index = -1
         self.loop_index = -1
         self.selection_phase = "intro"  # intro or loop

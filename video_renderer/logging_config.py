@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Logging and error reporting configuration management.
 
@@ -10,13 +9,12 @@ configuration file loading.
 
 import json
 import os
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
+from .error_reporting import ErrorReportConfig, ErrorReportingMode
 from .logging import LogLevel
-from .error_reporting import ErrorReportingMode, ErrorReportConfig
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Configuration File Locations
@@ -53,8 +51,8 @@ class LoggingConfig:
         timestamp_format: Format for timestamps in logs
     """
 
-    level: Union[LogLevel, str] = LogLevel.INFO
-    log_dir: Optional[Path] = None
+    level: LogLevel | str = LogLevel.INFO
+    log_dir: Path | None = None
     log_file: str = "video_renderer.log"
     enable_console: bool = True
     enable_json: bool = True
@@ -64,7 +62,7 @@ class LoggingConfig:
     include_stack_trace: bool = False
     timestamp_format: str = "%Y-%m-%dT%H:%M:%S.%fZ"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         data["level"] = self.level.value if isinstance(self.level, LogLevel) else self.level
@@ -72,7 +70,7 @@ class LoggingConfig:
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LoggingConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "LoggingConfig":
         """Create from dictionary."""
         data = data.copy()
 
@@ -89,7 +87,7 @@ class LoggingConfig:
 
         return cls(**data)
 
-    def get_log_path(self) -> Optional[Path]:
+    def get_log_path(self) -> Path | None:
         """Get the full path to the log file."""
         if self.log_dir:
             return self.log_dir / self.log_file
@@ -118,10 +116,10 @@ class ErrorReportingExtendedConfig(ErrorReportConfig):
         enable_user_messages: Enable user-friendly error messages
     """
 
-    error_report_path: Optional[Path] = None
+    error_report_path: Path | None = None
     enable_user_messages: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         data["mode"] = self.mode.value if isinstance(self.mode, ErrorReportingMode) else self.mode
@@ -129,7 +127,7 @@ class ErrorReportingExtendedConfig(ErrorReportConfig):
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ErrorReportingExtendedConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "ErrorReportingExtendedConfig":
         """Create from dictionary."""
         data = data.copy()
 
@@ -170,7 +168,7 @@ class VideoRendererConfig:
         default_factory=ErrorReportingExtendedConfig
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "logging": self.logging.to_dict(),
@@ -178,7 +176,7 @@ class VideoRendererConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "VideoRendererConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "VideoRendererConfig":
         """Create from dictionary."""
         return cls(
             logging=LoggingConfig.from_dict(data.get("logging", {})),
@@ -194,7 +192,7 @@ class VideoRendererConfig:
     @classmethod
     def load(cls, path: Path) -> "VideoRendererConfig":
         """Load configuration from file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)
 
@@ -228,7 +226,7 @@ class EnvironmentConfig:
     ENV_PREFIX = "VIDEO_RENDERER_"
 
     @classmethod
-    def get(cls, key: str, default: Optional[str] = None) -> Optional[str]:
+    def get(cls, key: str, default: str | None = None) -> str | None:
         """Get environment variable with prefix."""
         return os.environ.get(f"{cls.ENV_PREFIX}{key}", default)
 
@@ -380,14 +378,14 @@ class ConfigManager:
     """
 
     def __init__(self):
-        self._config: Optional[VideoRendererConfig] = None
+        self._config: VideoRendererConfig | None = None
 
     def load(
         self,
-        config: Optional[VideoRendererConfig] = None,
-        config_path: Optional[Path] = None,
+        config: VideoRendererConfig | None = None,
+        config_path: Path | None = None,
         use_env: bool = True,
-        preset: Optional[str] = None,
+        preset: str | None = None,
     ) -> VideoRendererConfig:
         """
         Load configuration from various sources.
@@ -449,8 +447,8 @@ class ConfigManager:
         if self._config is None:
             self.load()
 
-        from . import logging as log_module
         from . import error_reporting as er_module
+        from . import logging as log_module
 
         # Apply logging configuration
         log_module.configure_logging(
@@ -484,7 +482,7 @@ class ConfigManager:
 
 
 # Global configuration manager instance
-_config_manager: Optional[ConfigManager] = None
+_config_manager: ConfigManager | None = None
 
 
 def get_config_manager() -> ConfigManager:
@@ -496,10 +494,10 @@ def get_config_manager() -> ConfigManager:
 
 
 def setup_logging(
-    config: Optional[VideoRendererConfig] = None,
-    config_path: Optional[Path] = None,
+    config: VideoRendererConfig | None = None,
+    config_path: Path | None = None,
     use_env: bool = True,
-    preset: Optional[str] = None,
+    preset: str | None = None,
 ) -> VideoRendererConfig:
     """
     Setup logging with the specified configuration.

@@ -1,0 +1,11 @@
+{
+  "started_at": "2026-03-19T19:44:08.958380+00:00",
+  "completed_at": null,
+  "synced_assets": [],
+  "skipped_duplicates": [],
+  "jobs": [],
+  "errors": [
+    "Drive folder not found: music",
+    "Drive folder not found: upload"
+  ]
+}

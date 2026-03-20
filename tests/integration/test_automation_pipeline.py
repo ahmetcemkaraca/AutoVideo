@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Integration tests for VideoAutomation pipeline.
 
@@ -10,12 +9,13 @@ Tests cover:
 - Configuration handling
 """
 
-import pytest
 import json
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch, call
-from VideoAutomation.automation.pipeline import AutomationPipeline, parse_duration_to_seconds
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
 from config import PipelineConfig, YouTubeConfig
+from VideoAutomation.automation.pipeline import AutomationPipeline, parse_duration_to_seconds
 from VideoAutomation.automation.state import StateManager
 
 
@@ -33,12 +33,12 @@ class TestAutomationPipeline:
             intro_video=work_dir / "intro.mp4",
             loop_video=work_dir / "loop.mp4",
             target_duration="1:00:00",
-            codec="h264"
+            codec="h264",
         )
 
         config.youtube = YouTubeConfig(
             client_secrets_file=str(mock_youtube_credentials["client_secrets"]),
-            credentials_file=str(mock_youtube_credentials["credentials"])
+            credentials_file=str(mock_youtube_credentials["credentials"]),
         )
 
         return config
@@ -49,11 +49,7 @@ class TestAutomationPipeline:
         music_dir = work_dir / "music"
         music_dir.mkdir(parents=True, exist_ok=True)
 
-        files = [
-            music_dir / "track1.mp3",
-            music_dir / "track2.mp3",
-            music_dir / "track3.mp3"
-        ]
+        files = [music_dir / "track1.mp3", music_dir / "track2.mp3", music_dir / "track3.mp3"]
         for f in files:
             f.touch()
 
@@ -116,14 +112,22 @@ class TestAutomationPipeline:
         pipeline.config.intro_video.touch()
         pipeline.config.loop_video.touch()
 
-        with patch('video_renderer.video.probe_video') as mock_probe, \
-             patch('video_renderer.video.get_duration') as mock_duration, \
-             patch('subprocess.run') as mock_subprocess:
+        with (
+            patch("video_renderer.video.probe_video") as mock_probe,
+            patch("video_renderer.video.get_duration") as mock_duration,
+            patch("subprocess.run") as mock_subprocess,
+        ):
 
             from video_renderer.ffmpeg import VideoInfo
+
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=30.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=30.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
             mock_duration.return_value = 30.0
             mock_subprocess.return_value = Mock(returncode=0)
@@ -153,15 +157,17 @@ class TestAutomationPipeline:
         # Mock YouTube service
         pipeline.youtube.youtube = MagicMock()
         pipeline.youtube.videos.return_value.insert.return_value.execute.return_value = {
-            'id': 'test_video_id_123'
+            "id": "test_video_id_123"
         }
 
-        with patch('VideoAutomation.automation.pipeline.upload_with_exponential_backoff') as mock_upload:
-            mock_upload.return_value = 'test_video_id_123'
+        with patch(
+            "VideoAutomation.automation.pipeline.upload_with_exponential_backoff"
+        ) as mock_upload:
+            mock_upload.return_value = "test_video_id_123"
 
             video_id = pipeline._upload_video(video_path, "relaxing", "ambient")
 
-            assert video_id == 'test_video_id_123'
+            assert video_id == "test_video_id_123"
 
     def test_run_once_success(self, pipeline_config, sample_music_files):
         """Test successful single pipeline run."""
@@ -170,12 +176,14 @@ class TestAutomationPipeline:
         pipeline.config.intro_video.touch()
         pipeline.config.loop_video.touch()
 
-        with patch.object(pipeline, '_render_video') as mock_render, \
-             patch.object(pipeline, '_upload_video') as mock_upload:
+        with (
+            patch.object(pipeline, "_render_video") as mock_render,
+            patch.object(pipeline, "_upload_video") as mock_upload,
+        ):
 
             mock_render.return_value = pipeline.config.output_dir / "test.mp4"
             mock_render.return_value.touch()
-            mock_upload.return_value = 'test_video_id'
+            mock_upload.return_value = "test_video_id"
 
             result = pipeline.run_once()
 
@@ -195,7 +203,7 @@ class TestAutomationPipeline:
         """Test pipeline run handles render failure."""
         pipeline = AutomationPipeline(pipeline_config)
 
-        with patch.object(pipeline, '_render_video') as mock_render:
+        with patch.object(pipeline, "_render_video") as mock_render:
             mock_render.return_value = None
 
             result = pipeline.run_once()
@@ -234,7 +242,7 @@ class TestStateManager:
             genre="ambient",
             style="relaxing",
             duration="1:00:00",
-            local_path="/path/to/video.mp4"
+            local_path="/path/to/video.mp4",
         )
 
         assert len(manager.state["videos"]) == 1
@@ -253,7 +261,7 @@ class TestStateManager:
                 genre="ambient",
                 style="relaxing",
                 duration="1:00:00",
-                local_path=f"/path/to/video{i}.mp4"
+                local_path=f"/path/to/video{i}.mp4",
             )
 
         assert len(manager.state["videos"]) == 5
@@ -271,7 +279,7 @@ class TestStateManager:
             genre="ambient",
             style="relaxing",
             duration="1:00:00",
-            local_path="/path/to/video.mp4"
+            local_path="/path/to/video.mp4",
         )
 
         # Load in new instance
@@ -291,7 +299,7 @@ class TestStateManager:
             genre="ambient",
             style="relaxing",
             duration="2:00:00",
-            local_path="/path/to/video1.mp4"
+            local_path="/path/to/video1.mp4",
         )
 
         manager.add_video(
@@ -300,7 +308,7 @@ class TestStateManager:
             genre="lofi",
             style="energetic",
             duration="1:30:00",
-            local_path="/path/to/video2.mp4"
+            local_path="/path/to/video2.mp4",
         )
 
         assert manager.state["stats"]["total_videos"] == 2
@@ -309,7 +317,6 @@ class TestStateManager:
 
     def test_update_last_run(self, temp_dir):
         """Test last run timestamp update."""
-        import time
         from datetime import datetime
 
         state_file = temp_dir / "state.json"
@@ -335,17 +342,11 @@ class TestYouTubeUploader:
         client_secrets = temp_dir / "client_secrets.json"
         credentials = temp_dir / "credentials.json"
 
-        client_secrets.write_text(json.dumps({
-            "installed": {
-                "client_id": "test_id",
-                "client_secret": "test_secret"
-            }
-        }))
+        client_secrets.write_text(
+            json.dumps({"installed": {"client_id": "test_id", "client_secret": "test_secret"}})
+        )
 
-        credentials.write_text(json.dumps({
-            "token": "test_token",
-            "refresh_token": "test_refresh"
-        }))
+        credentials.write_text(json.dumps({"token": "test_token", "refresh_token": "test_refresh"}))
 
         return client_secrets, credentials
 
@@ -367,7 +368,7 @@ class TestYouTubeUploader:
         # Mock the YouTube service
         mock_service = MagicMock()
         mock_service.videos.return_value.insert.return_value.execute.return_value = {
-            'id': 'uploaded_video_id'
+            "id": "uploaded_video_id"
         }
         uploader.youtube = mock_service
 
@@ -378,14 +379,17 @@ class TestYouTubeUploader:
             video_path=video,
             title="Test Video",
             description="Test Description",
-            tags=["test", "video"]
+            tags=["test", "video"],
         )
 
-        assert result == 'uploaded_video_id'
+        assert result == "uploaded_video_id"
 
     def test_exponential_backoff(self, temp_dir, mock_credentials):
         """Test exponential backoff on errors."""
-        from VideoAutomation.automation.youtube import YouTubeUploader, upload_with_exponential_backoff
+        from VideoAutomation.automation.youtube import (
+            YouTubeUploader,
+            upload_with_exponential_backoff,
+        )
 
         uploader = YouTubeUploader(mock_credentials[0], mock_credentials[1])
 
@@ -397,7 +401,7 @@ class TestYouTubeUploader:
             call_count[0] += 1
             if call_count[0] < 3:
                 raise Exception("Upload failed")
-            return {'id': 'video_id'}
+            return {"id": "video_id"}
 
         mock_service.videos.return_value.insert.return_value.execute.side_effect = side_effect
         uploader.youtube = mock_service
@@ -405,15 +409,9 @@ class TestYouTubeUploader:
         video = temp_dir / "video.mp4"
         video.touch()
 
-        result = upload_with_exponential_backoff(
-            uploader,
-            video,
-            "Test",
-            "Description",
-            ["tag"]
-        )
+        result = upload_with_exponential_backoff(uploader, video, "Test", "Description", ["tag"])
 
-        assert result == 'video_id'
+        assert result == "video_id"
         assert call_count[0] == 3
 
 
@@ -441,8 +439,8 @@ class TestPipelineConfiguration:
                 "credentials_file": str(temp_dir / "credentials.json"),
                 "title_template": "{duration} {style} Music",
                 "description_template": "Relaxing {style} music",
-                "default_tags": ["music", "relaxing"]
-            }
+                "default_tags": ["music", "relaxing"],
+            },
         }
 
         config_file.write_text(json.dumps(config_data, indent=2))

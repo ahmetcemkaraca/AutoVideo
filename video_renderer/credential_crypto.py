@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Credential encryption module for secure storage of sensitive data.
 
@@ -7,12 +6,11 @@ This module provides encryption and decryption capabilities for storing
 credentials at rest using Fernet symmetric encryption.
 """
 
-import hashlib
-import os
 import base64
-from pathlib import Path
-from typing import Optional
+import hashlib
 import logging
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,7 @@ class CredentialEncryption:
     credential file theft.
     """
 
-    def __init__(self, salt: Optional[bytes] = None):
+    def __init__(self, salt: bytes | None = None):
         """
         Initialize the credential encryption system.
 
@@ -38,7 +36,7 @@ class CredentialEncryption:
                   a default salt is used (should be overridden in production).
         """
         self.salt = salt or b"AutoVideo_Credential_Salt_v1.0"
-        self._key: Optional[bytes] = None
+        self._key: bytes | None = None
         self._cipher = None
 
     def _get_key_material(self) -> bytes:
@@ -252,14 +250,12 @@ def validate_client_secrets(path: Path) -> bool:
         return False
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check for valid client type
         if "installed" not in data and "web" not in data:
-            logger.error(
-                f"Invalid client_secrets.json format: " f"missing 'installed' or 'web' key"
-            )
+            logger.error("Invalid client_secrets.json format: " "missing 'installed' or 'web' key")
             return False
 
         # Get client config
@@ -274,7 +270,7 @@ def validate_client_secrets(path: Path) -> bool:
 
         # Check for redirect URIs (optional but recommended)
         if "redirect_uris" not in client_config:
-            logger.warning(f"client_secrets.json missing 'redirect_uris' field")
+            logger.warning("client_secrets.json missing 'redirect_uris' field")
 
         return True
 
@@ -368,7 +364,7 @@ def setup_secure_logging() -> None:
 
 
 # Global instance
-_credential_crypto: Optional[CredentialEncryption] = None
+_credential_crypto: CredentialEncryption | None = None
 
 
 def get_credential_crypto() -> CredentialEncryption:

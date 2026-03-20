@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 FFmpeg subprocess runner with progress parsing and logging.
 
@@ -15,13 +14,12 @@ OPTIMIZED VERSION:
 import re
 import shlex
 import subprocess
-import time
 import threading
-import sys
+import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Callable, Any, Tuple
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Data Types
@@ -38,10 +36,10 @@ class VideoInfo:
     fps: str
     duration: float
     pix_fmt: str
-    color_space: Optional[str] = None
-    color_primaries: Optional[str] = None
-    color_transfer: Optional[str] = None
-    profile: Optional[str] = None
+    color_space: str | None = None
+    color_primaries: str | None = None
+    color_transfer: str | None = None
+    profile: str | None = None
 
 
 @dataclass
@@ -100,7 +98,7 @@ class FFmpegRunner:
     """
 
     # Class-level cache for encoder availability
-    _encoder_cache: Dict[str, bool] = {}
+    _encoder_cache: dict[str, bool] = {}
     _cache_lock = threading.Lock()
 
     # Default buffer size for I/O operations (1MB)
@@ -108,13 +106,13 @@ class FFmpegRunner:
 
     def __init__(
         self,
-        log_path: Optional[Path] = None,
+        log_path: Path | None = None,
         max_retries: int = 3,
         buffer_size: int = DEFAULT_BUFFER_SIZE,
     ):
         self.log_path = log_path
-        self._progress_callback: Optional[Callable[[FFmpegProgress], None]] = None
-        self._log_callback: Optional[Callable[[str], None]] = None
+        self._progress_callback: Callable[[FFmpegProgress], None] | None = None
+        self._log_callback: Callable[[str], None] | None = None
         self._total_duration: float = 0.0
         self._max_retries = max_retries
         self._callback_lock = threading.Lock()
@@ -138,18 +136,18 @@ class FFmpegRunner:
     def _should_display_stderr_line(self, line: str) -> bool:
         """
         Determine if a stderr line should be displayed to the user.
-        
+
         Filters out noise, duplicate info, and repetitive FFmpeg output.
         Shows only meaningful errors, warnings, and status info.
         """
         # Empty lines - skip
         if not line or line.isspace():
             return False
-        
+
         # Progress lines - skip (handled separately)
         if "frame=" in line and "fps=" in line:
             return False
-        
+
         # Skip duplicate/verbose FFmpeg startup messages
         verbose_patterns = [
             "configuration:",
@@ -161,15 +159,15 @@ class FFmpegRunner:
             "Unknown encoder",
             "deprecated pixel format",
         ]
-        
+
         line_lower = line.lower()
         if any(pattern in line_lower for pattern in verbose_patterns):
             return False
-        
+
         # Skip lines that are just formatting
         if all(c in "=- " for c in line):
             return False
-        
+
         # Show errors, warnings, info
         show_patterns = [
             "error",
@@ -183,18 +181,17 @@ class FFmpegRunner:
             "no such",
             "duration",
         ]
-        
+
         if any(pattern in line_lower for pattern in show_patterns):
             return True
-        
+
         # Show lines with actual information (longer messages)
         if len(line) > 30:
             return True
-        
+
         return False
 
-
-    def _log_command(self, cmd: List[str]):
+    def _log_command(self, cmd: list[str]):
         """Log a command to the log file."""
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -202,7 +199,7 @@ class FFmpegRunner:
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
                 f.write(f"\n[{timestamp}] $ {' '.join(shlex.quote(c) for c in cmd)}\n")
 
-    def _parse_progress_line(self, line: str) -> Optional[FFmpegProgress]:
+    def _parse_progress_line(self, line: str) -> FFmpegProgress | None:
         """
         OPTIMIZED: Parse an FFmpeg progress line using pre-compiled regex.
 
@@ -243,7 +240,7 @@ class FFmpegRunner:
 
         return progress if progress.frame > 0 or progress.time_seconds > 0 else None
 
-    def _detect_hardware_failure(self, stderr_lines: List[str]) -> Tuple[bool, str]:
+    def _detect_hardware_failure(self, stderr_lines: list[str]) -> tuple[bool, str]:
         """
         Detect if the failure was hardware-related and should trigger fallback.
 
@@ -261,7 +258,7 @@ class FFmpegRunner:
 
         return False, ""
 
-    def _build_fallback_command(self, cmd: List[str]) -> Optional[List[str]]:
+    def _build_fallback_command(self, cmd: list[str]) -> list[str] | None:
         """
         Build a software fallback command by removing hardware acceleration flags.
 
@@ -297,7 +294,9 @@ class FFmpegRunner:
 
         return fallback_cmd if fallback_cmd != cmd else None
 
-    def run(self, cmd: List[str], capture_progress: bool = True, timeout: Optional[float] = None) -> subprocess.CompletedProcess:
+    def run(
+        self, cmd: list[str], capture_progress: bool = True, timeout: float | None = None
+    ) -> subprocess.CompletedProcess:
         """
         OPTIMIZED: Run an FFmpeg command with retry and fallback support.
 
@@ -361,7 +360,9 @@ class FFmpegRunner:
         # Shouldn't reach here
         raise subprocess.CalledProcessError(1, cmd)
 
-    def _run_once(self, cmd: List[str], capture_progress: bool, timeout: Optional[float] = None) -> subprocess.CompletedProcess:
+    def _run_once(
+        self, cmd: list[str], capture_progress: bool, timeout: float | None = None
+    ) -> subprocess.CompletedProcess:
         """
         Single FFmpeg execution attempt.
 
@@ -388,6 +389,7 @@ class FFmpegRunner:
         # FFmpeg writes progress to stderr
         # Fixed: Dynamic timeout mechanism based on operation duration
         import time as time_module
+
         start_time = time_module.time()
 
         # Auto-calculate timeout if not provided
@@ -413,7 +415,7 @@ class FFmpegRunner:
                         with self._callback_lock:
                             if self._log_callback:
                                 self._log_callback(cleaned_line)
-                            
+
                     if progress := self._parse_progress_line(line):
                         with self._callback_lock:
                             if self._progress_callback:
@@ -460,7 +462,7 @@ class FFmpegRunner:
             cmd, process.returncode, stdout="", stderr="\n".join(self._stderr_buffer)
         )
 
-    def run_simple(self, cmd: List[str]) -> subprocess.CompletedProcess:
+    def run_simple(self, cmd: list[str]) -> subprocess.CompletedProcess:
         """Run a command without progress tracking."""
         self._log_command(cmd)
         return subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -508,7 +510,7 @@ def probe_video(path: Path) -> VideoInfo:
 
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-    kv: Dict[str, str] = {}
+    kv: dict[str, str] = {}
     for line in result.stdout.splitlines():
         line = line.strip()
         if "=" in line:
@@ -552,7 +554,7 @@ def get_duration(path: Path) -> float:
         return 0.0
 
 
-def write_concat_list(files: List[Path], output_path: Path, repeat_count: int = 1) -> None:
+def write_concat_list(files: list[Path], output_path: Path, repeat_count: int = 1) -> None:
     """
     Write a concat demuxer file list.
 
@@ -575,7 +577,6 @@ def write_concat_list(files: List[Path], output_path: Path, repeat_count: int = 
 
 
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -583,12 +584,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CleanupResult:
     """Result of a temp cleanup operation."""
-    
-    deleted_files: List[str] = None
+
+    deleted_files: list[str] = None
     deleted_size_bytes: int = 0
-    errors: List[str] = None
-    skipped_files: List[str] = None
-    
+    errors: list[str] = None
+    skipped_files: list[str] = None
+
     def __post_init__(self):
         if self.deleted_files is None:
             self.deleted_files = []
@@ -596,11 +597,11 @@ class CleanupResult:
             self.errors = []
         if self.skipped_files is None:
             self.skipped_files = []
-    
+
     @property
     def deleted_size_mb(self) -> float:
         return self.deleted_size_bytes / (1024 * 1024)
-    
+
     @property
     def success(self) -> bool:
         return len(self.errors) == 0
@@ -609,14 +610,14 @@ class CleanupResult:
 def cleanup_temp_files(
     tmp_dir: Path,
     min_age_hours: float = 1.0,
-    preserve_patterns: List[str] = None,
-    delete_patterns: List[str] = None,
+    preserve_patterns: list[str] = None,
+    delete_patterns: list[str] = None,
     max_size_gb: float = 20.0,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> CleanupResult:
     """
     Clean up temporary files from render operations.
-    
+
     Args:
         tmp_dir: Path to temp directory
         min_age_hours: Minimum file age in hours before deletion (default: 1)
@@ -624,44 +625,50 @@ def cleanup_temp_files(
         delete_patterns: Glob patterns for files to delete (default: *.mp4, *.w64, etc.)
         max_size_gb: Auto-cleanup threshold in GB (default: 20)
         dry_run: Only report what would be deleted
-        
+
     Returns:
         CleanupResult with lists of deleted/skipped files and errors
     """
     result = CleanupResult()
-    
+
     if not tmp_dir.exists():
         return result
-    
+
     preserve_patterns = preserve_patterns or ["last_session.json", "*.state", "batch_queue.json"]
-    delete_patterns = delete_patterns or ["*.mp4", "*.w64", "*.wav", "video_list.txt", "run_log_*.txt"]
-    
+    delete_patterns = delete_patterns or [
+        "*.mp4",
+        "*.w64",
+        "*.wav",
+        "video_list.txt",
+        "run_log_*.txt",
+    ]
+
     min_age_seconds = min_age_hours * 3600
     current_time = time.time()
     total_size = 0
     preserved_files = set()
-    
+
     for pattern in preserve_patterns:
         for f in tmp_dir.glob(pattern):
             preserved_files.add(f.name)
-    
+
     for pattern in delete_patterns:
         for f in tmp_dir.glob(pattern):
             if f.name in preserved_files:
                 result.skipped_files.append(f.name)
                 continue
-            
+
             try:
                 file_stat = f.stat()
                 file_age = current_time - file_stat.st_mtime
-                
+
                 if file_age < min_age_seconds:
                     result.skipped_files.append(f.name)
                     continue
-                
+
                 result.deleted_size_bytes += file_stat.st_size
                 total_size += file_stat.st_size
-                
+
                 if dry_run:
                     logger.info(f"[DRY RUN] Would delete: {f.name}")
                     result.deleted_files.append(f.name)
@@ -669,40 +676,40 @@ def cleanup_temp_files(
                     f.unlink()
                     logger.info(f"Deleted: {f.name}")
                     result.deleted_files.append(f.name)
-                    
+
             except FileNotFoundError:
                 pass
-            except PermissionError as e:
+            except PermissionError:
                 result.errors.append(f"{f.name}: Permission denied")
                 logger.error(f"Permission denied: {f.name}")
             except Exception as e:
                 result.errors.append(f"{f.name}: {e}")
                 logger.error(f"Error deleting {f.name}: {e}")
-    
+
     logger.info(
         f"Cleanup complete: {len(result.deleted_files)} files, "
         f"{result.deleted_size_mb:.1f} MB freed"
     )
-    
+
     return result
 
 
-def get_tmp_dir_size(tmp_dir: Path) -> Tuple[int, int]:
+def get_tmp_dir_size(tmp_dir: Path) -> tuple[int, int]:
     """
     Get total size and file count of temp directory.
-    
+
     Args:
         tmp_dir: Path to temp directory
-        
+
     Returns:
         Tuple of (size_bytes, file_count)
     """
     if not tmp_dir.exists():
         return 0, 0
-    
+
     total_size = 0
     file_count = 0
-    
+
     for f in tmp_dir.iterdir():
         if f.is_file():
             try:
@@ -710,32 +717,38 @@ def get_tmp_dir_size(tmp_dir: Path) -> Tuple[int, int]:
                 file_count += 1
             except (FileNotFoundError, PermissionError):
                 pass
-    
+
     return total_size, file_count
 
 
-def check_disk_space(tmp_dir: Path, warn_threshold_gb: float = 10.0, auto_cleanup_threshold_gb: float = 20.0) -> Tuple[bool, bool]:
+def check_disk_space(
+    tmp_dir: Path, warn_threshold_gb: float = 10.0, auto_cleanup_threshold_gb: float = 20.0
+) -> tuple[bool, bool]:
     """
     Check disk space usage and determine if cleanup is needed.
-    
+
     Args:
         tmp_dir: Path to temp directory
         warn_threshold_gb: Size threshold for warning (default: 10 GB)
         auto_cleanup_threshold_gb: Size threshold for auto-cleanup (default: 20 GB)
-        
+
     Returns:
         Tuple of (should_warn, should_auto_cleanup)
     """
     size_bytes, _ = get_tmp_dir_size(tmp_dir)
-    size_gb = size_bytes / (1024 ** 3)
-    
+    size_gb = size_bytes / (1024**3)
+
     should_warn = size_gb >= warn_threshold_gb
     should_auto_cleanup = size_gb >= auto_cleanup_threshold_gb
-    
+
     if should_warn:
-        logger.warning(f"Temp directory size ({size_gb:.1f} GB) exceeds warning threshold ({warn_threshold_gb} GB)")
-    
+        logger.warning(
+            f"Temp directory size ({size_gb:.1f} GB) exceeds warning threshold ({warn_threshold_gb} GB)"
+        )
+
     if should_auto_cleanup:
-        logger.warning(f"Temp directory size ({size_gb:.1f} GB) exceeds auto-cleanup threshold ({auto_cleanup_threshold_gb} GB)")
-    
+        logger.warning(
+            f"Temp directory size ({size_gb:.1f} GB) exceeds auto-cleanup threshold ({auto_cleanup_threshold_gb} GB)"
+        )
+
     return should_warn, should_auto_cleanup

@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Home Screen - Welcome/Resume screen.
 """
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, Footer, Static
 
 BANNER = """
 ╭──────────────────────────────────────────────────────────────╮
@@ -52,34 +51,33 @@ class HomeScreen(Screen):
                 classes="banner",
             )
 
-            with Vertical(classes="center-container"):
-                with Container(classes="panel"):
-                    if self.session_data:
-                        yield Static("Session Bulundu", classes="panel-title success-text")
-                        yield Static(
-                            f"📅 {self.session_data.get('ts', 'Bilinmiyor')}", classes="info-text"
-                        )
-                        yield Static(
-                            f"🎬 {Path(self.session_data.get('out', '')).name}", classes="subtitle"
-                        )
-                        yield Static("")
+            with Vertical(classes="center-container"), Container(classes="panel"):
+                if self.session_data:
+                    yield Static("Session Bulundu", classes="panel-title success-text")
+                    yield Static(
+                        f"📅 {self.session_data.get('ts', 'Bilinmiyor')}", classes="info-text"
+                    )
+                    yield Static(
+                        f"🎬 {Path(self.session_data.get('out', '')).name}", classes="subtitle"
+                    )
+                    yield Static("")
 
-                        with Horizontal(classes="action-bar"):
-                            yield Button("▶ Devam Et", id="resume", classes="-primary")
-                            yield Button("🆕 Yeni Render", id="new", classes="-secondary")
-                            yield Button("📦 Batch", id="batch", classes="-secondary")
-                            yield Button("🚪 Cikis", id="quit", classes="-error")
-                    else:
-                        yield Static("Video Renderer'a Hos Geldiniz", classes="panel-title")
-                        yield Static(
-                            "Intro + Loop video birlestirme ve ses miksaji", classes="subtitle"
-                        )
-                        yield Static("")
+                    with Horizontal(classes="action-bar"):
+                        yield Button("▶ Devam Et", id="resume", classes="-primary")
+                        yield Button("🆕 Yeni Render", id="new", classes="-secondary")
+                        yield Button("📦 Batch", id="batch", classes="-secondary")
+                        yield Button("🚪 Cikis", id="quit", classes="-error")
+                else:
+                    yield Static("Video Renderer'a Hos Geldiniz", classes="panel-title")
+                    yield Static(
+                        "Intro + Loop video birlestirme ve ses miksaji", classes="subtitle"
+                    )
+                    yield Static("")
 
-                        with Horizontal(classes="action-bar"):
-                            yield Button("🆕 Yeni Render", id="new", classes="-primary")
-                            yield Button("📦 Batch Modu", id="batch", classes="-secondary")
-                            yield Button("🚪 Cikis", id="quit", classes="-secondary")
+                    with Horizontal(classes="action-bar"):
+                        yield Button("🆕 Yeni Render", id="new", classes="-primary")
+                        yield Button("📦 Batch Modu", id="batch", classes="-secondary")
+                        yield Button("🚪 Cikis", id="quit", classes="-secondary")
 
         yield Footer()
 

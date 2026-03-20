@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Configuration and constants for video_renderer.
 
 Includes both standard and RAM-optimized (ramtest) configurations.
 """
 
+import logging
+import os
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Set, Dict, List, Optional
-import subprocess
-import shutil
-import os
-import logging
+from typing import Any
 
 # Module-level logger for config module
 logger = logging.getLogger(__name__)
@@ -22,8 +21,8 @@ logger = logging.getLogger(__name__)
 # File Extensions
 # ═══════════════════════════════════════════════════════════════════════════════
 
-VIDEO_EXTENSIONS: Set[str] = {".mp4", ".mkv", ".mov", ".m4v", ".webm", ".avi"}
-AUDIO_EXTENSIONS: Set[str] = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}
+VIDEO_EXTENSIONS: set[str] = {".mp4", ".mkv", ".mov", ".m4v", ".webm", ".avi"}
+AUDIO_EXTENSIONS: set[str] = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -32,7 +31,7 @@ AUDIO_EXTENSIONS: Set[str] = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", "
 
 DEFAULT_WIDTH = 1920
 DEFAULT_HEIGHT = 1080
-ALLOWED_FPS: Set[Fraction] = {Fraction(60, 1), Fraction(60000, 1001)}  # 60 or 59.94
+ALLOWED_FPS: set[Fraction] = {Fraction(60, 1), Fraction(60000, 1001)}  # 60 or 59.94
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -48,11 +47,11 @@ class CodecConfig:
     encoder: str
     preset: str
     crf: int
-    profile: Optional[str] = None
-    level: Optional[str] = None
-    extra_args: List[str] = field(default_factory=list)
+    profile: str | None = None
+    level: str | None = None
+    extra_args: list[str] = field(default_factory=list)
 
-    def to_ffmpeg_args(self) -> List[str]:
+    def to_ffmpeg_args(self) -> list[str]:
         """Convert config to FFmpeg arguments."""
         args = ["-c:v", self.encoder, "-preset", self.preset, "-crf", str(self.crf)]
         if self.profile:
@@ -210,7 +209,7 @@ CODEC_H265_VAAPI = CodecConfig(
 
 
 # Codec registry
-CODECS: Dict[str, CodecConfig] = {
+CODECS: dict[str, CodecConfig] = {
     "av1": CODEC_AV1,
     "h264": CODEC_H264,
     "h265": CODEC_H265,
@@ -237,7 +236,7 @@ class ColorConfig:
     color_primaries: str
     color_trc: str
 
-    def to_ffmpeg_args(self) -> List[str]:
+    def to_ffmpeg_args(self) -> list[str]:
         return [
             "-colorspace",
             self.colorspace,
@@ -257,14 +256,14 @@ COLOR_BT2020 = ColorConfig("bt2020nc", "bt2020", "bt2020-10")
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Module-level cache for encoder availability
-_encoder_detection_cache: Optional[Dict[str, bool]] = None
+_encoder_detection_cache: dict[str, bool] | None = None
 _cache_timestamp = 0.0
 _CACHE_TTL = 300.0  # Cache for 5 minutes
 
 
 def detect_available_encoders(
     use_cache: bool = True, force_refresh: bool = False
-) -> Dict[str, bool]:
+) -> dict[str, bool]:
     """
     OPTIMIZED: Detect available hardware encoders by actually testing them.
 
@@ -411,7 +410,7 @@ def clear_encoder_cache():
     _cache_timestamp = 0.0
 
 
-def check_nvenc_readiness() -> Dict[str, Any]:
+def check_nvenc_readiness() -> dict[str, Any]:
     """
     Comprehensive NVENC readiness check.
     Verifies GPU driver, CUDA, and FFmpeg NVENC support.
@@ -540,11 +539,20 @@ def check_nvenc_readiness() -> Dict[str, Any]:
         for encoder in ["h264_nvenc", "hevc_nvenc", "av1_nvenc"]:
             try:
                 test_cmd = [
-                    "ffmpeg", "-hide_banner", "-y",
-                    "-f", "lavfi", "-i", "color=black:s=64x64:d=0.04",
-                    "-c:v", encoder,
-                    "-t", "0.04",
-                    "-f", "null", "-",
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=black:s=64x64:d=0.04",
+                    "-c:v",
+                    encoder,
+                    "-t",
+                    "0.04",
+                    "-f",
+                    "null",
+                    "-",
                 ]
                 test_result = subprocess.run(
                     test_cmd,
@@ -558,7 +566,8 @@ def check_nvenc_readiness() -> Dict[str, Any]:
                 if not working:
                     # Extract useful error from stderr
                     err_lines = [
-                        l.strip() for l in test_result.stderr.split("\n")
+                        l.strip()
+                        for l in test_result.stderr.split("\n")
                         if "Error" in l or "error" in l or "Cannot" in l
                     ]
                     err_msg = err_lines[0] if err_lines else "Bilinmeyen hata"
@@ -572,9 +581,7 @@ def check_nvenc_readiness() -> Dict[str, Any]:
 
     # 5. Overall readiness
     result["ready"] = (
-        result["gpu_found"]
-        and result["ffmpeg_nvenc"]
-        and any(result["encoders_working"].values())
+        result["gpu_found"] and result["ffmpeg_nvenc"] and any(result["encoders_working"].values())
     )
 
     return result
@@ -593,7 +600,9 @@ def print_nvenc_status():
         lines.append(f"  GPU     : {status['gpu_name']}")
         lines.append(f"  Driver  : {status['driver_version']}")
         lines.append(f"  Compute : {status['cuda_version']}")
-        lines.append(f"  VRAM    : {status['vram_free_mb']} MB bos / {status['vram_total_mb']} MB toplam")
+        lines.append(
+            f"  VRAM    : {status['vram_free_mb']} MB bos / {status['vram_total_mb']} MB toplam"
+        )
     else:
         lines.append("  GPU     : Bulunamadi")
 
@@ -629,9 +638,9 @@ class RenderConfig:
 
     # Paths
     work_dir: Path = field(default_factory=Path.cwd)
-    music_dir: Optional[Path] = None
-    tmp_dir: Optional[Path] = None
-    output_path: Optional[Path] = None
+    music_dir: Path | None = None
+    tmp_dir: Path | None = None
+    output_path: Path | None = None
 
     # Video settings
     width: int = DEFAULT_WIDTH
@@ -646,12 +655,12 @@ class RenderConfig:
     duration_seconds: int = 0
 
     # Source files
-    intro_path: Optional[Path] = None
-    loop_path: Optional[Path] = None
+    intro_path: Path | None = None
+    loop_path: Path | None = None
 
     # Audio
-    tracks: List[Path] = field(default_factory=list)
-    backgrounds: List[tuple] = field(default_factory=list)  # List of (Path, dB)
+    tracks: list[Path] = field(default_factory=list)
+    backgrounds: list[tuple] = field(default_factory=list)  # List of (Path, dB)
 
     # Post-render action
     post_action: str = "keep"  # keep, archive, delete
@@ -682,7 +691,7 @@ class RenderConfig:
 # Typical size is half of RAM
 
 
-def get_ramdisk_path() -> Optional[Path]:
+def get_ramdisk_path() -> Path | None:
     """
     Get RAM disk path if available and has sufficient space.
 
@@ -695,18 +704,16 @@ def get_ramdisk_path() -> Optional[Path]:
     # Define allowed base directories for security
     # This prevents directory traversal attacks
     allowed_bases = {
-        Path("/dev/shm"),           # Linux tmpfs
-        Path("/tmp"),               # System temp
-        Path("/var/tmp"),           # System temp
+        Path("/dev/shm"),  # Linux tmpfs
+        Path("/tmp"),  # System temp
+        Path("/var/tmp"),  # System temp
     }
 
     # Linux tmpfs
     shm_path = Path("/dev/shm").resolve()  # Resolve to prevent path traversal
 
     # Validate that resolved path is within allowed bases
-    is_allowed = any(
-        str(shm_path).startswith(str(base)) for base in allowed_bases
-    )
+    is_allowed = any(str(shm_path).startswith(str(base)) for base in allowed_bases)
 
     if not is_allowed:
         logger.warning("RAM disk path not in allowed base directories")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for Audit module.
 
@@ -10,14 +9,15 @@ Tests cover:
 - Thread-safe logging
 """
 
-import pytest
 import json
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from video_renderer.audit import (
-    AuditEventType,
     AuditEvent,
+    AuditEventType,
     AuditLogger,
 )
 
@@ -28,29 +28,29 @@ class TestAuditEventType:
 
     def test_authentication_events(self):
         """Test authentication event types exist."""
-        assert hasattr(AuditEventType, 'AUTH_SUCCESS')
-        assert hasattr(AuditEventType, 'AUTH_FAILURE')
-        assert hasattr(AuditEventType, 'AUTH_REFRESH')
-        assert hasattr(AuditEventType, 'AUTH_LOGOUT')
+        assert hasattr(AuditEventType, "AUTH_SUCCESS")
+        assert hasattr(AuditEventType, "AUTH_FAILURE")
+        assert hasattr(AuditEventType, "AUTH_REFRESH")
+        assert hasattr(AuditEventType, "AUTH_LOGOUT")
 
     def test_file_operation_events(self):
         """Test file operation event types exist."""
-        assert hasattr(AuditEventType, 'FILE_READ')
-        assert hasattr(AuditEventType, 'FILE_WRITE')
-        assert hasattr(AuditEventType, 'FILE_DELETE')
-        assert hasattr(AuditEventType, 'FILE_UPLOAD')
+        assert hasattr(AuditEventType, "FILE_READ")
+        assert hasattr(AuditEventType, "FILE_WRITE")
+        assert hasattr(AuditEventType, "FILE_DELETE")
+        assert hasattr(AuditEventType, "FILE_UPLOAD")
 
     def test_video_processing_events(self):
         """Test video processing event types exist."""
-        assert hasattr(AuditEventType, 'VIDEO_ENCODE_START')
-        assert hasattr(AuditEventType, 'VIDEO_ENCODE_COMPLETE')
-        assert hasattr(AuditEventType, 'VIDEO_ENCODE_FAILURE')
+        assert hasattr(AuditEventType, "VIDEO_ENCODE_START")
+        assert hasattr(AuditEventType, "VIDEO_ENCODE_COMPLETE")
+        assert hasattr(AuditEventType, "VIDEO_ENCODE_FAILURE")
 
     def test_security_events(self):
         """Test security event types exist."""
-        assert hasattr(AuditEventType, 'SECURITY_VIOLATION')
-        assert hasattr(AuditEventType, 'PATH_TRAVERSAL_ATTEMPT')
-        assert hasattr(AuditEventType, 'COMMAND_INJECTION_ATTEMPT')
+        assert hasattr(AuditEventType, "SECURITY_VIOLATION")
+        assert hasattr(AuditEventType, "PATH_TRAVERSAL_ATTEMPT")
+        assert hasattr(AuditEventType, "COMMAND_INJECTION_ATTEMPT")
 
 
 @pytest.mark.unit
@@ -63,7 +63,7 @@ class TestAuditEvent:
             event_type=AuditEventType.FILE_READ,
             timestamp=datetime.utcnow().isoformat(),
             source="test_module",
-            details={"file_path": "/path/to/file"}
+            details={"file_path": "/path/to/file"},
         )
 
         assert event.event_type == AuditEventType.FILE_READ
@@ -77,7 +77,7 @@ class TestAuditEvent:
             event_type=AuditEventType.AUTH_SUCCESS,
             timestamp=timestamp,
             source="auth_module",
-            details={"user": "test_user"}
+            details={"user": "test_user"},
         )
 
         event_dict = event.to_dict()
@@ -93,7 +93,7 @@ class TestAuditEvent:
             event_type=AuditEventType.CONFIG_WRITE,
             timestamp=datetime.utcnow().isoformat(),
             source="config_module",
-            details={"setting": "codec", "value": "h264"}
+            details={"setting": "codec", "value": "h264"},
         )
 
         event_dict = event.to_dict()
@@ -112,7 +112,7 @@ class TestAuditEvent:
             severity="WARNING",
             user_id="user123",
             ip_address="192.168.1.1",
-            session_id="session456"
+            session_id="session456",
         )
 
         event_dict = event.to_dict()
@@ -140,11 +140,11 @@ class TestAuditLogger:
         audit_logger = AuditLogger(log_dir=temp_dir)
 
         # Mock file write
-        with patch('pathlib.Path.open', MagicMock()):
+        with patch("pathlib.Path.open", MagicMock()):
             audit_logger.log_event(
                 event_type=AuditEventType.FILE_READ,
                 source="test_module",
-                details={"file": "test.mp4"}
+                details={"file": "test.mp4"},
             )
 
         # Verify log files exist
@@ -154,12 +154,12 @@ class TestAuditLogger:
         """Test logging a security event."""
         audit_logger = AuditLogger(log_dir=temp_dir)
 
-        with patch('pathlib.Path.open', MagicMock()):
+        with patch("pathlib.Path.open", MagicMock()):
             audit_logger.log_event(
                 event_type=AuditEventType.SECURITY_VIOLATION,
                 source="security_module",
                 details={"violation": "path_traversal"},
-                severity="CRITICAL"
+                severity="CRITICAL",
             )
 
         # Verify security log file exists
@@ -179,15 +179,12 @@ class TestAuditLogger:
                     audit_logger.log_event(
                         event_type=AuditEventType.FILE_READ,
                         source=f"thread_{thread_id}",
-                        details={"index": i}
+                        details={"index": i},
                     )
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=log_events, args=(i,))
-            for i in range(5)
-        ]
+        threads = [threading.Thread(target=log_events, args=(i,)) for i in range(5)]
 
         for t in threads:
             t.start()
@@ -201,15 +198,11 @@ class TestAuditLogger:
         """Test sensitive data is filtered."""
         audit_logger = AuditLogger(log_dir=temp_dir, enable_sensitive_filter=True)
 
-        with patch('pathlib.Path.open', MagicMock()):
+        with patch("pathlib.Path.open", MagicMock()):
             audit_logger.log_event(
                 event_type=AuditEventType.AUTH_SUCCESS,
                 source="auth_module",
-                details={
-                    "user": "test_user",
-                    "password": "secret123",
-                    "api_key": "abc123"
-                }
+                details={"user": "test_user", "password": "secret123", "api_key": "abc123"},
             )
 
         # Event should be logged with filtered data
@@ -224,51 +217,51 @@ class TestAuditIntegration:
         """Test logging file operations."""
         audit_logger = AuditLogger(log_dir=temp_dir)
 
-        with patch('pathlib.Path.open', MagicMock()):
+        with patch("pathlib.Path.open", MagicMock()):
             audit_logger.log_event(
                 event_type=AuditEventType.FILE_READ,
                 source="video_renderer.video",
-                details={"file": "test.mp4", "operation": "read"}
+                details={"file": "test.mp4", "operation": "read"},
             )
 
             audit_logger.log_event(
                 event_type=AuditEventType.FILE_WRITE,
                 source="video_renderer.video",
-                details={"file": "output.mp4", "operation": "write"}
+                details={"file": "output.mp4", "operation": "write"},
             )
 
     def test_video_encode_logging(self, temp_dir):
         """Test logging video encoding operations."""
         audit_logger = AuditLogger(log_dir=temp_dir)
 
-        with patch('pathlib.Path.open', MagicMock()):
+        with patch("pathlib.Path.open", MagicMock()):
             audit_logger.log_event(
                 event_type=AuditEventType.VIDEO_ENCODE_START,
                 source="video_renderer.video",
-                details={"input": "intro.mp4", "codec": "h264"}
+                details={"input": "intro.mp4", "codec": "h264"},
             )
 
             audit_logger.log_event(
                 event_type=AuditEventType.VIDEO_ENCODE_COMPLETE,
                 source="video_renderer.video",
-                details={"output": "final.mp4", "duration": "3600"}
+                details={"output": "final.mp4", "duration": "3600"},
             )
 
     def test_security_violation_logging(self, temp_dir):
         """Test logging security violations."""
         audit_logger = AuditLogger(log_dir=temp_dir)
 
-        with patch('pathlib.Path.open', MagicMock()):
+        with patch("pathlib.Path.open", MagicMock()):
             audit_logger.log_event(
                 event_type=AuditEventType.PATH_TRAVERSAL_ATTEMPT,
                 source="video_renderer.security",
                 details={"path": "../../etc/passwd"},
-                severity="CRITICAL"
+                severity="CRITICAL",
             )
 
             audit_logger.log_event(
                 event_type=AuditEventType.COMMAND_INJECTION_ATTEMPT,
                 source="video_renderer.security",
                 details={"input": "file.mp4; rm -rf /"},
-                severity="CRITICAL"
+                severity="CRITICAL",
             )

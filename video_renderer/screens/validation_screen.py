@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Validation Screen - Display video and audio validation results with color-coded status.
 """
@@ -9,21 +8,18 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Literal
+from typing import Literal
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.data import DataTable
 from textual.screen import Screen
 from textual.widgets import (
-    Static,
     Button,
-    Footer,
     DataTable,
-    Label,
-    Label,
+    Footer,
+    Static,
 )
-from textual.containers import Container, Vertical, Horizontal, VerticalScroll
-from textual.data import DataTable
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Validation Result Data Types
@@ -39,7 +35,7 @@ class ValidationResult:
         category: str,
         item_name: str,
         message: str,
-        details: Optional[Dict] = None,
+        details: dict | None = None,
     ):
         self.status = status
         self.category = category
@@ -55,10 +51,10 @@ class ValidationReport:
     def __init__(self, file_path: Path):
         self.file_path = file_path
         self.file_name = file_path.name
-        self.results: List[ValidationResult] = []
-        self.video_info: Optional[Dict] = None
-        self.audio_info: Optional[Dict] = None
-        self.raw_ffprobe: Optional[str] = None
+        self.results: list[ValidationResult] = []
+        self.video_info: dict | None = None
+        self.audio_info: dict | None = None
+        self.raw_ffprobe: str | None = None
         self.timestamp = datetime.now()
 
     def add_result(self, result: ValidationResult) -> None:
@@ -85,7 +81,7 @@ class ValidationReport:
             return "warning"
         return "pass"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Export report to dictionary."""
         return {
             "file_path": str(self.file_path),
@@ -463,44 +459,54 @@ class ValidationScreen(Screen):
 
             # Video info
             if self.report.video_info:
-                lines.extend([
-                    "-" * 60,
-                    "VİDEO BİLGİSİ",
-                    "-" * 60,
-                ])
+                lines.extend(
+                    [
+                        "-" * 60,
+                        "VİDEO BİLGİSİ",
+                        "-" * 60,
+                    ]
+                )
                 video = self.report.video_info
-                lines.extend([
-                    f"Codec: {video.get('codec', 'N/A')}",
-                    f"Çözünürlük: {video.get('width', 0)}x{video.get('height', 0)}",
-                    f"FPS: {video.get('fps', 'N/A')}",
-                    f"Süre: {self._format_duration(video.get('duration', 0))}",
-                    f"Pixel Format: {video.get('pix_fmt', 'N/A')}",
-                    "",
-                ])
+                lines.extend(
+                    [
+                        f"Codec: {video.get('codec', 'N/A')}",
+                        f"Çözünürlük: {video.get('width', 0)}x{video.get('height', 0)}",
+                        f"FPS: {video.get('fps', 'N/A')}",
+                        f"Süre: {self._format_duration(video.get('duration', 0))}",
+                        f"Pixel Format: {video.get('pix_fmt', 'N/A')}",
+                        "",
+                    ]
+                )
 
             # Audio info
             if self.report.audio_info:
-                lines.extend([
-                    "-" * 60,
-                    "SES BİLGİSİ",
-                    "-" * 60,
-                ])
+                lines.extend(
+                    [
+                        "-" * 60,
+                        "SES BİLGİSİ",
+                        "-" * 60,
+                    ]
+                )
                 audio = self.report.audio_info
-                lines.extend([
-                    f"Codec: {audio.get('codec', 'N/A')}",
-                    f"Bitrate: {audio.get('bitrate', 0)} kbps",
-                    f"Kanallar: {audio.get('channels', 'N/A')}",
-                    f"Sample Rate: {audio.get('sample_rate', 0)} Hz",
-                    f"Süre: {self._format_duration(audio.get('duration', 0))}",
-                    "",
-                ])
+                lines.extend(
+                    [
+                        f"Codec: {audio.get('codec', 'N/A')}",
+                        f"Bitrate: {audio.get('bitrate', 0)} kbps",
+                        f"Kanallar: {audio.get('channels', 'N/A')}",
+                        f"Sample Rate: {audio.get('sample_rate', 0)} Hz",
+                        f"Süre: {self._format_duration(audio.get('duration', 0))}",
+                        "",
+                    ]
+                )
 
             # Results
-            lines.extend([
-                "-" * 60,
-                "DOĞRULAMA SONUÇLARI",
-                "-" * 60,
-            ])
+            lines.extend(
+                [
+                    "-" * 60,
+                    "DOĞRULAMA SONUÇLARI",
+                    "-" * 60,
+                ]
+            )
 
             for result in self.report.results:
                 status_symbol = {"pass": "✅", "fail": "❌", "warning": "⚠️"}[result.status]
