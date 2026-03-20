@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for AudioProcessor class.
 
@@ -13,49 +12,56 @@ Tests cover:
 - Track standardization
 """
 
-import pytest
+import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
 from video_renderer.audio import (
     AudioProcessor,
     is_background_file,
+    mux_video_audio,
     parse_background_gain_db,
-    mux_video_audio
 )
-from video_renderer.ffmpeg import FFmpegProgress
-import subprocess
 
 
 @pytest.mark.unit
 class TestAudioUtilities:
     """Test suite for audio utility functions."""
 
-    @pytest.mark.parametrize("filename, expected", [
-        ("bg_rain.mp3", True),
-        ("BG_FIRE.WAV", True),
-        ("background_thunder.mp3", False),
-        ("rain_bg.mp3", True),
-        ("rain-bg.mp3", True),
-        ("fire_bg_night.mp3", True),
-        ("normal_track.mp3", False),
-        ("bg.mp3", True),
-        ("bgtest.mp3", True),
-    ])
+    @pytest.mark.parametrize(
+        "filename, expected",
+        [
+            ("bg_rain.mp3", True),
+            ("BG_FIRE.WAV", True),
+            ("background_thunder.mp3", False),
+            ("rain_bg.mp3", True),
+            ("rain-bg.mp3", True),
+            ("fire_bg_night.mp3", True),
+            ("normal_track.mp3", False),
+            ("bg.mp3", True),
+            ("bgtest.mp3", True),
+        ],
+    )
     def test_is_background_file(self, filename, expected):
         """Test background file detection."""
         assert is_background_file(Path(filename)) is expected
 
-    @pytest.mark.parametrize("filename, expected_gain", [
-        ("bg_-8.5.mp3", -8.5),
-        ("bg_-1.mp3", -1.0),
-        ("bg_0.mp3", 0.0),
-        ("bg_5.mp3", 5.0),
-        ("fire_bg_-10.wav", -10.0),
-        ("night-bg_-12.5.mp3", -12.5),
-        ("ates_bg_-3.flac", -3.0),
-        ("normal.mp3", 0.0),
-        ("bg_x.mp3", 0.0),  # Invalid number
-    ])
+    @pytest.mark.parametrize(
+        "filename, expected_gain",
+        [
+            ("bg_-8.5.mp3", -8.5),
+            ("bg_-1.mp3", -1.0),
+            ("bg_0.mp3", 0.0),
+            ("bg_5.mp3", 5.0),
+            ("fire_bg_-10.wav", -10.0),
+            ("night-bg_-12.5.mp3", -12.5),
+            ("ates_bg_-3.flac", -3.0),
+            ("normal.mp3", 0.0),
+            ("bg_x.mp3", 0.0),  # Invalid number
+        ],
+    )
     def test_parse_background_gain_db(self, filename, expected_gain):
         """Test background gain parsing from filename."""
         assert parse_background_gain_db(Path(filename)) == expected_gain
@@ -75,16 +81,14 @@ class TestAudioProcessor:
         assert processor.INTERMEDIATE_CODEC == "pcm_s16le"
         assert processor.SAMPLE_RATE == 48000
 
-    def test_validate_and_convert_track_success(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_validate_and_convert_track_success(self, mock_ffmpeg_runner, temp_dir):
         """Test successful track validation and conversion."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
         track = temp_dir / "test.mp3"
         track.touch()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0, stderr="")
 
             output, success, error = processor.validate_and_convert_track(track)
@@ -94,9 +98,7 @@ class TestAudioProcessor:
             assert output.name.startswith("validated_")
             assert output.suffix == ".w64"
 
-    def test_validate_and_convert_track_skip_existing(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_validate_and_convert_track_skip_existing(self, mock_ffmpeg_runner, temp_dir):
         """Test validation skips already converted files."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
@@ -113,19 +115,16 @@ class TestAudioProcessor:
         assert error == ""
         assert output == validated
 
-    def test_validate_and_convert_track_conversion_error(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_validate_and_convert_track_conversion_error(self, mock_ffmpeg_runner, temp_dir):
         """Test validation handles conversion errors."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
         track = temp_dir / "test.mp3"
         track.touch()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=1,
-                stderr="Invalid data found when processing input"
+                returncode=1, stderr="Invalid data found when processing input"
             )
 
             output, success, error = processor.validate_and_convert_track(track)
@@ -133,16 +132,14 @@ class TestAudioProcessor:
             assert success is False
             assert "Donusturme hatasi" in error
 
-    def test_validate_and_convert_track_timeout(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_validate_and_convert_track_timeout(self, mock_ffmpeg_runner, temp_dir):
         """Test validation handles timeout."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
         track = temp_dir / "test.mp3"
         track.touch()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired("ffmpeg", 120)
 
             output, success, error = processor.validate_and_convert_track(track)
@@ -154,15 +151,11 @@ class TestAudioProcessor:
         """Test validation of multiple tracks."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
-        tracks = [
-            temp_dir / "track1.mp3",
-            temp_dir / "track2.mp3",
-            temp_dir / "track3.mp3"
-        ]
+        tracks = [temp_dir / "track1.mp3", temp_dir / "track2.mp3", temp_dir / "track3.mp3"]
         for track in tracks:
             track.touch()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0, stderr="")
 
             valid, invalid = processor.validate_tracks(tracks)
@@ -180,7 +173,7 @@ class TestAudioProcessor:
 
         callback = MagicMock()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0, stderr="")
 
             valid, invalid = processor.validate_tracks(tracks, callback)
@@ -196,10 +189,10 @@ class TestAudioProcessor:
         for track in tracks:
             track.touch()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.side_effect = [180.0, 240.0]  # 3min + 4min = 7min
 
-            with patch('video_renderer.audio.write_concat_list'):
+            with patch("video_renderer.audio.write_concat_list"):
                 result = processor.create_music_loop(tracks, 3600)  # 1 hour
 
                 assert result == temp_dir / "music_loop.w64"
@@ -213,13 +206,11 @@ class TestAudioProcessor:
         for track in tracks:
             track.touch()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.side_effect = [180.0, 240.0]
 
-            with patch('video_renderer.audio.write_concat_list'):
-                result = processor.create_music_loop(
-                    tracks, 3600, pre_validated=True
-                )
+            with patch("video_renderer.audio.write_concat_list"):
+                result = processor.create_music_loop(tracks, 3600, pre_validated=True)
 
                 assert result == temp_dir / "music_loop.w64"
 
@@ -230,7 +221,7 @@ class TestAudioProcessor:
         tracks = [temp_dir / "track1.mp3"]
         tracks[0].touch()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.return_value = 0.0
 
             with pytest.raises(ValueError, match="Track'lerin toplam suresi 0"):
@@ -243,26 +234,24 @@ class TestAudioProcessor:
         tracks = [temp_dir / "track1.mp3"]
         tracks[0].touch()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.return_value = -10.0
 
             with pytest.raises(ValueError, match="Track'lerin toplam suresi 0"):
                 processor.create_music_loop(tracks, 3600)
 
-    def test_create_music_loop_with_invalid_tracks(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_create_music_loop_with_invalid_tracks(self, mock_ffmpeg_runner, temp_dir):
         """Test music loop creation with invalid tracks."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
         tracks = [temp_dir / "bad_track.mp3"]
         tracks[0].touch()
 
-        with patch.object(
-            processor, 'validate_tracks', return_value=([], [(tracks[0], "Error")])
+        with (
+            patch.object(processor, "validate_tracks", return_value=([], [(tracks[0], "Error")])),
+            pytest.raises(ValueError, match="Bozuk track'ler"),
         ):
-            with pytest.raises(ValueError, match="Bozuk track'ler"):
-                processor.create_music_loop(tracks, 3600)
+            processor.create_music_loop(tracks, 3600)
 
     def test_apply_gain(self, mock_ffmpeg_runner, temp_dir):
         """Test gain application to audio."""
@@ -332,20 +321,15 @@ class TestAudioProcessor:
 
         backgrounds = [(bg1, -8.5), (bg2, -5.0)]
 
-        with patch.object(processor, 'apply_gain') as mock_apply:
-            mock_apply.side_effect = [
-                temp_dir / "rain_bg.w64",
-                temp_dir / "fire_bg.w64"
-            ]
+        with patch.object(processor, "apply_gain") as mock_apply:
+            mock_apply.side_effect = [temp_dir / "rain_bg.w64", temp_dir / "fire_bg.w64"]
 
             results = processor.process_backgrounds(backgrounds)
 
             assert len(results) == 2
             assert mock_apply.call_count == 2
 
-    def test_standardize_tracks_skip_valid_mp3(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_standardize_tracks_skip_valid_mp3(self, mock_ffmpeg_runner, temp_dir):
         """Test track standardization skips already valid MP3s."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
@@ -355,10 +339,10 @@ class TestAudioProcessor:
         archive_dir = temp_dir / "archive"
 
         # Mock ffprobe to return valid MP3 info
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
                 returncode=0,
-                stdout='{"streams": [{"codec_name": "mp3", "sample_rate": "48000", "bit_rate": "320000"}]}'
+                stdout='{"streams": [{"codec_name": "mp3", "sample_rate": "48000", "bit_rate": "320000"}]}',
             )
 
             results = processor.standardize_tracks([track], archive_dir)
@@ -366,9 +350,7 @@ class TestAudioProcessor:
             assert len(results) == 1
             assert results[0] == track
 
-    def test_standardize_tracks_convert_invalid(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_standardize_tracks_convert_invalid(self, mock_ffmpeg_runner, temp_dir):
         """Test track standardization converts invalid tracks."""
         processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)
 
@@ -378,12 +360,12 @@ class TestAudioProcessor:
         archive_dir = temp_dir / "archive"
         archive_dir.mkdir()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             # First call: ffprobe (returns empty/invalid)
             # Second call: ffmpeg conversion
             mock_run.side_effect = [
                 Mock(returncode=0, stdout='{"streams": []}'),
-                Mock(returncode=0)
+                Mock(returncode=0),
             ]
 
             results = processor.standardize_tracks([track], archive_dir)
@@ -405,10 +387,10 @@ class TestAudioProcessor:
 
         callback = MagicMock()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(returncode=0, stdout='{"streams": []}'),
-                Mock(returncode=0)
+                Mock(returncode=0),
             ] * 3  # For each track
 
             results = processor.standardize_tracks(tracks, archive_dir, callback)
@@ -429,7 +411,7 @@ class TestMuxVideoAudio:
         video.touch()
         audio.touch()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.return_value = 3600.0
 
             result = mux_video_audio(mock_ffmpeg_runner, video, audio, output)
@@ -448,12 +430,11 @@ class TestMuxVideoAudio:
 
         callback = MagicMock()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.return_value = 3600.0
 
             result = mux_video_audio(
-                mock_ffmpeg_runner, video, audio, output,
-                progress_callback=callback
+                mock_ffmpeg_runner, video, audio, output, progress_callback=callback
             )
 
             mock_ffmpeg_runner.set_progress_callback.assert_called_once_with(callback)
@@ -467,13 +448,10 @@ class TestMuxVideoAudio:
         video.touch()
         audio.touch()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.return_value = 3600.0
 
-            result = mux_video_audio(
-                mock_ffmpeg_runner, video, audio, output,
-                audio_bitrate="256k"
-            )
+            result = mux_video_audio(mock_ffmpeg_runner, video, audio, output, audio_bitrate="256k")
 
             # Verify bitrate in command
             call_args = mock_ffmpeg_runner.run.call_args[0][0]
@@ -482,12 +460,15 @@ class TestMuxVideoAudio:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("gain_db, expected_filter", [
-    (-8.5, "volume=-8.5dB"),
-    (0.0, "volume=0.0dB"),
-    (5.0, "volume=5.0dB"),
-    (-12.75, "volume=-12.75dB"),
-])
+@pytest.mark.parametrize(
+    "gain_db, expected_filter",
+    [
+        (-8.5, "volume=-8.5dB"),
+        (0.0, "volume=0.0dB"),
+        (5.0, "volume=5.0dB"),
+        (-12.75, "volume=-12.75dB"),
+    ],
+)
 def test_gain_filter_values(mock_ffmpeg_runner, temp_dir, gain_db, expected_filter):
     """Test gain filter values are correctly formatted."""
     processor = AudioProcessor(mock_ffmpeg_runner, temp_dir)

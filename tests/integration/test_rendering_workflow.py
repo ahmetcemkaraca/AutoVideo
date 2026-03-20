@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Integration tests for video rendering workflow.
 
@@ -10,16 +9,15 @@ Tests cover:
 - Error handling and recovery
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-import json
-import shutil
-from pathlib import Path
-from unittest.mock import MagicMock, patch, Mock
-from video_renderer.video import VideoEncoder
-from video_renderer.audio import AudioProcessor, mux_video_audio
-from video_renderer.batch import BatchQueue, RenderJob, JobStatus, parse_duration
+
 from config import CODEC_H264, COLOR_BT709
+from video_renderer.audio import AudioProcessor, mux_video_audio
+from video_renderer.batch import BatchQueue, JobStatus, parse_duration
 from video_renderer.ffmpeg import FFmpegRunner
+from video_renderer.video import VideoEncoder
 
 
 @pytest.mark.integration
@@ -44,10 +42,7 @@ class TestRenderingWorkflow:
     @pytest.fixture
     def sample_tracks(self, work_dir):
         """Create sample audio tracks."""
-        tracks = [
-            work_dir / "music" / f"track{i}.mp3"
-            for i in range(1, 4)
-        ]
+        tracks = [work_dir / "music" / f"track{i}.mp3" for i in range(1, 4)]
         for track in tracks:
             track.parent.mkdir(parents=True, exist_ok=True)
             track.touch()
@@ -56,18 +51,13 @@ class TestRenderingWorkflow:
     @pytest.fixture
     def sample_backgrounds(self, work_dir):
         """Create sample background audio."""
-        backgrounds = [
-            work_dir / "background" / f"bg{i}.mp3"
-            for i in range(1, 3)
-        ]
+        backgrounds = [work_dir / "background" / f"bg{i}.mp3" for i in range(1, 3)]
         for bg in backgrounds:
             bg.parent.mkdir(parents=True, exist_ok=True)
             bg.touch()
         return backgrounds
 
-    def test_full_rendering_workflow(
-        self, work_dir, sample_intro, sample_loop, sample_tracks
-    ):
+    def test_full_rendering_workflow(self, work_dir, sample_intro, sample_loop, sample_tracks):
         """Test complete rendering workflow from sources to output."""
         # Setup
         tmp_dir = work_dir / "tmp"
@@ -75,21 +65,26 @@ class TestRenderingWorkflow:
         output_path = work_dir / "final_output.mp4"
 
         runner = FFmpegRunner(tmp_dir / "ffmpeg.log")
-        encoder = VideoEncoder(
-            runner, CODEC_H264, COLOR_BT709,
-            width=1920, height=1080, fps=60
-        )
+        encoder = VideoEncoder(runner, CODEC_H264, COLOR_BT709, width=1920, height=1080, fps=60)
         audio_processor = AudioProcessor(runner, tmp_dir)
 
-        with patch('video_renderer.video.probe_video') as mock_probe, \
-             patch('video_renderer.video.get_duration') as mock_duration, \
-             patch('subprocess.run') as mock_subprocess:
+        with (
+            patch("video_renderer.video.probe_video") as mock_probe,
+            patch("video_renderer.video.get_duration") as mock_duration,
+            patch("subprocess.run") as mock_subprocess,
+        ):
 
             # Mock video info
             from video_renderer.ffmpeg import VideoInfo
+
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=30.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=30.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
             mock_duration.side_effect = [30.0, 60.0, 180.0, 240.0, 3600.0]
 
@@ -103,32 +98,27 @@ class TestRenderingWorkflow:
             encoder.normalize_video(sample_loop, loop_norm)
 
             # Concat videos
-            video_only = encoder.concat_videos(
-                intro_norm, loop_norm, 3600, tmp_dir
-            )
+            video_only = encoder.concat_videos(intro_norm, loop_norm, 3600, tmp_dir)
 
             # Process audio
-            with patch.object(audio_processor, 'validate_and_convert_track') as mock_validate:
+            with patch.object(audio_processor, "validate_and_convert_track") as mock_validate:
                 mock_validate.side_effect = [
-                    (tmp_dir / f"validated_track{i}.w64", True, "")
-                    for i in range(1, 4)
+                    (tmp_dir / f"validated_track{i}.w64", True, "") for i in range(1, 4)
                 ]
 
-                with patch('video_renderer.audio.write_concat_list'):
+                with patch("video_renderer.audio.write_concat_list"):
                     music_loop = audio_processor.create_music_loop(
                         sample_tracks, 3600, pre_validated=True
                     )
 
             # Mux final
-            with patch('video_renderer.audio.get_duration') as mock_mux_duration:
+            with patch("video_renderer.audio.get_duration") as mock_mux_duration:
                 mock_mux_duration.return_value = 3600.0
                 final = mux_video_audio(runner, video_only, music_loop, output_path)
 
             assert final == output_path
 
-    def test_batch_workflow(
-        self, work_dir, sample_intro, sample_loop, sample_tracks
-    ):
+    def test_batch_workflow(self, work_dir, sample_intro, sample_loop, sample_tracks):
         """Test batch rendering workflow."""
         queue_file = work_dir / "batch_queue.json"
         queue = BatchQueue(queue_file=queue_file)
@@ -155,9 +145,7 @@ class TestRenderingWorkflow:
         assert len(processed) == 3
         assert all(j.status == JobStatus.COMPLETE for j in processed)
 
-    def test_error_recovery_workflow(
-        self, work_dir, sample_intro, sample_loop
-    ):
+    def test_error_recovery_workflow(self, work_dir, sample_intro, sample_loop):
         """Test workflow error handling and recovery."""
         queue_file = work_dir / "batch_queue.json"
         queue = BatchQueue(queue_file=queue_file)
@@ -199,20 +187,26 @@ class TestRenderingWorkflow:
         progress_updates = []
 
         def track_progress(label, progress):
-            progress_updates.append({
-                "label": label,
-                "percent": progress.percent,
-                "time": progress.time_seconds
-            })
+            progress_updates.append(
+                {"label": label, "percent": progress.percent, "time": progress.time_seconds}
+            )
 
-        with patch('video_renderer.video.probe_video') as mock_probe, \
-             patch('video_renderer.video.get_duration') as mock_duration, \
-             patch('subprocess.run') as mock_subprocess:
+        with (
+            patch("video_renderer.video.probe_video") as mock_probe,
+            patch("video_renderer.video.get_duration") as mock_duration,
+            patch("subprocess.run") as mock_subprocess,
+        ):
 
             from video_renderer.ffmpeg import VideoInfo
+
             mock_probe.return_value = VideoInfo(
-                codec="h264", width=1920, height=1080, fps="60/1",
-                duration=30.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="h264",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=30.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
             mock_duration.return_value = 30.0
             mock_subprocess.return_value = Mock(returncode=0)
@@ -258,15 +252,11 @@ class TestAudioWorkflowIntegration:
         processor = AudioProcessor(runner, work_dir / "tmp")
 
         # Create test audio files
-        tracks = [
-            work_dir / "track1.mp3",
-            work_dir / "track2.flac",
-            work_dir / "corrupted.wav"
-        ]
+        tracks = [work_dir / "track1.mp3", work_dir / "track2.flac", work_dir / "corrupted.wav"]
         for track in tracks:
             track.touch()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             # First two succeed, third fails
             mock_run.side_effect = [
                 Mock(returncode=0, stderr=""),  # track1
@@ -284,20 +274,15 @@ class TestAudioWorkflowIntegration:
         runner = FFmpegRunner()
         processor = AudioProcessor(runner, work_dir / "tmp")
 
-        tracks = [
-            work_dir / f"track{i}.mp3"
-            for i in range(3)
-        ]
+        tracks = [work_dir / f"track{i}.mp3" for i in range(3)]
         for track in tracks:
             track.touch()
 
-        with patch('video_renderer.audio.get_duration') as mock_duration:
+        with patch("video_renderer.audio.get_duration") as mock_duration:
             mock_duration.side_effect = [180.0, 240.0, 300.0]  # Total 12 min
 
-            with patch('video_renderer.audio.write_concat_list'):
-                music_loop = processor.create_music_loop(
-                    tracks, 3600, pre_validated=True
-                )
+            with patch("video_renderer.audio.write_concat_list"):
+                music_loop = processor.create_music_loop(tracks, 3600, pre_validated=True)
 
                 assert music_loop == work_dir / "tmp" / "music_loop.w64"
 
@@ -307,25 +292,19 @@ class TestAudioWorkflowIntegration:
         processor = AudioProcessor(runner, work_dir / "tmp")
 
         main_track = work_dir / "music.w64"
-        backgrounds = [
-            (work_dir / "rain.mp3", -8.0),
-            (work_dir / "fire.mp3", -5.0)
-        ]
+        backgrounds = [(work_dir / "rain.mp3", -8.0), (work_dir / "fire.mp3", -5.0)]
 
         for track in [main_track] + [b[0] for b in backgrounds]:
             track.touch()
 
-        with patch.object(processor, 'apply_gain') as mock_gain:
-            mock_gain.side_effect = [
-                work_dir / "rain_bg.w64",
-                work_dir / "fire_bg.w64"
-            ]
+        with patch.object(processor, "apply_gain") as mock_gain:
+            mock_gain.side_effect = [work_dir / "rain_bg.w64", work_dir / "fire_bg.w64"]
 
             processed = processor.process_backgrounds(backgrounds)
 
             assert len(processed) == 2
 
-            with patch('video_renderer.audio.get_duration') as mock_duration:
+            with patch("video_renderer.audio.get_duration") as mock_duration:
                 mock_duration.return_value = 3600.0
 
                 mixed = processor.mix_tracks(main_track, processed, 3600)
@@ -390,14 +369,17 @@ class TestBatchQueuePersistence:
 class TestDurationParsingIntegration:
     """Integration tests for duration parsing."""
 
-    @pytest.mark.parametrize("input_str, expected_seconds", [
-        ("1:00:00", 3600),
-        ("0:30:00", 1800),
-        ("0:00:30", 30),
-        ("30:00", 1800),
-        ("60", 3600),
-        ("random_8_10", "random"),  # Special case
-    ])
+    @pytest.mark.parametrize(
+        "input_str, expected_seconds",
+        [
+            ("1:00:00", 3600),
+            ("0:30:00", 1800),
+            ("0:00:30", 30),
+            ("30:00", 1800),
+            ("60", 3600),
+            ("random_8_10", "random"),  # Special case
+        ],
+    )
     def test_duration_parsing(self, input_str, expected_seconds):
         """Test various duration string formats."""
         if expected_seconds == "random":
@@ -419,7 +401,7 @@ class TestErrorHandling:
         missing = work_dir / "missing.mp4"
         output = work_dir / "output.mp4"
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.side_effect = FileNotFoundError("File not found")
 
             is_compat, reason = encoder.check_compatibility(missing)
@@ -435,10 +417,9 @@ class TestErrorHandling:
         invalid = work_dir / "invalid.mp3"
         invalid.touch()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=1,
-                stderr="Invalid data found when processing input"
+                returncode=1, stderr="Invalid data found when processing input"
             )
 
             output, success, error = processor.validate_and_convert_track(invalid)
@@ -475,11 +456,14 @@ class TestErrorHandling:
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("codec, expected_encoder", [
-    ("h264", "libx264"),
-    ("h265", "libx265"),
-    ("av1", "libsvtav1"),
-])
+@pytest.mark.parametrize(
+    "codec, expected_encoder",
+    [
+        ("h264", "libx264"),
+        ("h265", "libx265"),
+        ("av1", "libsvtav1"),
+    ],
+)
 def test_codec_selection(codec, expected_encoder):
     """Test codec selection for different formats."""
     from config import CODECS

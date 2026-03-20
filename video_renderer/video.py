@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Video processing: encoding, normalization, and concatenation.
 
@@ -11,25 +10,23 @@ OPTIMIZED VERSION:
 - Automatic quality-preserving optimizations
 """
 
-import shutil
 import math
+import shutil
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Optional, Callable, Tuple, Dict, Set
-import subprocess
 
 from .config import (
-    RenderConfig,
+    ALLOWED_FPS,
+    COLOR_BT709,
+    DEFAULT_HEIGHT,
+    DEFAULT_WIDTH,
     CodecConfig,
     ColorConfig,
-    COLOR_BT709,
-    DEFAULT_WIDTH,
-    DEFAULT_HEIGHT,
-    get_nvenc_extra_args,
     get_hwaccel_input_args,
-    ALLOWED_FPS,
+    get_nvenc_extra_args,
 )
-from .ffmpeg import FFmpegRunner, FFmpegProgress, probe_video, get_duration, write_concat_list
+from .ffmpeg import FFmpegProgress, FFmpegRunner, get_duration, probe_video, write_concat_list
 from .validator import PostRenderValidator
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -47,7 +44,7 @@ class VideoEncoder:
     """
 
     # Class-level cache for compatibility checks
-    _compatibility_cache: Dict[Tuple[str, str, int, int, int], bool] = {}
+    _compatibility_cache: dict[tuple[str, str, int, int, int], bool] = {}
 
     def __init__(
         self,
@@ -88,15 +85,15 @@ class VideoEncoder:
             return "videotoolbox"
         return "none"
 
-    def _detect_vaapi_device(self) -> Optional[str]:
+    def _detect_vaapi_device(self) -> str | None:
         """
         Detect available VAAPI device on Linux systems.
 
         Returns:
             Device path (e.g., '/dev/dri/renderD128') or None if not found
         """
-        import sys
         import platform
+        import sys
 
         # Only attempt VAAPI on Linux
         if sys.platform != "linux" and platform.system() != "Linux":
@@ -190,7 +187,7 @@ class VideoEncoder:
 
         return "unknown"
 
-    def check_compatibility(self, source: Path, use_cache: bool = True) -> Tuple[bool, str]:
+    def check_compatibility(self, source: Path, use_cache: bool = True) -> tuple[bool, str]:
         """
         OPTIMIZED: Check if source video is compatible with target settings.
 
@@ -285,9 +282,9 @@ class VideoEncoder:
         self,
         source: Path,
         output: Path,
-        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
+        progress_callback: Callable[[FFmpegProgress], None] | None = None,
         scale_algo: str = "lanczos",
-        bitrate: Optional[str] = None,
+        bitrate: str | None = None,
         keep_audio: bool = False,
     ) -> Path:
         """
@@ -354,11 +351,19 @@ class VideoEncoder:
             if self._use_gpu:
                 gpu_error = e
                 import logging
-                logging.getLogger(__name__).warning(f"Hardware encoding failed: {e}. Falling back to software...")
+
+                logging.getLogger(__name__).warning(
+                    f"Hardware encoding failed: {e}. Falling back to software..."
+                )
                 print(f"  [WARN] Hardware encoding failed: {e}. Falling back to software...")
                 try:
                     cmd_software = self._build_normalize_command(
-                        source, output, scale_algo, force_software=True, bitrate=bitrate, keep_audio=keep_audio
+                        source,
+                        output,
+                        scale_algo,
+                        force_software=True,
+                        bitrate=bitrate,
+                        keep_audio=keep_audio,
                     )
                     self.runner.run(cmd_software, capture_progress=bool(progress_callback))
                 except Exception as sw_error:
@@ -391,6 +396,7 @@ class VideoEncoder:
             duration_diff = abs(output_duration - source_duration) / source_duration
             if duration_diff > 0.1:  # More than 10% difference
                 import logging
+
                 logging.getLogger(__name__).warning(
                     f"Normalize output duration differs significantly from source: "
                     f"source={source_duration:.1f}s, output={output_duration:.1f}s "
@@ -400,14 +406,14 @@ class VideoEncoder:
         return output
 
     def _build_normalize_command(
-        self, 
-        source: Path, 
-        output: Path, 
-        scale_algo: str, 
+        self,
+        source: Path,
+        output: Path,
+        scale_algo: str,
         force_software: bool = False,
-        bitrate: Optional[str] = None,
+        bitrate: str | None = None,
         keep_audio: bool = False,
-    ) -> List[str]:
+    ) -> list[str]:
         """Build optimized FFmpeg command for video normalization.
 
         OPTIMIZED: Added performance flags for better encoding speed and web optimization.
@@ -491,24 +497,24 @@ class VideoEncoder:
             # Blacklist: -rc, -cq, -qp, -b:v, and their values
             # This is a bit tricky since some are flags and some are values.
             # Assuming standard ffmpeg syntax where these always take a value.
-            
+
             filtered_args = []
             skip_next = False
             blacklist = {"-rc", "-cq", "-qp", "-b:v", "-maxrate", "-bufsize", "-cbr"}
-            
+
             for arg in codec_args:
                 if skip_next:
                     skip_next = False
                     continue
-                
+
                 if arg in blacklist:
                     skip_next = True
                     continue
-                
+
                 filtered_args.append(arg)
-            
+
             codec_args = filtered_args
-            
+
             # Calculate bufsize (2x bitrate usually recommended for streaming/VBR constraint)
             # We need to parse bitrate string to integer to calc bufsize
             try:
@@ -516,22 +522,20 @@ class VideoEncoder:
                 val_int = float(val)
                 if "m" in bitrate.lower():
                     val_int *= 1000
-                
+
                 bufsize = f"{int(val_int * 2)}k"
-                
+
                 # Append new bitrate args
                 # Use Constrained VBR (CVBR) approach: -b:v target -maxrate target -bufsize 2*target
-                codec_args.extend([
-                    "-b:v", bitrate,
-                    "-maxrate", bitrate,
-                    "-bufsize", bufsize
-                ])
-                
+                codec_args.extend(["-b:v", bitrate, "-maxrate", bitrate, "-bufsize", bufsize])
+
                 # For NVENC, ensure we don't accidentally leave it in a confused mode.
                 # Usually -b:v + -maxrate is enough.
-                
+
             except Exception as e:
-                print(f"Warning: Could not parse bitrate '{bitrate}', ignoring override. Error: {e}")
+                print(
+                    f"Warning: Could not parse bitrate '{bitrate}', ignoring override. Error: {e}"
+                )
 
         cmd.extend(codec_args)
 
@@ -550,13 +554,7 @@ class VideoEncoder:
 
         if keep_audio:
             # Encode audio to standard AAC to ensure compatibility during concat
-            cmd.extend([
-                "-c:a", "aac",
-                "-b:a", "192k",
-                "-ac", "2",
-                "-ar", "48000",
-                str(output)
-            ])
+            cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000", str(output)])
         else:
             # No audio (video only)
             cmd.extend(["-an", str(output)])
@@ -603,7 +601,7 @@ class VideoEncoder:
             f"format=yuv420p"
         )
 
-    def _get_fast_concat_codec_args(self) -> List[str]:
+    def _get_fast_concat_codec_args(self) -> list[str]:
         """
         Get fastest possible codec args for the concat re-encode step.
 
@@ -653,25 +651,36 @@ class VideoEncoder:
         # Software: libx265 — ultrafast
         if "x265" in enc or "libx265" in enc:
             return [
-                "-c:v", "libx265", "-preset", "ultrafast",
-                "-crf", str(self.codec.crf), "-tag:v", "hvc1",
+                "-c:v",
+                "libx265",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                str(self.codec.crf),
+                "-tag:v",
+                "hvc1",
             ]
 
         # Software: libx264 — ultrafast (default fallback)
         if "x264" in enc or "libx264" in enc:
             return [
-                "-c:v", "libx264", "-preset", "ultrafast",
-                "-crf", str(self.codec.crf),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                str(self.codec.crf),
             ]
 
         # Unknown encoder: use same codec args but log warning
         import logging
+
         logging.getLogger(__name__).warning(
             f"Unknown encoder '{self.codec.encoder}' for fast concat, using default args"
         )
         return self.codec.to_ffmpeg_args()
 
-    def _get_bsf_for_codec(self) -> Optional[str]:
+    def _get_bsf_for_codec(self) -> str | None:
         """Get the bitstream filter needed to remux MP4 → MPEG-TS for this codec."""
         enc = self.codec.encoder.lower()
         if "h264" in enc or "x264" in enc:
@@ -684,11 +693,14 @@ class VideoEncoder:
     def _remux_to_ts(self, mp4_path: Path, ts_path: Path, keep_audio: bool = False) -> None:
         """Remux an MP4 file to MPEG-TS format (stream copy, no re-encode)."""
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(mp4_path),
-            "-c:v", "copy",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(mp4_path),
+            "-c:v",
+            "copy",
         ]
-        
+
         if keep_audio:
             cmd.extend(["-c:a", "copy"])
         else:
@@ -706,8 +718,8 @@ class VideoEncoder:
         loop: Path,
         total_seconds: int,
         tmp_dir: Path,
-        progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
-        on_duration_error: Optional[Callable[[float, float], bool]] = None,
+        progress_callback: Callable[[FFmpegProgress], None] | None = None,
+        on_duration_error: Callable[[float, float], bool] | None = None,
         keep_audio: bool = False,
     ) -> Path:
         """
@@ -721,12 +733,13 @@ class VideoEncoder:
              - Raw concat with -c:v copy (has all frames)
              - Remux with -r FPS + -vframes (frame-exact, timestamp fix)
           3. Last resort: Re-encode with fastest settings
-          
+
         Args:
             on_duration_error: Optional callback(actual_duration, target_duration) → bool
                               Called if duration is wrong, returns True if user wants to fix it
         """
         import logging
+
         logger = logging.getLogger(__name__)
 
         intro_duration = get_duration(intro)
@@ -745,10 +758,10 @@ class VideoEncoder:
 
             # Remux MP4 → MPEG-TS (stream copy, instant)
             if not intro_ts.exists():
-                print(f"  [TS Remux] intro -> .ts")
+                print("  [TS Remux] intro -> .ts")
                 self._remux_to_ts(intro, intro_ts, keep_audio=keep_audio)
             if not loop_ts.exists():
-                print(f"  [TS Remux] loop -> .ts")
+                print("  [TS Remux] loop -> .ts")
                 self._remux_to_ts(loop, loop_ts, keep_audio=keep_audio)
 
             # Concat demuxer on TS files → MP4 (frame-exact via -vframes)
@@ -758,22 +771,32 @@ class VideoEncoder:
 
             print(f"  [Concat] 1 intro + {loop_count} loop (TS stream copy)")
             cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", str(concat_list_ts),
-                "-c:v", "copy",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list_ts),
+                "-c:v",
+                "copy",
             ]
-            
+
             if keep_audio:
                 cmd.extend(["-c:a", "copy"])
             else:
                 cmd.append("-an")
-            
-            cmd.extend([
-                "-vframes", str(target_frames),  # Frame-exact (1728000 @ 60fps for 8h)
-                "-movflags", "+faststart",
-                str(output),
-            ])
+
+            cmd.extend(
+                [
+                    "-vframes",
+                    str(target_frames),  # Frame-exact (1728000 @ 60fps for 8h)
+                    "-movflags",
+                    "+faststart",
+                    str(output),
+                ]
+            )
             self.runner.run(cmd, capture_progress=False)
 
             # Verify output exists
@@ -798,8 +821,11 @@ class VideoEncoder:
             logger.warning(f"TS concat failed: {ts_err}")
             print(f"  [WARN] TS concat basarisiz: {ts_err}")
             # Cleanup
-            for f in [tmp_dir / "intro_concat.ts", tmp_dir / "loop_concat.ts",
-                       tmp_dir / "video_list_ts.txt"]:
+            for f in [
+                tmp_dir / "intro_concat.ts",
+                tmp_dir / "loop_concat.ts",
+                tmp_dir / "video_list_ts.txt",
+            ]:
                 if f.exists():
                     f.unlink()
             if output.exists():
@@ -813,12 +839,18 @@ class VideoEncoder:
             write_concat_list(files, concat_list)
 
             # Pass 1: Raw concat (all frames, possibly broken timestamps)
-            print(f"  [Concat Pass 1] raw MP4 concat (stream copy)")
+            print("  [Concat Pass 1] raw MP4 concat (stream copy)")
             cmd_raw = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", str(concat_list),
-                "-c:v", "copy",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-c:v",
+                "copy",
             ]
 
             if keep_audio:
@@ -834,24 +866,32 @@ class VideoEncoder:
 
             # Pass 2: Fix timestamps via remux with forced framerate + frame-exact trim
             # -r as INPUT option forces timestamp recalculation from frame count
-            print(f"  [Concat Pass 2] timestamp fix remux")
+            print("  [Concat Pass 2] timestamp fix remux")
             cmd_fix = [
-                "ffmpeg", "-y",
-                "-fflags", "+genpts",
-                "-i", str(raw_output),
-                "-c:v", "copy",
+                "ffmpeg",
+                "-y",
+                "-fflags",
+                "+genpts",
+                "-i",
+                str(raw_output),
+                "-c:v",
+                "copy",
             ]
-            
+
             if keep_audio:
                 cmd_fix.extend(["-c:a", "copy"])
             else:
                 cmd_fix.append("-an")
-                
-            cmd_fix.extend([
-                "-vframes", str(target_frames),  # Frame-exact trim
-                "-movflags", "+faststart",
-                str(output),
-            ])
+
+            cmd_fix.extend(
+                [
+                    "-vframes",
+                    str(target_frames),  # Frame-exact trim
+                    "-movflags",
+                    "+faststart",
+                    str(output),
+                ]
+            )
             self.runner.run(cmd_fix, capture_progress=False)
 
             # Cleanup raw
@@ -882,7 +922,7 @@ class VideoEncoder:
                 output.unlink()
 
         # ── Strategy 3: Re-encode with fastest settings (last resort) ──
-        print(f"  [WARN] Re-encode fallback kullaniliyor...")
+        print("  [WARN] Re-encode fallback kullaniliyor...")
         concat_list = tmp_dir / "video_list.txt"
         files = [intro] + [loop] * loop_count
         write_concat_list(files, concat_list)
@@ -890,25 +930,38 @@ class VideoEncoder:
         cmd = ["ffmpeg", "-y"]
         if self._use_gpu and self._accel_type == "nvenc":
             cmd.extend(["-hwaccel", "cuda"])
-        cmd.extend([
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_list),
-            "-fps_mode", "cfr", "-r", str(self.fps),
-        ])
-        
+        cmd.extend(
+            [
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-fps_mode",
+                "cfr",
+                "-r",
+                str(self.fps),
+            ]
+        )
+
         if keep_audio:
-             # Re-encode audio to AAC if we're re-encoding video
-             cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            # Re-encode audio to AAC if we're re-encoding video
+            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
         else:
-             cmd.append("-an")
+            cmd.append("-an")
 
         cmd.extend(self._get_fast_concat_codec_args())
         cmd.extend(self.color.to_ffmpeg_args())
-        cmd.extend([
-            "-vframes", str(target_frames),  # Frame-exact
-            "-movflags", "+faststart",
-            str(output),
-        ])
+        cmd.extend(
+            [
+                "-vframes",
+                str(target_frames),  # Frame-exact
+                "-movflags",
+                "+faststart",
+                str(output),
+            ]
+        )
         self.runner.run(cmd, capture_progress=False)
 
         if not output.exists():
@@ -929,9 +982,9 @@ class VideoEncoder:
 
 def encode_parallel(
     encoder: VideoEncoder,
-    sources: List[Tuple[Path, Path]],  # List of (source, output) pairs
-    progress_callback: Optional[Callable[[str, FFmpegProgress], None]] = None,
-) -> List[Path]:
+    sources: list[tuple[Path, Path]],  # List of (source, output) pairs
+    progress_callback: Callable[[str, FFmpegProgress], None] | None = None,
+) -> list[Path]:
     """
     Encode multiple videos in parallel.
 
@@ -1005,14 +1058,12 @@ def validate_rendered_output(
     validator = PostRenderValidator()
 
     result = validator.validate_output(
-        output_path=output_path,
-        target_duration=target_duration,
-        target_specs=target_specs
+        output_path=output_path, target_duration=target_duration, target_specs=target_specs
     )
 
     # Log validation results
     if result.valid:
-        print(f"  [Validation] ✓ Output validation passed")
+        print("  [Validation] ✓ Output validation passed")
         if result.warnings:
             print(f"  [Validation] ⚠ {len(result.warnings)} warnings:")
             for warning in result.warnings:

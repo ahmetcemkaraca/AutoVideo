@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Validation Screen - Displays validation results with color-coded issues.
 
@@ -11,19 +10,18 @@ Shows:
 - Action buttons (retry, export report, continue)
 """
 
-from pathlib import Path
-from typing import Optional, Dict, Any, List
-from datetime import datetime
 import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 from textual.app import ComposeResult
-from textual.screen import Screen
-from textual.widgets import Static, Button, Footer, DataTable, Markdown
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.binding import Binding
+from textual.containers import Container, Horizontal
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Static
 
-from ..validator import ValidationResult, ValidationIssue, ValidationSeverity
-
+from ..validator import ValidationIssue, ValidationResult, ValidationSeverity
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Validation Screen
@@ -59,7 +57,10 @@ class ValidationScreen(Screen):
 
         # Header
         yield Container(
-            Static(f"{'Pre-Render' if self.result.stage == 'pre_render' else 'Post-Render'} Doğrulama", classes="title"),
+            Static(
+                f"{'Pre-Render' if self.result.stage == 'pre_render' else 'Post-Render'} Doğrulama",
+                classes="title",
+            ),
             Static(f"Durum: {status_text}", classes=f"status-text {status_class}"),
             classes="container",
         )
@@ -170,7 +171,7 @@ class ValidationScreen(Screen):
 
         return "\n".join(lines)
 
-    def _format_metadata(self, metadata: Dict[str, Any]) -> str:
+    def _format_metadata(self, metadata: dict[str, Any]) -> str:
         """Format metadata for display."""
         lines = []
         for key, value in metadata.items():

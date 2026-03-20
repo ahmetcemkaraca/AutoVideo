@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Comprehensive tests for AudioProcessor and VideoEncoder optimizations.
 
@@ -13,35 +12,37 @@ Tests cover:
 """
 
 import sys
-from pathlib import Path
 import time
+from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from video_renderer.ffmpeg import FFmpegRunner, PROGRESS_PATTERNS, ERROR_PATTERNS
-from video_renderer.audio import AudioProcessor
-from video_renderer.video import VideoEncoder
 from config import (
-    detect_available_encoders, get_best_encoder,
-    clear_encoder_cache, CODEC_H264_NVENC
+    CODEC_H264_NVENC,
+    clear_encoder_cache,
+    detect_available_encoders,
+    get_best_encoder,
 )
-
+from video_renderer.audio import AudioProcessor
+from video_renderer.ffmpeg import ERROR_PATTERNS, PROGRESS_PATTERNS, FFmpegRunner
+from video_renderer.video import VideoEncoder
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FFmpeg Optimization Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def test_precompiled_regex_patterns():
     """Test that regex patterns are pre-compiled for performance."""
     print("\n[TEST] Precompiled Regex Patterns")
 
     # Verify patterns are compiled
-    assert hasattr(PROGRESS_PATTERNS['frame'], 'pattern'), "Frame pattern should be compiled"
-    assert hasattr(PROGRESS_PATTERNS['fps'], 'pattern'), "FPS pattern should be compiled"
-    assert hasattr(PROGRESS_PATTERNS['time'], 'pattern'), "Time pattern should be compiled"
-    assert hasattr(ERROR_PATTERNS['hardware_error'], 'pattern'), "Error pattern should be compiled"
+    assert hasattr(PROGRESS_PATTERNS["frame"], "pattern"), "Frame pattern should be compiled"
+    assert hasattr(PROGRESS_PATTERNS["fps"], "pattern"), "FPS pattern should be compiled"
+    assert hasattr(PROGRESS_PATTERNS["time"], "pattern"), "Time pattern should be compiled"
+    assert hasattr(ERROR_PATTERNS["hardware_error"], "pattern"), "Error pattern should be compiled"
 
     # Test pattern matching
     test_line = "frame=  123 fps= 45.6 q=28.0 size=    1234kB time=00:01:23.45 bitrate= 123.4kbits/s speed=1.23x"
@@ -76,7 +77,9 @@ def test_progress_parsing_performance():
     assert result.time_seconds == 83.45, "Should extract time in seconds"
 
     per_iteration = elapsed / iterations * 1000  # microseconds
-    assert per_iteration < 0.1, f"Parsing too slow: {per_iteration:.3f}ms per iteration (target: <0.1ms)"
+    assert (
+        per_iteration < 0.1
+    ), f"Parsing too slow: {per_iteration:.3f}ms per iteration (target: <0.1ms)"
 
     print(f"  [PASS] Parsed {iterations} lines in {elapsed:.3f}s ({per_iteration:.3f}ms/iteration)")
 
@@ -113,8 +116,17 @@ def test_fallback_command_building():
 
     # Test NVENC fallback
     nvenc_cmd = [
-        "ffmpeg", "-y", "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
-        "-i", "input.mp4", "-c:v", "h264_nvenc", "output.mp4"
+        "ffmpeg",
+        "-y",
+        "-hwaccel",
+        "cuda",
+        "-hwaccel_output_format",
+        "cuda",
+        "-i",
+        "input.mp4",
+        "-c:v",
+        "h264_nvenc",
+        "output.mp4",
     ]
     fallback = runner._build_fallback_command(nvenc_cmd)
 
@@ -136,7 +148,9 @@ def test_stderr_circular_buffer():
         runner._stderr_buffer.append(f"Line {i}")
 
     # Should only keep last 100 lines (buffer capacity)
-    assert len(runner._stderr_buffer) == 100, f"Buffer should have 100 lines, has {len(runner._stderr_buffer)}"
+    assert (
+        len(runner._stderr_buffer) == 100
+    ), f"Buffer should have 100 lines, has {len(runner._stderr_buffer)}"
 
     # Check oldest line is 100, not 0
     oldest = runner._stderr_buffer[0]
@@ -148,6 +162,7 @@ def test_stderr_circular_buffer():
 # ═══════════════════════════════════════════════════════════════════════════════
 # Hardware Encoder Detection Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def test_encoder_detection_caching():
     """Test that encoder detection uses caching."""
@@ -200,21 +215,21 @@ def test_best_encoder_selection():
 # Audio Processor Optimization Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def test_audio_processor_caching():
     """Test AudioProcessor caching for validated files."""
     print("\n[TEST] AudioProcessor Caching")
 
     from video_renderer.ffmpeg import FFmpegRunner
-    from video_renderer.audio import AudioProcessor
 
     runner = FFmpegRunner()
     processor = AudioProcessor(runner, Path("tmp"))
 
     # Verify cache is initialized
-    assert hasattr(processor, '_validated_cache'), "Should have validation cache"
+    assert hasattr(processor, "_validated_cache"), "Should have validation cache"
 
     # Test max workers optimization
-    assert hasattr(processor, '_max_workers'), "Should have max_workers setting"
+    assert hasattr(processor, "_max_workers"), "Should have max_workers setting"
     assert processor._max_workers <= 4, "Max workers should be reasonable"
 
     print(f"  [PASS] AudioProcessor initialized with {processor._max_workers} workers")
@@ -224,18 +239,18 @@ def test_audio_processor_caching():
 # Video Encoder Optimization Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def test_video_encoder_acceleration_detection():
     """Test VideoEncoder acceleration type detection."""
     print("\n[TEST] VideoEncoder Acceleration Detection")
 
     from video_renderer.ffmpeg import FFmpegRunner
-    from video_renderer.video import VideoEncoder
 
     runner = FFmpegRunner()
 
     # Test with NVENC codec
     encoder_nvenc = VideoEncoder(runner, CODEC_H264_NVENC)
-    assert encoder_nvenc._accel_type == 'nvenc', "Should detect NVENC"
+    assert encoder_nvenc._accel_type == "nvenc", "Should detect NVENC"
     assert encoder_nvenc._use_gpu == True, "Should use GPU"
 
     # Test optimal thread calculation
@@ -251,13 +266,12 @@ def test_video_encoder_compatibility_caching():
     print("\n[TEST] VideoEncoder Compatibility Caching")
 
     from video_renderer.ffmpeg import FFmpegRunner
-    from video_renderer.video import VideoEncoder
 
     runner = FFmpegRunner()
     encoder = VideoEncoder(runner, CODEC_H264_NVENC)
 
     # Verify cache is initialized
-    assert hasattr(encoder, '_compatibility_cache'), "Should have compatibility cache"
+    assert hasattr(encoder, "_compatibility_cache"), "Should have compatibility cache"
 
     # Test FPS parsing
     fps = encoder._parse_fps("60/1")
@@ -273,6 +287,7 @@ def test_video_encoder_compatibility_caching():
 # Test Runner
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def run_all_tests():
     """Run all optimization tests."""
     print("=" * 80)
@@ -280,24 +295,36 @@ def run_all_tests():
     print("=" * 80)
 
     tests = [
-        ("FFmpeg Optimizations", [
-            test_precompiled_regex_patterns,
-            test_progress_parsing_performance,
-            test_error_detection,
-            test_fallback_command_building,
-            test_stderr_circular_buffer,
-        ]),
-        ("Hardware Detection", [
-            test_encoder_detection_caching,
-            test_best_encoder_selection,
-        ]),
-        ("Audio Processor", [
-            test_audio_processor_caching,
-        ]),
-        ("Video Encoder", [
-            test_video_encoder_acceleration_detection,
-            test_video_encoder_compatibility_caching,
-        ]),
+        (
+            "FFmpeg Optimizations",
+            [
+                test_precompiled_regex_patterns,
+                test_progress_parsing_performance,
+                test_error_detection,
+                test_fallback_command_building,
+                test_stderr_circular_buffer,
+            ],
+        ),
+        (
+            "Hardware Detection",
+            [
+                test_encoder_detection_caching,
+                test_best_encoder_selection,
+            ],
+        ),
+        (
+            "Audio Processor",
+            [
+                test_audio_processor_caching,
+            ],
+        ),
+        (
+            "Video Encoder",
+            [
+                test_video_encoder_acceleration_detection,
+                test_video_encoder_compatibility_caching,
+            ],
+        ),
     ]
 
     passed = 0

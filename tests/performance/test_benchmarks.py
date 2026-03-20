@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Performance benchmarks for AutoVideo.
 
@@ -10,16 +9,18 @@ Tests cover:
 - Large file handling
 """
 
-import pytest
 import time
 import tracemalloc
 from pathlib import Path
-from unittest.mock import patch, MagicMock, Mock
-from video_renderer.video import VideoEncoder, encode_parallel
-from video_renderer.audio import AudioProcessor
-from video_renderer.batch import BatchQueue, RenderJob
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+
 from config import CODEC_H264, COLOR_BT709
+from video_renderer.audio import AudioProcessor
+from video_renderer.batch import BatchQueue
 from video_renderer.ffmpeg import FFmpegRunner
+from video_renderer.video import VideoEncoder, encode_parallel
 
 
 @pytest.mark.performance
@@ -36,14 +37,22 @@ class TestEncodingPerformance:
         output = temp_dir / "output.mp4"
         source.touch()
 
-        with patch('video_renderer.video.probe_video') as mock_probe, \
-             patch('video_renderer.video.get_duration') as mock_duration, \
-             patch('subprocess.run') as mock_run:
+        with (
+            patch("video_renderer.video.probe_video") as mock_probe,
+            patch("video_renderer.video.get_duration") as mock_duration,
+            patch("subprocess.run") as mock_run,
+        ):
 
             from video_renderer.ffmpeg import VideoInfo
+
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=60.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=60.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
             mock_duration.return_value = 60.0
 
@@ -76,13 +85,21 @@ class TestEncodingPerformance:
             sources.append(source)
             outputs.append(output)
 
-        with patch('video_renderer.video.probe_video') as mock_probe, \
-             patch('subprocess.run') as mock_run:
+        with (
+            patch("video_renderer.video.probe_video") as mock_probe,
+            patch("subprocess.run") as mock_run,
+        ):
 
             from video_renderer.ffmpeg import VideoInfo
+
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=60.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=60.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
 
             def slow_run(*args, **kwargs):
@@ -130,11 +147,17 @@ class TestEncodingPerformance:
 
         test_file = temp_dir / "test.mp4"
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             from video_renderer.ffmpeg import VideoInfo
+
             mock_probe.return_value = VideoInfo(
-                codec="h264", width=1920, height=1080, fps="60/1",
-                duration=60.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="h264",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=60.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
 
             start_time = time.time()
@@ -180,7 +203,7 @@ class TestMemoryPerformance:
         # Create many track references
         tracks = [temp_dir / f"track{i}.mp3" for i in range(100)]
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0, stderr="")
 
             valid, invalid = processor.validate_tracks(tracks)
@@ -198,6 +221,7 @@ class TestMemoryPerformance:
         infos = []
         for i in range(1000):
             from video_renderer.ffmpeg import VideoInfo
+
             info = VideoInfo(
                 codec="h264",
                 width=1920,
@@ -205,7 +229,7 @@ class TestMemoryPerformance:
                 fps="60/1",
                 duration=3600.0,
                 pix_fmt="yuv420p",
-                color_space="bt709"
+                color_space="bt709",
             )
             infos.append(info)
 
@@ -229,8 +253,10 @@ class TestScalability:
         # Create large playlist
         tracks = [temp_dir / f"track{i:04d}.mp3" for i in range(200)]
 
-        with patch('video_renderer.audio.get_duration') as mock_duration, \
-             patch('video_renderer.audio.write_concat_list'):
+        with (
+            patch("video_renderer.audio.get_duration") as mock_duration,
+            patch("video_renderer.audio.write_concat_list"),
+        ):
 
             mock_duration.return_value = 180.0  # 3 min each
 
@@ -384,7 +410,7 @@ class TestIOPerformance:
                 genre="ambient",
                 style="relaxing",
                 duration="1:00:00",
-                local_path=str(temp_dir / f"video{i}.mp4")
+                local_path=str(temp_dir / f"video{i}.mp4"),
             )
         add_time = time.time() - start_time
 
@@ -404,10 +430,7 @@ class TestIOPerformance:
         runner = FFmpegRunner(log_path=log_path)
 
         # Log many commands
-        commands = [
-            ["ffmpeg", "-i", f"input{i}.mp4", f"output{i}.mp4"]
-            for i in range(100)
-        ]
+        commands = [["ffmpeg", "-i", f"input{i}.mp4", f"output{i}.mp4"] for i in range(100)]
 
         start_time = time.time()
         for cmd in commands:
@@ -453,10 +476,7 @@ class TestAlgorithmicEfficiency:
         """Benchmark duration parsing performance."""
         from video_renderer.batch import parse_duration
 
-        durations = [
-            "1:00:00", "0:30:00", "0:00:30", "30:00", "60",
-            "random_8_10"
-        ] * 100
+        durations = ["1:00:00", "0:30:00", "0:00:30", "30:00", "60", "random_8_10"] * 100
 
         start_time = time.time()
         for dur in durations:
@@ -501,7 +521,7 @@ def test_audio_validation_scalability(temp_dir, num_tracks):
 
     tracks = [temp_dir / f"track{i:04d}.mp3" for i in range(num_tracks)]
 
-    with patch('subprocess.run') as mock_run:
+    with patch("subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stderr="")
 
         start_time = time.time()
@@ -520,7 +540,6 @@ def test_audio_validation_scalability(temp_dir, num_tracks):
 def test_memory_efficiency_of_video_commands(temp_dir):
     """Test that video commands don't leak memory."""
     import gc
-    import sys
 
     runner = FFmpegRunner()
     encoder = VideoEncoder(runner, CODEC_H264, COLOR_BT709)
@@ -534,11 +553,17 @@ def test_memory_efficiency_of_video_commands(temp_dir):
         source = temp_dir / f"source{i}.mp4"
         output = temp_dir / f"output{i}.mp4"
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             from video_renderer.ffmpeg import VideoInfo
+
             mock_probe.return_value = VideoInfo(
-                codec="h264", width=1920, height=1080, fps="60/1",
-                duration=60.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="h264",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=60.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
             encoder.check_compatibility(source)
 

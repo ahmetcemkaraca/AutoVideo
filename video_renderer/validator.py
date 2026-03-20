@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Video validation system for AutoVideo.
 
@@ -8,20 +7,17 @@ Supports both intro_loop and single render modes with detailed error reporting
 in Turkish and English.
 """
 
-import subprocess
 import json
-import shutil
-import os
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Literal, Union
+import shutil
+import subprocess
 from dataclasses import dataclass, field
-from fractions import Fraction
 from enum import Enum
+from fractions import Fraction
+from pathlib import Path
+from typing import Any, Literal
 
-from .ffmpeg import probe_video, get_duration
-from .audio import AudioProcessor
-
+from .ffmpeg import get_duration, probe_video
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Validation Result Structures
@@ -30,6 +26,7 @@ from .audio import AudioProcessor
 
 class ValidationSeverity(Enum):
     """Severity level for validation issues."""
+
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -39,15 +36,16 @@ class ValidationSeverity(Enum):
 @dataclass
 class ValidationIssue:
     """A single validation issue with bilingual support."""
+
     category: str  # e.g., "video", "audio", "disk"
     severity: ValidationSeverity
     message: str  # Primary message (can be in any language)
-    message_en: Optional[str] = None  # English message
-    message_tr: Optional[str] = None  # Turkish message
-    details: Optional[str] = None
-    suggestion: Optional[str] = None
-    field: Optional[str] = None  # Field name for structured validation
-    context: Optional[Dict[str, Any]] = None  # Additional context
+    message_en: str | None = None  # English message
+    message_tr: str | None = None  # Turkish message
+    details: str | None = None
+    suggestion: str | None = None
+    field: str | None = None  # Field name for structured validation
+    context: dict[str, Any] | None = None  # Additional context
 
     def get_bilingual_message(self) -> str:
         """Return message in both languages."""
@@ -55,7 +53,7 @@ class ValidationIssue:
         tr = self.message_tr or self.message or ""
         return f"EN: {en} | TR: {tr}"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "category": self.category,
             "severity": self.severity.value,
@@ -83,24 +81,29 @@ class ValidationResult:
         file_size_bytes: Video file size (post-render)
         video_info: Extracted video information dict
     """
+
     valid: bool
     stage: Literal["pre_render", "post_render"]
-    issues: List[ValidationIssue] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    issues: list[ValidationIssue] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
     duration_seconds: float = 0.0
     file_size_bytes: int = 0
-    video_info: Dict[str, Any] = field(default_factory=dict)
+    video_info: dict[str, Any] = field(default_factory=dict)
 
     @property
-    def errors(self) -> List[ValidationIssue]:
-        return [i for i in self.issues if i.severity in (ValidationSeverity.ERROR, ValidationSeverity.CRITICAL)]
+    def errors(self) -> list[ValidationIssue]:
+        return [
+            i
+            for i in self.issues
+            if i.severity in (ValidationSeverity.ERROR, ValidationSeverity.CRITICAL)
+        ]
 
     @property
-    def warnings(self) -> List[ValidationIssue]:
+    def warnings(self) -> list[ValidationIssue]:
         return [i for i in self.issues if i.severity == ValidationSeverity.WARNING]
 
     @property
-    def info(self) -> List[ValidationIssue]:
+    def info(self) -> list[ValidationIssue]:
         return [i for i in self.issues if i.severity == ValidationSeverity.INFO]
 
     def add_issue(self, issue: ValidationIssue) -> None:
@@ -113,48 +116,52 @@ class ValidationResult:
         category: str,
         message_en: str,
         message_tr: str,
-        details: Optional[str] = None,
-        suggestion: Optional[str] = None,
-        field: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        details: str | None = None,
+        suggestion: str | None = None,
+        field: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         """Add an error with bilingual messages."""
-        self.add_issue(ValidationIssue(
-            category=category,
-            severity=ValidationSeverity.ERROR,
-            message=message_en,  # Primary message
-            message_en=message_en,
-            message_tr=message_tr,
-            details=details,
-            suggestion=suggestion,
-            field=field,
-            context=context
-        ))
+        self.add_issue(
+            ValidationIssue(
+                category=category,
+                severity=ValidationSeverity.ERROR,
+                message=message_en,  # Primary message
+                message_en=message_en,
+                message_tr=message_tr,
+                details=details,
+                suggestion=suggestion,
+                field=field,
+                context=context,
+            )
+        )
 
     def add_warning(
         self,
         category: str,
         message_en: str,
         message_tr: str,
-        details: Optional[str] = None,
-        suggestion: Optional[str] = None,
-        field: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        details: str | None = None,
+        suggestion: str | None = None,
+        field: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         """Add a warning with bilingual messages."""
-        self.add_issue(ValidationIssue(
-            category=category,
-            severity=ValidationSeverity.WARNING,
-            message=message_en,
-            message_en=message_en,
-            message_tr=message_tr,
-            details=details,
-            suggestion=suggestion,
-            field=field,
-            context=context
-        ))
+        self.add_issue(
+            ValidationIssue(
+                category=category,
+                severity=ValidationSeverity.WARNING,
+                message=message_en,
+                message_en=message_en,
+                message_tr=message_tr,
+                details=details,
+                suggestion=suggestion,
+                field=field,
+                context=context,
+            )
+        )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "valid": self.valid,
             "stage": self.stage,
@@ -162,12 +169,13 @@ class ValidationResult:
             "metadata": self.metadata,
             "duration_seconds": self.duration_seconds,
             "file_size_bytes": self.file_size_bytes,
-            "video_info": self.video_info
+            "video_info": self.video_info,
         }
 
 
 class ValidationError(Exception):
     """Base exception for validation errors."""
+
     def __init__(self, result: ValidationResult):
         self.result = result
         super().__init__(f"Validation failed with {len(result.errors)} errors")
@@ -175,16 +183,19 @@ class ValidationError(Exception):
 
 class FFprobeError(ValidationError):
     """Exception raised when ffprobe execution fails."""
+
     pass
 
 
 class FileCorruptedError(ValidationError):
     """Exception raised when video file is corrupted."""
+
     pass
 
 
 class DiskSpaceError(ValidationError):
     """Exception raised when insufficient disk space."""
+
     pass
 
 
@@ -212,22 +223,23 @@ class VideoMetadata:
         level: Codec level
         file_size: File size in bytes
     """
+
     codec: str
     width: int
     height: int
     fps: Fraction
     duration: float
     pix_fmt: str
-    color_space: Optional[str] = None
-    color_primaries: Optional[str] = None
-    color_transfer: Optional[str] = None
-    bitrate: Optional[int] = None
+    color_space: str | None = None
+    color_primaries: str | None = None
+    color_transfer: str | None = None
+    bitrate: int | None = None
     has_audio: bool = False
-    audio_codec: Optional[str] = None
-    audio_channels: Optional[int] = None
-    audio_sample_rate: Optional[int] = None
-    profile: Optional[str] = None
-    level: Optional[str] = None
+    audio_codec: str | None = None
+    audio_channels: int | None = None
+    audio_sample_rate: int | None = None
+    profile: str | None = None
+    level: str | None = None
     file_size: int = 0
 
 
@@ -258,7 +270,7 @@ class VideoValidator:
     DEFAULT_BITRATE_TOLERANCE = 0.1  # 10%
 
     # Cache for ffprobe availability
-    _ffprobe_available: Optional[bool] = None
+    _ffprobe_available: bool | None = None
 
     def __init__(
         self,
@@ -318,35 +330,29 @@ class VideoValidator:
         # Build ffprobe command
         cmd = [
             "ffprobe",
-            "-v", "error",
-            "-show_entries", "stream",
-            "-show_entries", "format",
-            "-of", "json",
-            str(video_path)
+            "-v",
+            "error",
+            "-show_entries",
+            "stream",
+            "-show_entries",
+            "format",
+            "-of",
+            "json",
+            str(video_path),
         ]
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=30
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
         except subprocess.TimeoutExpired:
             raise FFprobeError(f"ffprobe timeout on {video_path}")
         except subprocess.CalledProcessError as e:
-            raise FFprobeError(
-                f"ffprobe failed on {video_path}: {e.stderr}"
-            )
+            raise FFprobeError(f"ffprobe failed on {video_path}: {e.stderr}")
 
         # Parse JSON output
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError as e:
-            raise FileCorruptedError(
-                f"Failed to parse ffprobe output from {video_path}: {e}"
-            )
+            raise FileCorruptedError(f"Failed to parse ffprobe output from {video_path}: {e}")
 
         # Extract video stream info
         video_stream = None
@@ -413,7 +419,7 @@ class VideoValidator:
             audio_sample_rate=int(audio_stream.get("sample_rate", 0)) if audio_stream else None,
             profile=video_stream.get("profile"),
             level=video_stream.get("level"),
-            file_size=file_size
+            file_size=file_size,
         )
 
     def check_duration(self, video_path: Path, target_seconds: float) -> bool:
@@ -468,7 +474,7 @@ class VideoValidator:
         except (FFprobeError, FileCorruptedError):
             return False
 
-    def check_resolution(self, video_path: Path, expected_resolution: Tuple[int, int]) -> bool:
+    def check_resolution(self, video_path: Path, expected_resolution: tuple[int, int]) -> bool:
         """
         Check if video resolution matches expected.
 
@@ -481,8 +487,10 @@ class VideoValidator:
         """
         try:
             metadata = self.get_video_info(video_path)
-            return metadata.width == expected_resolution[0] and \
-                   metadata.height == expected_resolution[1]
+            return (
+                metadata.width == expected_resolution[0]
+                and metadata.height == expected_resolution[1]
+            )
         except (FFprobeError, FileCorruptedError):
             return False
 
@@ -542,17 +550,27 @@ class VideoValidator:
             if expected_count > 1:
                 cmd = [
                     "ffprobe",
-                    "-v", "error",
-                    "-select_streams", "a",
-                    "-show_entries", "stream=codec_type",
-                    "-of", "json",
-                    str(video_path)
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "a",
+                    "-show_entries",
+                    "stream=codec_type",
+                    "-of",
+                    "json",
+                    str(video_path),
                 ]
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, check=True, timeout=30
+                    )
                     data = json.loads(result.stdout)
                     actual_count = len(data.get("streams", []))
-                except (subprocess.CalledProcessError, json.JSONDecodeError, subprocess.TimeoutExpired):
+                except (
+                    subprocess.CalledProcessError,
+                    json.JSONDecodeError,
+                    subprocess.TimeoutExpired,
+                ):
                     pass
 
             return actual_count == expected_count
@@ -573,19 +591,15 @@ class VideoValidator:
             metadata = self.get_video_info(video_path)
             # Basic sanity checks
             return (
-                metadata.duration > 0 and
-                metadata.width > 0 and
-                metadata.height > 0 and
-                metadata.fps > 0
+                metadata.duration > 0
+                and metadata.width > 0
+                and metadata.height > 0
+                and metadata.fps > 0
             )
         except (FFprobeError, FileCorruptedError):
             return False
 
-    def validate_output(
-        self,
-        video_path: Path,
-        specs: Dict[str, Any]
-    ) -> ValidationResult:
+    def validate_output(self, video_path: Path, specs: dict[str, Any]) -> ValidationResult:
         """
         Comprehensive post-render validation against specifications.
 
@@ -622,7 +636,7 @@ class VideoValidator:
             result.add_error(
                 "output",
                 f"Output file not found: {video_path}",
-                f"Cikis dosyasi bulunamadi: {video_path}"
+                f"Cikis dosyasi bulunamadi: {video_path}",
             )
             return result
 
@@ -630,9 +644,7 @@ class VideoValidator:
         result.file_size_bytes = video_path.stat().st_size
         if result.file_size_bytes == 0:
             result.add_error(
-                "output",
-                f"Output file is empty: {video_path}",
-                f"Cikis dosyasi bos: {video_path}"
+                "output", f"Output file is empty: {video_path}", f"Cikis dosyasi bos: {video_path}"
             )
             return result
 
@@ -653,7 +665,7 @@ class VideoValidator:
                 "audio_codec": metadata.audio_codec,
                 "audio_channels": metadata.audio_channels,
                 "bitrate": metadata.bitrate,
-                "file_size": metadata.file_size
+                "file_size": metadata.file_size,
             }
         except (FFprobeError, FileCorruptedError) as e:
             result.add_error("output", str(e), str(e))
@@ -663,11 +675,11 @@ class VideoValidator:
         if "duration_seconds" in specs:
             target_duration = specs["duration_seconds"]
             actual_duration = metadata.duration
-            
+
             # Stricter tolerance: 2% or 2 seconds (whichever is larger)
             tolerance_seconds = max(2.0, target_duration * 0.02)
             duration_diff = abs(actual_duration - target_duration)
-            
+
             if duration_diff > tolerance_seconds:
                 # Large mismatch (>5%) is a hard error
                 percent_diff = (duration_diff / target_duration) * 100 if target_duration > 0 else 0
@@ -679,7 +691,11 @@ class VideoValidator:
                         f"Sure uyusmazligi: beklenen {target_duration}s, elde edilen {actual_duration}s (%{percent_diff:.1f} farki). "
                         f"Concat veya encoding basarisiz.",
                         field="duration",
-                        context={"expected": target_duration, "actual": actual_duration, "percent_diff": percent_diff}
+                        context={
+                            "expected": target_duration,
+                            "actual": actual_duration,
+                            "percent_diff": percent_diff,
+                        },
                     )
                 else:
                     # Small mismatch (2-5%) is a warning
@@ -688,7 +704,11 @@ class VideoValidator:
                         f"Duration mismatch: expected {target_duration}s, got {actual_duration}s ({percent_diff:.1f}% off)",
                         f"Sure uyusmazligi: beklenen {target_duration}s, elde edilen {actual_duration}s (%{percent_diff:.1f} farki)",
                         field="duration",
-                        context={"expected": target_duration, "actual": actual_duration, "percent_diff": percent_diff}
+                        context={
+                            "expected": target_duration,
+                            "actual": actual_duration,
+                            "percent_diff": percent_diff,
+                        },
                     )
 
         # Validate resolution
@@ -703,8 +723,8 @@ class VideoValidator:
                     field="resolution",
                     context={
                         "expected": f"{specs['width']}x{specs['height']}",
-                        "actual": f"{metadata.width}x{metadata.height}"
-                    }
+                        "actual": f"{metadata.width}x{metadata.height}",
+                    },
                 )
 
         # Validate FPS
@@ -716,7 +736,7 @@ class VideoValidator:
                     f"FPS mismatch: expected {target_fps}, got {float(metadata.fps):.2f}",
                     f"FPS uyusmazligi: beklenen {target_fps}, elde edilen {float(metadata.fps):.2f}",
                     field="fps",
-                    context={"expected": target_fps, "actual": float(metadata.fps)}
+                    context={"expected": target_fps, "actual": float(metadata.fps)},
                 )
 
         # Validate codec
@@ -727,7 +747,7 @@ class VideoValidator:
                     f"Codec mismatch: expected {specs['codec']}, got {metadata.codec}",
                     f"Codec uyusmazligi: beklenen {specs['codec']}, elde edilen {metadata.codec}",
                     field="codec",
-                    context={"expected": specs["codec"], "actual": metadata.codec}
+                    context={"expected": specs["codec"], "actual": metadata.codec},
                 )
 
         # Validate audio
@@ -740,7 +760,7 @@ class VideoValidator:
                     f"Ses varligi uyusmazligi: beklenen {'ses' if specs['has_audio'] else 'ses yok'}, "
                     f"elde edilen {'ses' if metadata.has_audio else 'ses yok'}",
                     field="audio",
-                    context={"expected": specs["has_audio"], "actual": metadata.has_audio}
+                    context={"expected": specs["has_audio"], "actual": metadata.has_audio},
                 )
 
         # Validate audio track count
@@ -753,7 +773,10 @@ class VideoValidator:
                     f"Ses izi sayisi uyusmazligi: beklenen {specs['audio_tracks']}, "
                     f"elde edilen {1 if metadata.has_audio else 0}",
                     field="audio_tracks",
-                    context={"expected": specs["audio_tracks"], "actual": 1 if metadata.has_audio else 0}
+                    context={
+                        "expected": specs["audio_tracks"],
+                        "actual": 1 if metadata.has_audio else 0,
+                    },
                 )
 
         # Validate bitrate
@@ -764,7 +787,7 @@ class VideoValidator:
                     f"Bitrate below minimum: {metadata.bitrate} bps < {specs['min_bitrate']} bps",
                     f"Bitrate minimum altinda: {metadata.bitrate} bps < {specs['min_bitrate']} bps",
                     field="bitrate",
-                    context={"minimum": specs["min_bitrate"], "actual": metadata.bitrate}
+                    context={"minimum": specs["min_bitrate"], "actual": metadata.bitrate},
                 )
 
         if "max_bitrate" in specs and metadata.bitrate:
@@ -774,7 +797,7 @@ class VideoValidator:
                     f"Bitrate above maximum: {metadata.bitrate} bps > {specs['max_bitrate']} bps",
                     f"Bitrate maximum ustunde: {metadata.bitrate} bps > {specs['max_bitrate']} bps",
                     field="bitrate",
-                    context={"maximum": specs["max_bitrate"], "actual": metadata.bitrate}
+                    context={"maximum": specs["max_bitrate"], "actual": metadata.bitrate},
                 )
 
         return result
@@ -809,10 +832,10 @@ class PreRenderValidator:
 
     def validate_render_specs(
         self,
-        intro_path: Optional[Path],
-        loop_path: Optional[Path],
-        single_path: Optional[Path],
-        tracks: List[Path],
+        intro_path: Path | None,
+        loop_path: Path | None,
+        single_path: Path | None,
+        tracks: list[Path],
         target_duration: int,
         output_dir: Path,
     ) -> ValidationResult:
@@ -837,13 +860,15 @@ class PreRenderValidator:
         is_intro_loop_mode = intro_path is not None and loop_path is not None
 
         if not (is_single_mode or is_intro_loop_mode):
-            result.add_issue(ValidationIssue(
-                category="video",
-                severity=ValidationSeverity.ERROR,
-                message="Geçersiz render modu",
-                details="Hem single hem de intro/loop modu için dosya sağlanmadı.",
-                suggestion="Lütfen en az bir video dosyası seçin."
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="video",
+                    severity=ValidationSeverity.ERROR,
+                    message="Geçersiz render modu",
+                    details="Hem single hem de intro/loop modu için dosya sağlanmadı.",
+                    suggestion="Lütfen en az bir video dosyası seçin.",
+                )
+            )
             return result
 
         # Validate based on mode
@@ -857,12 +882,7 @@ class PreRenderValidator:
 
         # Validate disk space
         self._validate_disk_space(
-            intro_path or single_path,
-            loop_path,
-            tracks,
-            target_duration,
-            output_dir,
-            result
+            intro_path or single_path, loop_path, tracks, target_duration, output_dir, result
         )
 
         return result
@@ -870,13 +890,15 @@ class PreRenderValidator:
     def _validate_single_video(self, video_path: Path, result: ValidationResult) -> None:
         """Validate single video for single mode rendering."""
         if not video_path.exists():
-            result.add_issue(ValidationIssue(
-                category="video",
-                severity=ValidationSeverity.ERROR,
-                message=f"Video dosyası bulunamadı: {video_path.name}",
-                details=f"Dosya yolu: {video_path}",
-                suggestion="Dosyanın varlığını ve yolunu kontrol edin."
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="video",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"Video dosyası bulunamadı: {video_path.name}",
+                    details=f"Dosya yolu: {video_path}",
+                    suggestion="Dosyanın varlığını ve yolunu kontrol edin.",
+                )
+            )
             return
 
         try:
@@ -893,54 +915,61 @@ class PreRenderValidator:
 
             # Check resolution
             if info.width != self.target_width or info.height != self.target_height:
-                result.add_issue(ValidationIssue(
-                    category="video",
-                    severity=ValidationSeverity.INFO,
-                    message=f"Video yeniden kodlanacak: {info.width}x{info.height} -> {self.target_width}x{self.target_height}",
-                    details="Hedef çözünürlükten farklı.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="video",
+                        severity=ValidationSeverity.INFO,
+                        message=f"Video yeniden kodlanacak: {info.width}x{info.height} -> {self.target_width}x{self.target_height}",
+                        details="Hedef çözünürlükten farklı.",
+                    )
+                )
 
             # Check codec
             if info.codec.lower() not in ("h264", "hevc", "av1"):
-                result.add_issue(ValidationIssue(
-                    category="video",
-                    severity=ValidationSeverity.INFO,
-                    message=f"Video codec değiştirilecek: {info.codec}",
-                    details="Hedef codec'ten farklı.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="video",
+                        severity=ValidationSeverity.INFO,
+                        message=f"Video codec değiştirilecek: {info.codec}",
+                        details="Hedef codec'ten farklı.",
+                    )
+                )
 
         except Exception as e:
-            result.add_issue(ValidationIssue(
-                category="video",
-                severity=ValidationSeverity.ERROR,
-                message=f"Video analizi başarısız: {video_path.name}",
-                details=str(e),
-                suggestion="Dosyanın bozuk olmadığından emin olun."
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="video",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"Video analizi başarısız: {video_path.name}",
+                    details=str(e),
+                    suggestion="Dosyanın bozuk olmadığından emin olun.",
+                )
+            )
 
     def _validate_intro_loop_pair(
-        self,
-        intro_path: Path,
-        loop_path: Path,
-        result: ValidationResult
+        self, intro_path: Path, loop_path: Path, result: ValidationResult
     ) -> None:
         """Validate intro and loop video pair for compatibility."""
         # Check file existence
         if not intro_path.exists():
-            result.add_issue(ValidationIssue(
-                category="video",
-                severity=ValidationSeverity.ERROR,
-                message=f"Intro dosyası bulunamadı: {intro_path.name}",
-                details=f"Dosya yolu: {intro_path}",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="video",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"Intro dosyası bulunamadı: {intro_path.name}",
+                    details=f"Dosya yolu: {intro_path}",
+                )
+            )
 
         if not loop_path.exists():
-            result.add_issue(ValidationIssue(
-                category="video",
-                severity=ValidationSeverity.ERROR,
-                message=f"Loop dosyası bulunamadı: {loop_path.name}",
-                details=f"Dosya yolu: {loop_path}",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="video",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"Loop dosyası bulunamadı: {loop_path.name}",
+                    details=f"Dosya yolu: {loop_path}",
+                )
+            )
 
         if not intro_path.exists() or not loop_path.exists():
             return
@@ -972,82 +1001,93 @@ class PreRenderValidator:
 
             # Check resolution match
             if intro_info.width != loop_info.width or intro_info.height != loop_info.height:
-                result.add_issue(ValidationIssue(
-                    category="video",
-                    severity=ValidationSeverity.WARNING,
-                    message="Çözünürlük uyuşmazlığı tespit edildi",
-                    details=f"Intro: {intro_info.width}x{intro_info.height}, Loop: {loop_info.width}x{loop_info.height}",
-                    suggestion="Her iki video da hedef çözünürlüğe yeniden kodlanacak.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="video",
+                        severity=ValidationSeverity.WARNING,
+                        message="Çözünürlük uyuşmazlığı tespit edildi",
+                        details=f"Intro: {intro_info.width}x{intro_info.height}, Loop: {loop_info.width}x{loop_info.height}",
+                        suggestion="Her iki video da hedef çözünürlüğe yeniden kodlanacak.",
+                    )
+                )
 
             # Check FPS match
             intro_fps = self._parse_fps(intro_info.fps)
             loop_fps = self._parse_fps(loop_info.fps)
 
             if abs(intro_fps - loop_fps) > 1.0:
-                result.add_issue(ValidationIssue(
-                    category="video",
-                    severity=ValidationSeverity.WARNING,
-                    message="FPS uyuşmazlığı tespit edildi",
-                    details=f"Intro: {intro_fps:.2f} fps, Loop: {loop_fps:.2f} fps",
-                    suggestion="Her iki video da hedef FPS'e yeniden kodlanacak.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="video",
+                        severity=ValidationSeverity.WARNING,
+                        message="FPS uyuşmazlığı tespit edildi",
+                        details=f"Intro: {intro_fps:.2f} fps, Loop: {loop_fps:.2f} fps",
+                        suggestion="Her iki video da hedef FPS'e yeniden kodlanacak.",
+                    )
+                )
 
             # Check codec compatibility
             if intro_info.codec.lower() != loop_info.codec.lower():
-                result.add_issue(ValidationIssue(
-                    category="video",
-                    severity=ValidationSeverity.INFO,
-                    message="Codec farklılıkları tespit edildi",
-                    details=f"Intro: {intro_info.codec}, Loop: {loop_info.codec}",
-                    suggestion="Videolar hedef codec'e normalize edilecek.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="video",
+                        severity=ValidationSeverity.INFO,
+                        message="Codec farklılıkları tespit edildi",
+                        details=f"Intro: {intro_info.codec}, Loop: {loop_info.codec}",
+                        suggestion="Videolar hedef codec'e normalize edilecek.",
+                    )
+                )
 
             # Check loop duration (should be short for efficient looping)
             if loop_info.duration > 300:  # 5 minutes
-                result.add_issue(ValidationIssue(
-                    category="video",
-                    severity=ValidationSeverity.INFO,
-                    message="Loop videosu oldukça uzun",
-                    details=f"Loop süresi: {loop_info.duration:.1f} saniye",
-                    suggestion="Kısa loop'lar (10-60 saniye) daha verimli olabilir.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="video",
+                        severity=ValidationSeverity.INFO,
+                        message="Loop videosu oldukça uzun",
+                        details=f"Loop süresi: {loop_info.duration:.1f} saniye",
+                        suggestion="Kısa loop'lar (10-60 saniye) daha verimli olabilir.",
+                    )
+                )
 
         except Exception as e:
-            result.add_issue(ValidationIssue(
-                category="video",
-                severity=ValidationSeverity.ERROR,
-                message="Video analizi başarısız",
-                details=str(e),
-                suggestion="Dosyaların bozuk olmadığından emin olun.",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="video",
+                    severity=ValidationSeverity.ERROR,
+                    message="Video analizi başarısız",
+                    details=str(e),
+                    suggestion="Dosyaların bozuk olmadığından emin olun.",
+                )
+            )
 
     def _validate_audio_tracks(
-        self,
-        tracks: List[Path],
-        target_duration: int,
-        result: ValidationResult
+        self, tracks: list[Path], target_duration: int, result: ValidationResult
     ) -> None:
         """Validate audio tracks."""
         if not tracks:
-            result.add_issue(ValidationIssue(
-                category="audio",
-                severity=ValidationSeverity.WARNING,
-                message="Hiç audio parçası seçilmedi",
-                details="Video ses içermeyecek.",
-                suggestion="En az bir audio parçası seçin."
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="audio",
+                    severity=ValidationSeverity.WARNING,
+                    message="Hiç audio parçası seçilmedi",
+                    details="Video ses içermeyecek.",
+                    suggestion="En az bir audio parçası seçin.",
+                )
+            )
             return
 
         # Check track existence
         missing_tracks = [t for t in tracks if not t.exists()]
         if missing_tracks:
-            result.add_issue(ValidationIssue(
-                category="audio",
-                severity=ValidationSeverity.ERROR,
-                message=f"{len(missing_tracks)} audio dosyası bulunamadı",
-                details=", ".join(t.name for t in missing_tracks),
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="audio",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"{len(missing_tracks)} audio dosyası bulunamadı",
+                    details=", ".join(t.name for t in missing_tracks),
+                )
+            )
 
         # Validate audio duration
         total_audio_duration = 0
@@ -1064,20 +1104,24 @@ class PreRenderValidator:
 
                 # Check for very short tracks
                 if duration < 10:
-                    result.add_issue(ValidationIssue(
-                        category="audio",
-                        severity=ValidationSeverity.INFO,
-                        message=f"Kısa audio parçası: {track.name}",
-                        details=f"Süre: {duration:.1f} saniye",
-                    ))
+                    result.add_issue(
+                        ValidationIssue(
+                            category="audio",
+                            severity=ValidationSeverity.INFO,
+                            message=f"Kısa audio parçası: {track.name}",
+                            details=f"Süre: {duration:.1f} saniye",
+                        )
+                    )
 
             except Exception as e:
-                result.add_issue(ValidationIssue(
-                    category="audio",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Audio analizi başarısız: {track.name}",
-                    details=str(e),
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="audio",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Audio analizi başarısız: {track.name}",
+                        details=str(e),
+                    )
+                )
 
         result.metadata["audio"] = {
             "total_tracks": len(tracks),
@@ -1088,22 +1132,24 @@ class PreRenderValidator:
 
         # Check if we have enough audio
         if total_audio_duration < target_duration * 0.5:  # Less than 50%
-            result.add_issue(ValidationIssue(
-                category="audio",
-                severity=ValidationSeverity.WARNING,
-                message="Audio süresi hedeften kısa",
-                details=f"Mevcut: {total_audio_duration:.0f}s, Hedef: {target_duration}s",
-                suggestion="Audio loop olarak tekrarlanacak.",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="audio",
+                    severity=ValidationSeverity.WARNING,
+                    message="Audio süresi hedeften kısa",
+                    details=f"Mevcut: {total_audio_duration:.0f}s, Hedef: {target_duration}s",
+                    suggestion="Audio loop olarak tekrarlanacak.",
+                )
+            )
 
     def _validate_disk_space(
         self,
-        primary_video: Optional[Path],
-        secondary_video: Optional[Path],
-        tracks: List[Path],
+        primary_video: Path | None,
+        secondary_video: Path | None,
+        tracks: list[Path],
         target_duration: int,
         output_dir: Path,
-        result: ValidationResult
+        result: ValidationResult,
     ) -> None:
         """Validate available disk space."""
         try:
@@ -1129,7 +1175,9 @@ class PreRenderValidator:
 
             if source_duration > 0:
                 duration_ratio = max(1, target_duration / source_duration)
-                estimated_size = int((video_size * duration_ratio + audio_size) * self.DISK_SPACE_MULTIPLIER)
+                estimated_size = int(
+                    (video_size * duration_ratio + audio_size) * self.DISK_SPACE_MULTIPLIER
+                )
             else:
                 # Rough estimate: 100 MB per minute for 1080p
                 estimated_size = int((target_duration / 60) * 100 * 1024**2)
@@ -1145,38 +1193,46 @@ class PreRenderValidator:
             }
 
             if free_space < self.MIN_FREE_SPACE:
-                result.add_issue(ValidationIssue(
-                    category="disk",
-                    severity=ValidationSeverity.CRITICAL,
-                    message="Yetersiz disk alanı",
-                    details=f"Boş alan: {free_space / (1024**3):.2f} GB",
-                    suggestion="En az 1 GB boş alan gereklidir.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="disk",
+                        severity=ValidationSeverity.CRITICAL,
+                        message="Yetersiz disk alanı",
+                        details=f"Boş alan: {free_space / (1024**3):.2f} GB",
+                        suggestion="En az 1 GB boş alan gereklidir.",
+                    )
+                )
             elif free_space < estimated_size:
-                result.add_issue(ValidationIssue(
-                    category="disk",
-                    severity=ValidationSeverity.ERROR,
-                    message="Tahmini yetersiz disk alanı",
-                    details=f"Gerekli: {estimated_size / (1024**3):.2f} GB, Mevcut: {free_space / (1024**3):.2f} GB",
-                    suggestion="Gereksiz dosyaları temizleyin veya farklı bir diske çıktı verin.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="disk",
+                        severity=ValidationSeverity.ERROR,
+                        message="Tahmini yetersiz disk alanı",
+                        details=f"Gerekli: {estimated_size / (1024**3):.2f} GB, Mevcut: {free_space / (1024**3):.2f} GB",
+                        suggestion="Gereksiz dosyaları temizleyin veya farklı bir diske çıktı verin.",
+                    )
+                )
             elif free_space < estimated_size * 1.5:  # Less than 50% buffer
-                result.add_issue(ValidationIssue(
-                    category="disk",
-                    severity=ValidationSeverity.WARNING,
-                    message="Disk alanı sınırda",
-                    details=f"Tahmini kullanım: {estimated_size / (1024**3):.2f} GB / {free_space / (1024**3):.2f} GB",
-                    suggestion="Yeterli tampon alanı yok. İşlem sırasında disk alanı izlenmeli.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="disk",
+                        severity=ValidationSeverity.WARNING,
+                        message="Disk alanı sınırda",
+                        details=f"Tahmini kullanım: {estimated_size / (1024**3):.2f} GB / {free_space / (1024**3):.2f} GB",
+                        suggestion="Yeterli tampon alanı yok. İşlem sırasında disk alanı izlenmeli.",
+                    )
+                )
 
         except Exception as e:
             self.logger.warning(f"Disk space check failed: {e}")
-            result.add_issue(ValidationIssue(
-                category="disk",
-                severity=ValidationSeverity.WARNING,
-                message="Disk alanı kontrol edilemedi",
-                details=str(e),
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="disk",
+                    severity=ValidationSeverity.WARNING,
+                    message="Disk alanı kontrol edilemedi",
+                    details=str(e),
+                )
+            )
 
     def _parse_fps(self, fps_str: str) -> float:
         """Parse FPS string to float."""
@@ -1239,7 +1295,7 @@ class PostRenderValidator(VideoValidator):
         self,
         output_path: Path,
         target_duration: int,
-        target_specs: Optional[Dict[str, Any]] = None,
+        target_specs: dict[str, Any] | None = None,
     ) -> ValidationResult:
         """
         Validate rendered output video.
@@ -1255,13 +1311,15 @@ class PostRenderValidator(VideoValidator):
         result = ValidationResult(valid=True, stage="post_render")
 
         if not output_path.exists():
-            result.add_issue(ValidationIssue(
-                category="output",
-                severity=ValidationSeverity.CRITICAL,
-                message="Çıktı dosyası bulunamadı",
-                details=f"Dosya yolu: {output_path}",
-                suggestion="Render işlemi tamamlanamamış olabilir.",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="output",
+                    severity=ValidationSeverity.CRITICAL,
+                    message="Çıktı dosyası bulunamadı",
+                    details=f"Dosya yolu: {output_path}",
+                    suggestion="Render işlemi tamamlanamamış olabilir.",
+                )
+            )
             return result
 
         try:
@@ -1295,13 +1353,15 @@ class PostRenderValidator(VideoValidator):
             self._validate_youtube_compliance(output_path, result)
 
         except Exception as e:
-            result.add_issue(ValidationIssue(
-                category="output",
-                severity=ValidationSeverity.CRITICAL,
-                message="Çıktı analizi başarısız",
-                details=str(e),
-                suggestion="Dosya bozuk olabilir veya tamamlanmamış.",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="output",
+                    severity=ValidationSeverity.CRITICAL,
+                    message="Çıktı analizi başarısız",
+                    details=str(e),
+                    suggestion="Dosya bozuk olabilir veya tamamlanmamış.",
+                )
+            )
 
         return result
 
@@ -1310,10 +1370,12 @@ class PostRenderValidator(VideoValidator):
         try:
             cmd = [
                 "ffprobe",
-                "-v", "error",
+                "-v",
+                "error",
                 "-show_entries",
                 "format=format_name,duration:stream=index,codec_type,codec_name,pix_fmt,avg_frame_rate,r_frame_rate,duration,sample_rate,channels",
-                "-of", "json",
+                "-of",
+                "json",
                 str(output_path),
             ]
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20, check=True)
@@ -1334,42 +1396,52 @@ class PostRenderValidator(VideoValidator):
 
             format_name = (fmt.get("format_name") or "").lower()
             if "mp4" not in format_name and "mov" not in format_name:
-                result.add_issue(ValidationIssue(
-                    category="youtube",
-                    severity=ValidationSeverity.WARNING,
-                    message=f"YouTube için kapsayıcı önerilmiyor: {format_name}",
-                    details="Önerilen kapsayıcı: MP4 (veya MOV).",
-                    suggestion="Çıktı formatını MP4 olarak kullanın.",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="youtube",
+                        severity=ValidationSeverity.WARNING,
+                        message=f"YouTube için kapsayıcı önerilmiyor: {format_name}",
+                        details="Önerilen kapsayıcı: MP4 (veya MOV).",
+                        suggestion="Çıktı formatını MP4 olarak kullanın.",
+                    )
+                )
 
             if video_stream:
                 v_codec = (video_stream.get("codec_name") or "").lower()
                 if v_codec not in {"h264", "hevc", "av1", "vp9"}:
-                    result.add_issue(ValidationIssue(
-                        category="youtube",
-                        severity=ValidationSeverity.WARNING,
-                        message=f"YouTube için yaygın olmayan video codec: {v_codec or 'unknown'}",
-                        suggestion="H.264, HEVC veya AV1 önerilir.",
-                    ))
+                    result.add_issue(
+                        ValidationIssue(
+                            category="youtube",
+                            severity=ValidationSeverity.WARNING,
+                            message=f"YouTube için yaygın olmayan video codec: {v_codec or 'unknown'}",
+                            suggestion="H.264, HEVC veya AV1 önerilir.",
+                        )
+                    )
 
                 pix_fmt = (video_stream.get("pix_fmt") or "").lower()
-                if pix_fmt and not (pix_fmt.startswith("yuv420p") or pix_fmt.startswith("yuvj420p")):
-                    result.add_issue(ValidationIssue(
-                        category="youtube",
-                        severity=ValidationSeverity.WARNING,
-                        message=f"YouTube için riskli pixel format: {pix_fmt}",
-                        suggestion="yuv420p/yuv420p10le kullanın.",
-                    ))
+                if pix_fmt and not (
+                    pix_fmt.startswith("yuv420p") or pix_fmt.startswith("yuvj420p")
+                ):
+                    result.add_issue(
+                        ValidationIssue(
+                            category="youtube",
+                            severity=ValidationSeverity.WARNING,
+                            message=f"YouTube için riskli pixel format: {pix_fmt}",
+                            suggestion="yuv420p/yuv420p10le kullanın.",
+                        )
+                    )
 
             if audio_stream:
                 a_codec = (audio_stream.get("codec_name") or "").lower()
                 if a_codec not in {"aac", "opus"}:
-                    result.add_issue(ValidationIssue(
-                        category="youtube",
-                        severity=ValidationSeverity.INFO,
-                        message=f"Audio codec: {a_codec or 'unknown'}",
-                        details="YouTube için AAC/Opus daha uyumludur.",
-                    ))
+                    result.add_issue(
+                        ValidationIssue(
+                            category="youtube",
+                            severity=ValidationSeverity.INFO,
+                            message=f"Audio codec: {a_codec or 'unknown'}",
+                            details="YouTube için AAC/Opus daha uyumludur.",
+                        )
+                    )
 
                 sr_raw = audio_stream.get("sample_rate")
                 try:
@@ -1377,12 +1449,14 @@ class PostRenderValidator(VideoValidator):
                 except Exception:
                     sr = 0
                 if sr and sr not in {44100, 48000}:
-                    result.add_issue(ValidationIssue(
-                        category="youtube",
-                        severity=ValidationSeverity.WARNING,
-                        message=f"Örnekleme hızı önerilen değer dışında: {sr} Hz",
-                        suggestion="44.1kHz veya 48kHz kullanın.",
-                    ))
+                    result.add_issue(
+                        ValidationIssue(
+                            category="youtube",
+                            severity=ValidationSeverity.WARNING,
+                            message=f"Örnekleme hızı önerilen değer dışında: {sr} Hz",
+                            suggestion="44.1kHz veya 48kHz kullanın.",
+                        )
+                    )
 
             # Timing consistency checks (prevents upload/transcode speed anomalies)
             format_duration = 0.0
@@ -1408,24 +1482,28 @@ class PostRenderValidator(VideoValidator):
             if format_duration > 0 and stream_video_duration > 0:
                 diff = abs(format_duration - stream_video_duration)
                 if diff > self.STREAM_DURATION_TOLERANCE:
-                    result.add_issue(ValidationIssue(
-                        category="youtube",
-                        severity=ValidationSeverity.ERROR,
-                        message="Kapsayıcı/Video süreleri uyumsuz",
-                        details=f"format={format_duration:.2f}s, video={stream_video_duration:.2f}s, fark={diff:.2f}s",
-                        suggestion="Zaman damgası (PTS) tutarsızlığı olabilir; concat/mux adımlarını kontrol edin.",
-                    ))
+                    result.add_issue(
+                        ValidationIssue(
+                            category="youtube",
+                            severity=ValidationSeverity.ERROR,
+                            message="Kapsayıcı/Video süreleri uyumsuz",
+                            details=f"format={format_duration:.2f}s, video={stream_video_duration:.2f}s, fark={diff:.2f}s",
+                            suggestion="Zaman damgası (PTS) tutarsızlığı olabilir; concat/mux adımlarını kontrol edin.",
+                        )
+                    )
 
             if format_duration > 0 and stream_audio_duration > 0:
                 diff = abs(format_duration - stream_audio_duration)
                 if diff > self.STREAM_DURATION_TOLERANCE:
-                    result.add_issue(ValidationIssue(
-                        category="youtube",
-                        severity=ValidationSeverity.WARNING,
-                        message="Kapsayıcı/Audio süreleri uyumsuz",
-                        details=f"format={format_duration:.2f}s, audio={stream_audio_duration:.2f}s, fark={diff:.2f}s",
-                        suggestion="Audio loop/mux adımını kontrol edin.",
-                    ))
+                    result.add_issue(
+                        ValidationIssue(
+                            category="youtube",
+                            severity=ValidationSeverity.WARNING,
+                            message="Kapsayıcı/Audio süreleri uyumsuz",
+                            details=f"format={format_duration:.2f}s, audio={stream_audio_duration:.2f}s, fark={diff:.2f}s",
+                            suggestion="Audio loop/mux adımını kontrol edin.",
+                        )
+                    )
 
             if video_stream:
                 avg_fps = self._parse_fps(video_stream.get("avg_frame_rate", "0/1"))
@@ -1433,52 +1511,54 @@ class PostRenderValidator(VideoValidator):
                 if avg_fps > 0 and real_fps > 0:
                     fps_diff = abs(avg_fps - real_fps)
                     if fps_diff > 5.0:
-                        result.add_issue(ValidationIssue(
-                            category="youtube",
-                            severity=ValidationSeverity.WARNING,
-                            message="FPS akış bilgileri tutarsız",
-                            details=f"avg_frame_rate={avg_fps:.3f}, r_frame_rate={real_fps:.3f}",
-                            suggestion="CFR sabit fps encode kullanın.",
-                        ))
+                        result.add_issue(
+                            ValidationIssue(
+                                category="youtube",
+                                severity=ValidationSeverity.WARNING,
+                                message="FPS akış bilgileri tutarsız",
+                                details=f"avg_frame_rate={avg_fps:.3f}, r_frame_rate={real_fps:.3f}",
+                                suggestion="CFR sabit fps encode kullanın.",
+                            )
+                        )
 
         except Exception as e:
-            result.add_issue(ValidationIssue(
-                category="youtube",
-                severity=ValidationSeverity.INFO,
-                message="YouTube uyumluluk analizi tamamlanamadı",
-                details=str(e),
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="youtube",
+                    severity=ValidationSeverity.INFO,
+                    message="YouTube uyumluluk analizi tamamlanamadı",
+                    details=str(e),
+                )
+            )
 
     def _validate_duration(
-        self,
-        actual_duration: float,
-        target_duration: int,
-        result: ValidationResult
+        self, actual_duration: float, target_duration: int, result: ValidationResult
     ) -> None:
         """Validate output duration."""
         duration_diff = abs(actual_duration - target_duration)
 
         if duration_diff > self.DURATION_TOLERANCE:
-            result.add_issue(ValidationIssue(
-                category="output",
-                severity=ValidationSeverity.WARNING,
-                message="Süre farkı tespit edildi",
-                details=f"Hedef: {target_duration}s, Gerçek: {actual_duration:.1f}s, Fark: {duration_diff:.1f}s",
-                suggestion="Normal kabul edilebilir fark (±5 saniye içinde hedeflemyin).",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="output",
+                    severity=ValidationSeverity.WARNING,
+                    message="Süre farkı tespit edildi",
+                    details=f"Hedef: {target_duration}s, Gerçek: {actual_duration:.1f}s, Fark: {duration_diff:.1f}s",
+                    suggestion="Normal kabul edilebilir fark (±5 saniye içinde hedeflemyin).",
+                )
+            )
         else:
-            result.add_issue(ValidationIssue(
-                category="output",
-                severity= ValidationSeverity.INFO,
-                message="Süre doğrulaması başarılı",
-                details=f"Hedef: {target_duration}s, Gerçek: {actual_duration:.1f}s",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="output",
+                    severity=ValidationSeverity.INFO,
+                    message="Süre doğrulaması başarılı",
+                    details=f"Hedef: {target_duration}s, Gerçek: {actual_duration:.1f}s",
+                )
+            )
 
     def _validate_video_specs(
-        self,
-        info,
-        target_specs: Optional[Dict[str, Any]],
-        result: ValidationResult
+        self, info, target_specs: dict[str, Any] | None, result: ValidationResult
     ) -> None:
         """Validate video specifications."""
         if not target_specs:
@@ -1488,37 +1568,46 @@ class PostRenderValidator(VideoValidator):
         expected_codec = target_specs.get("codec")
         if expected_codec:
             actual_codec = info.codec.lower()
-            if expected_codec.lower() not in actual_codec and actual_codec not in expected_codec.lower():
-                result.add_issue(ValidationIssue(
-                    category="output",
-                    severity=ValidationSeverity.INFO,
-                    message=f"Codec farklı: {info.codec}",
-                    details=f"Beklenen: {expected_codec}",
-                ))
+            if (
+                expected_codec.lower() not in actual_codec
+                and actual_codec not in expected_codec.lower()
+            ):
+                result.add_issue(
+                    ValidationIssue(
+                        category="output",
+                        severity=ValidationSeverity.INFO,
+                        message=f"Codec farklı: {info.codec}",
+                        details=f"Beklenen: {expected_codec}",
+                    )
+                )
 
         # Check resolution
         expected_width = target_specs.get("width")
         expected_height = target_specs.get("height")
         if expected_width and expected_height:
             if info.width != expected_width or info.height != expected_height:
-                result.add_issue(ValidationIssue(
-                    category="output",
-                    severity=ValidationSeverity.WARNING,
-                    message=f"Çözünürlük farklı: {info.width}x{info.height}",
-                    details=f"Beklenen: {expected_width}x{expected_height}",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="output",
+                        severity=ValidationSeverity.WARNING,
+                        message=f"Çözünürlük farklı: {info.width}x{info.height}",
+                        details=f"Beklenen: {expected_width}x{expected_height}",
+                    )
+                )
 
         # Check FPS
         expected_fps = target_specs.get("fps")
         if expected_fps:
             actual_fps = self._parse_fps(info.fps)
             if abs(actual_fps - expected_fps) > 1.0:
-                result.add_issue(ValidationIssue(
-                    category="output",
-                    severity=ValidationSeverity.INFO,
-                    message=f"FPS farklı: {actual_fps:.2f}",
-                    details=f"Beklenen: {expected_fps}",
-                ))
+                result.add_issue(
+                    ValidationIssue(
+                        category="output",
+                        severity=ValidationSeverity.INFO,
+                        message=f"FPS farklı: {actual_fps:.2f}",
+                        details=f"Beklenen: {expected_fps}",
+                    )
+                )
 
     def _validate_audio(self, output_path: Path, result: ValidationResult) -> None:
         """Validate audio in output."""
@@ -1528,26 +1617,33 @@ class PostRenderValidator(VideoValidator):
 
             cmd = [
                 "ffprobe",
-                "-v", "error",
-                "-select_streams", "a",
-                "-show_entries", "stream=codec_name,bit_rate",
-                "-of", "json",
-                str(output_path)
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=codec_name,bit_rate",
+                "-of",
+                "json",
+                str(output_path),
             ]
 
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if proc.returncode == 0:
                 import json
+
                 data = json.loads(proc.stdout)
 
                 if not data.get("streams"):
-                    result.add_issue(ValidationIssue(
-                        category="output",
-                        severity=ValidationSeverity.ERROR,
-                        message="Çıktıda audio akışı bulunamadı",
-                        details="Video sessiz olabilir.",
-                        suggestion="Audio seçeneklerini kontrol edin.",
-                    ))
+                    result.add_issue(
+                        ValidationIssue(
+                            category="output",
+                            severity=ValidationSeverity.ERROR,
+                            message="Çıktıda audio akışı bulunamadı",
+                            details="Video sessiz olabilir.",
+                            suggestion="Audio seçeneklerini kontrol edin.",
+                        )
+                    )
                 else:
                     # Check audio codec
                     audio_codec = data["streams"][0].get("codec_name", "")
@@ -1560,21 +1656,20 @@ class PostRenderValidator(VideoValidator):
                         result.metadata["output"]["audio_bitrate_kbps"] = bitrate_kbps
 
                         if bitrate_kbps < self.MIN_AUDIO_BITRATE:
-                            result.add_issue(ValidationIssue(
-                                category="output",
-                                severity=ValidationSeverity.INFO,
-                                message=f"Düşük audio bitrate: {bitrate_kbps} kbps",
-                                details=f"Önerilen: {self.MIN_AUDIO_BITRATE}+ kbps",
-                            ))
+                            result.add_issue(
+                                ValidationIssue(
+                                    category="output",
+                                    severity=ValidationSeverity.INFO,
+                                    message=f"Düşük audio bitrate: {bitrate_kbps} kbps",
+                                    details=f"Önerilen: {self.MIN_AUDIO_BITRATE}+ kbps",
+                                )
+                            )
 
         except Exception as e:
             self.logger.warning(f"Audio validation failed: {e}")
 
     def _validate_file_size(
-        self,
-        output_path: Path,
-        duration: float,
-        result: ValidationResult
+        self, output_path: Path, duration: float, result: ValidationResult
     ) -> None:
         """Validate output file size is reasonable."""
         size_mb = output_path.stat().st_size / (1024**2)
@@ -1582,26 +1677,27 @@ class PostRenderValidator(VideoValidator):
 
         # Rough quality checks
         if size_per_min_mb < 1:  # Less than 1 MB/min
-            result.add_issue(ValidationIssue(
-                category="output",
-                severity=ValidationSeverity.WARNING,
-                message=f"Çıktı dosyası çok küçük: {size_mb:.1f} MB",
-                details=f"{size_per_min_mb:.2f} MB/dakika",
-                suggestion="Çok düşük bitrate kullanılmış olabilir. Kalite düşük olabilir.",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="output",
+                    severity=ValidationSeverity.WARNING,
+                    message=f"Çıktı dosyası çok küçük: {size_mb:.1f} MB",
+                    details=f"{size_per_min_mb:.2f} MB/dakika",
+                    suggestion="Çok düşük bitrate kullanılmış olabilir. Kalite düşük olabilir.",
+                )
+            )
         elif size_per_min_mb > 500:  # More than 500 MB/min
-            result.add_issue(ValidationIssue(
-                category="output",
-                severity=ValidationSeverity.INFO,
-                message=f"Çıktı dosyası büyük: {size_mb:.1f} MB",
-                details=f"{size_per_min_mb:.1f} MB/dakika",
-            ))
+            result.add_issue(
+                ValidationIssue(
+                    category="output",
+                    severity=ValidationSeverity.INFO,
+                    message=f"Çıktı dosyası büyük: {size_mb:.1f} MB",
+                    details=f"{size_per_min_mb:.1f} MB/dakika",
+                )
+            )
 
     def validate_render(
-        self,
-        video_path: Path,
-        specs: Dict[str, Any],
-        mode: str = "intro_loop"
+        self, video_path: Path, specs: dict[str, Any], mode: str = "intro_loop"
     ) -> ValidationResult:
         """
         Full post-render validation for both intro_loop and single modes.
@@ -1633,14 +1729,14 @@ class PostRenderValidator(VideoValidator):
                         f"Duration deviation too large: {deviation:.2f}s (tolerance: {self.duration_tolerance}s)",
                         f"Sure sapmasi cok buyuk: {deviation:.2f}s (tolerans: {self.duration_tolerance}s)",
                         field="duration",
-                        context={"deviation": deviation, "tolerance": self.duration_tolerance}
+                        context={"deviation": deviation, "tolerance": self.duration_tolerance},
                     )
                 else:
                     result.add_warning(
                         "duration",
                         f"Duration validation passed: {actual:.2f}s (target: {target}s)",
                         f"Sure dogrulamasi basarili: {actual:.2f}s (hedef: {target}s)",
-                        field="duration"
+                        field="duration",
                     )
 
         # Check audio-visual sync
@@ -1652,7 +1748,7 @@ class PostRenderValidator(VideoValidator):
                     "Possible audio-visual sync issue detected",
                     "Olasi ses-goruntu senkronizasyon sorusu tespit edildi",
                     field="av_sync",
-                    context={"tolerance": self.sync_tolerance}
+                    context={"tolerance": self.sync_tolerance},
                 )
 
         # Verify file integrity
@@ -1661,7 +1757,7 @@ class PostRenderValidator(VideoValidator):
                 "integrity",
                 "File integrity check failed",
                 "Dosya bütünlügü kontrolü basarisiz",
-                field="integrity"
+                field="integrity",
             )
 
         return result
@@ -1682,27 +1778,39 @@ class PostRenderValidator(VideoValidator):
         try:
             cmd = [
                 "ffprobe",
-                "-v", "error",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=duration",
-                "-of", "json",
-                str(video_path)
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=duration",
+                "-of",
+                "json",
+                str(video_path),
             ]
 
-            result_proc = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            result_proc = subprocess.run(
+                cmd, capture_output=True, text=True, check=True, timeout=30
+            )
             v_data = json.loads(result_proc.stdout)
             video_duration = float(v_data.get("streams", [{}])[0].get("duration", 0))
 
             cmd = [
                 "ffprobe",
-                "-v", "error",
-                "-select_streams", "a:0",
-                "-show_entries", "stream=duration",
-                "-of", "json",
-                str(video_path)
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=duration",
+                "-of",
+                "json",
+                str(video_path),
             ]
 
-            result_proc = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            result_proc = subprocess.run(
+                cmd, capture_output=True, text=True, check=True, timeout=30
+            )
             a_data = json.loads(result_proc.stdout)
             audio_duration = float(a_data.get("streams", [{}])[0].get("duration", 0))
 
@@ -1733,13 +1841,13 @@ class PostRenderValidator(VideoValidator):
 
 
 def validate_before_render(
-    intro_path: Optional[Path],
-    loop_path: Optional[Path],
-    single_path: Optional[Path],
-    tracks: List[Path],
+    intro_path: Path | None,
+    loop_path: Path | None,
+    single_path: Path | None,
+    tracks: list[Path],
     target_duration: int,
     output_dir: Path,
-    **kwargs
+    **kwargs,
 ) -> ValidationResult:
     """
     Convenience function for pre-render validation.
@@ -1756,7 +1864,7 @@ def validate_before_render(
 def validate_after_render(
     output_path: Path,
     target_duration: int,
-    target_specs: Optional[Dict[str, Any]] = None,
+    target_specs: dict[str, Any] | None = None,
 ) -> ValidationResult:
     """
     Convenience function for post-render validation.
@@ -1770,7 +1878,7 @@ def validate_after_render(
 
 def export_validation_report(
     result: ValidationResult,
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
 ) -> Path:
     """
     Export validation report to JSON file.
@@ -1782,8 +1890,8 @@ def export_validation_report(
     Returns:
         Path to the exported report file
     """
-    from datetime import datetime
     import json
+    from datetime import datetime
 
     if output_dir is None:
         output_dir = Path.cwd() / "reports"
@@ -1815,10 +1923,10 @@ def export_validation_report(
 
 def validate_video_file(
     video_path: Path,
-    expected_duration: Optional[float] = None,
-    expected_resolution: Optional[Tuple[int, int]] = None,
-    expected_fps: Optional[int] = None,
-    expected_codec: Optional[str] = None,
+    expected_duration: float | None = None,
+    expected_resolution: tuple[int, int] | None = None,
+    expected_fps: int | None = None,
+    expected_codec: str | None = None,
     has_audio: bool = True,
     duration_tolerance: float = 5.0,
 ) -> ValidationResult:
@@ -1888,7 +1996,7 @@ def validate_ffmpeg_available() -> ValidationResult:
             "tools",
             "ffmpeg not found in PATH",
             "ffmpeg PATH'da bulunamadi",
-            suggestion="Install FFmpeg and add it to your PATH"
+            suggestion="Install FFmpeg and add it to your PATH",
         )
 
     # Check ffprobe
@@ -1897,7 +2005,7 @@ def validate_ffmpeg_available() -> ValidationResult:
             "tools",
             "ffprobe not found in PATH",
             "ffprobe PATH'da bulunamadi",
-            suggestion="Install FFmpeg (includes ffprobe) and add it to your PATH"
+            suggestion="Install FFmpeg (includes ffprobe) and add it to your PATH",
         )
 
     result.valid = len(result.errors) == 0

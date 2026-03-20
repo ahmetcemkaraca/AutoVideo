@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Video Renderer - Intro+Loop video birleştirme ve ses miksajı.
 

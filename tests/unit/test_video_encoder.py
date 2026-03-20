@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for VideoEncoder class.
 
@@ -12,12 +11,14 @@ Tests cover:
 - Codec name mapping
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from config import CODEC_H264, CODEC_H265, COLOR_BT709, CodecConfig
+from video_renderer.ffmpeg import VideoInfo
 from video_renderer.video import VideoEncoder, encode_parallel
-from config import CodecConfig, ColorConfig, CODEC_H264, CODEC_H265, COLOR_BT709
-from video_renderer.ffmpeg import FFmpegProgress, VideoInfo
 
 
 @pytest.mark.unit
@@ -32,7 +33,7 @@ class TestVideoEncoder:
             color_config=COLOR_BT709,
             width=1920,
             height=1080,
-            fps=60
+            fps=60,
         )
 
         assert encoder.runner == mock_ffmpeg_runner
@@ -78,6 +79,7 @@ class TestVideoEncoder:
     def test_get_expected_codec_name_av1(self, mock_ffmpeg_runner):
         """Test codec name mapping for AV1."""
         from video_renderer.config import CODEC_AV1
+
         encoder = VideoEncoder(mock_ffmpeg_runner, CODEC_AV1, COLOR_BT709)
         assert encoder._get_expected_codec_name() == "av1"
 
@@ -87,50 +89,75 @@ class TestVideoEncoder:
         encoder = VideoEncoder(mock_ffmpeg_runner, unknown_codec, COLOR_BT709)
         assert encoder._get_expected_codec_name() == "unknown"
 
-    @pytest.mark.parametrize("compatible, reason", [
-        (True, "Uyumlu"),
-        (False, "Cozunurluk farkli: 1280x720 -> 1920x1080"),
-        (False, "Codec farkli: hevc -> h264"),
-        (False, "FPS farkli: 30.00 -> 60"),
-        (False, "Pixel format uygun degil: yuv422p"),
-    ])
-    def test_check_compatibility_scenarios(
-        self, mock_ffmpeg_runner, compatible, reason
-    ):
+    @pytest.mark.parametrize(
+        "compatible, reason",
+        [
+            (True, "Uyumlu"),
+            (False, "Cozunurluk farkli: 1280x720 -> 1920x1080"),
+            (False, "Codec farkli: hevc -> h264"),
+            (False, "FPS farkli: 30.00 -> 60"),
+            (False, "Pixel format uygun degil: yuv422p"),
+        ],
+    )
+    def test_check_compatibility_scenarios(self, mock_ffmpeg_runner, compatible, reason):
         """Test compatibility checking for various scenarios."""
         encoder = VideoEncoder(
-            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709,
-            width=1920, height=1080, fps=60
+            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709, width=1920, height=1080, fps=60
         )
 
         # Mock different video info scenarios
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             if compatible:
                 mock_probe.return_value = VideoInfo(
-                    codec="h264", width=1920, height=1080, fps="60/1",
-                    duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                    codec="h264",
+                    width=1920,
+                    height=1080,
+                    fps="60/1",
+                    duration=120.0,
+                    pix_fmt="yuv420p",
+                    color_space="bt709",
                 )
             else:
                 # Parse reason to determine what to mock
                 if "Cozunurluk" in reason:
                     mock_probe.return_value = VideoInfo(
-                        codec="h264", width=1280, height=720, fps="60/1",
-                        duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                        codec="h264",
+                        width=1280,
+                        height=720,
+                        fps="60/1",
+                        duration=120.0,
+                        pix_fmt="yuv420p",
+                        color_space="bt709",
                     )
                 elif "Codec" in reason:
                     mock_probe.return_value = VideoInfo(
-                        codec="hevc", width=1920, height=1080, fps="60/1",
-                        duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                        codec="hevc",
+                        width=1920,
+                        height=1080,
+                        fps="60/1",
+                        duration=120.0,
+                        pix_fmt="yuv420p",
+                        color_space="bt709",
                     )
                 elif "FPS" in reason:
                     mock_probe.return_value = VideoInfo(
-                        codec="h264", width=1920, height=1080, fps="30/1",
-                        duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                        codec="h264",
+                        width=1920,
+                        height=1080,
+                        fps="30/1",
+                        duration=120.0,
+                        pix_fmt="yuv420p",
+                        color_space="bt709",
                     )
                 elif "Pixel" in reason:
                     mock_probe.return_value = VideoInfo(
-                        codec="h264", width=1920, height=1080, fps="60/1",
-                        duration=120.0, pix_fmt="yuv422p", color_space="bt709"
+                        codec="h264",
+                        width=1920,
+                        height=1080,
+                        fps="60/1",
+                        duration=120.0,
+                        pix_fmt="yuv422p",
+                        color_space="bt709",
                     )
 
             is_compat, result_reason = encoder.check_compatibility(Path("test.mp4"))
@@ -141,7 +168,7 @@ class TestVideoEncoder:
         """Test compatibility check handles probe errors."""
         encoder = VideoEncoder(mock_ffmpeg_runner, CODEC_H264, COLOR_BT709)
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.side_effect = Exception("Probe error")
 
             is_compat, reason = encoder.check_compatibility(Path("test.mp4"))
@@ -152,33 +179,40 @@ class TestVideoEncoder:
         """Test is_compatible legacy wrapper."""
         encoder = VideoEncoder(mock_ffmpeg_runner, CODEC_H264, COLOR_BT709)
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.return_value = VideoInfo(
-                codec="h264", width=1920, height=1080, fps="60/1",
-                duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="h264",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=120.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
 
             assert encoder.is_compatible(Path("test.mp4")) is True
 
-    def test_normalize_video_direct_copy_compatible(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_normalize_video_direct_copy_compatible(self, mock_ffmpeg_runner, temp_dir):
         """Test normalize_video with direct copy for compatible video."""
         encoder = VideoEncoder(
-            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709,
-            width=1920, height=1080, fps=60
+            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709, width=1920, height=1080, fps=60
         )
 
         source = temp_dir / "source.mp4"
         output = temp_dir / "output.mp4"
         source.touch()
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.return_value = VideoInfo(
-                codec="h264", width=1920, height=1080, fps="60/1",
-                duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="h264",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=120.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
-            with patch('video_renderer.video.get_duration') as mock_duration:
+            with patch("video_renderer.video.get_duration") as mock_duration:
                 mock_duration.return_value = 120.0
 
                 result = encoder.normalize_video(source, output)
@@ -186,25 +220,27 @@ class TestVideoEncoder:
                 assert result == output
                 mock_ffmpeg_runner.run.assert_not_called()
 
-    def test_normalize_video_re_encode_incompatible(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_normalize_video_re_encode_incompatible(self, mock_ffmpeg_runner, temp_dir):
         """Test normalize_video with re-encoding for incompatible video."""
         encoder = VideoEncoder(
-            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709,
-            width=1920, height=1080, fps=60
+            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709, width=1920, height=1080, fps=60
         )
 
         source = temp_dir / "source.mp4"
         output = temp_dir / "output.mp4"
         source.touch()
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=120.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
-            with patch('video_renderer.video.get_duration') as mock_duration:
+            with patch("video_renderer.video.get_duration") as mock_duration:
                 mock_duration.return_value = 120.0
 
                 result = encoder.normalize_video(source, output)
@@ -212,13 +248,10 @@ class TestVideoEncoder:
                 assert result == output
                 mock_ffmpeg_runner.run.assert_called_once()
 
-    def test_normalize_video_with_progress_callback(
-        self, mock_ffmpeg_runner, temp_dir
-    ):
+    def test_normalize_video_with_progress_callback(self, mock_ffmpeg_runner, temp_dir):
         """Test normalize_video with progress callback."""
         encoder = VideoEncoder(
-            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709,
-            width=1920, height=1080, fps=60
+            mock_ffmpeg_runner, CODEC_H264, COLOR_BT709, width=1920, height=1080, fps=60
         )
 
         source = temp_dir / "source.mp4"
@@ -227,12 +260,17 @@ class TestVideoEncoder:
 
         callback = MagicMock()
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=120.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
-            with patch('video_renderer.video.get_duration') as mock_duration:
+            with patch("video_renderer.video.get_duration") as mock_duration:
                 mock_duration.return_value = 120.0
 
                 result = encoder.normalize_video(source, output, callback)
@@ -245,20 +283,24 @@ class TestVideoEncoder:
         from video_renderer.config import CODEC_H264_NVENC
 
         encoder = VideoEncoder(
-            mock_ffmpeg_runner, CODEC_H264_NVENC, COLOR_BT709,
-            width=1920, height=1080, fps=60
+            mock_ffmpeg_runner, CODEC_H264_NVENC, COLOR_BT709, width=1920, height=1080, fps=60
         )
 
         source = temp_dir / "source.mp4"
         output = temp_dir / "output.mp4"
         source.touch()
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=120.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
-            with patch('video_renderer.video.get_duration') as mock_duration:
+            with patch("video_renderer.video.get_duration") as mock_duration:
                 mock_duration.return_value = 120.0
 
                 result = encoder.normalize_video(source, output)
@@ -277,7 +319,7 @@ class TestVideoEncoder:
         intro.touch()
         loop.touch()
 
-        with patch('video_renderer.video.get_duration') as mock_duration:
+        with patch("video_renderer.video.get_duration") as mock_duration:
             mock_duration.side_effect = [30.0, 60.0]  # intro, loop
 
             result = encoder.concat_videos(intro, loop, 3600, temp_dir)
@@ -294,12 +336,12 @@ class TestVideoEncoder:
         intro.touch()
         loop.touch()
 
-        with patch('video_renderer.video.get_duration') as mock_duration:
+        with patch("video_renderer.video.get_duration") as mock_duration:
             # 30s intro, 60s loop, target 3600s (1 hour)
             # Remaining: 3570s, need 60 loops
             mock_duration.side_effect = [30.0, 60.0]
 
-            with patch('video_renderer.video.write_concat_list') as mock_write:
+            with patch("video_renderer.video.write_concat_list") as mock_write:
                 result = encoder.concat_videos(intro, loop, 3600, temp_dir)
 
                 # Should write concat list with intro + 60 loops
@@ -317,7 +359,7 @@ class TestVideoEncoder:
 
         callback = MagicMock()
 
-        with patch('video_renderer.video.get_duration') as mock_duration:
+        with patch("video_renderer.video.get_duration") as mock_duration:
             mock_duration.side_effect = [30.0, 60.0]
 
             result = encoder.concat_videos(intro, loop, 3600, temp_dir, callback)
@@ -333,10 +375,10 @@ class TestVideoEncoder:
         intro.touch()
         loop.touch()
 
-        with patch('video_renderer.video.get_duration') as mock_duration:
+        with patch("video_renderer.video.get_duration") as mock_duration:
             mock_duration.side_effect = [30.0, 0.0]
 
-            with patch('video_renderer.video.write_concat_list') as mock_write:
+            with patch("video_renderer.video.write_concat_list") as mock_write:
                 result = encoder.concat_videos(intro, loop, 3600, temp_dir)
 
                 # Should only have intro, no loops
@@ -360,16 +402,18 @@ class TestEncodeParallel:
         source1.touch()
         source2.touch()
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=120.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
 
-            results = encode_parallel(
-                encoder,
-                [(source1, output1), (source2, output2)]
-            )
+            results = encode_parallel(encoder, [(source1, output1), (source2, output2)])
 
             assert len(results) == 2
             assert output1 in results
@@ -389,16 +433,19 @@ class TestEncodeParallel:
 
         callback = MagicMock()
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             mock_probe.return_value = VideoInfo(
-                codec="hevc", width=1920, height=1080, fps="60/1",
-                duration=120.0, pix_fmt="yuv420p", color_space="bt709"
+                codec="hevc",
+                width=1920,
+                height=1080,
+                fps="60/1",
+                duration=120.0,
+                pix_fmt="yuv420p",
+                color_space="bt709",
             )
 
             results = encode_parallel(
-                encoder,
-                [(source1, output1), (source2, output2)],
-                progress_callback=callback
+                encoder, [(source1, output1), (source2, output2)], progress_callback=callback
             )
 
             # Callback should be called multiple times
@@ -416,49 +463,56 @@ class TestEncodeParallel:
         source1.touch()
         source2.touch()
 
-        with patch('video_renderer.video.probe_video') as mock_probe:
+        with patch("video_renderer.video.probe_video") as mock_probe:
             # Make one fail
             mock_probe.side_effect = [
-                VideoInfo(codec="h264", width=1920, height=1080, fps="60/1",
-                         duration=120.0, pix_fmt="yuv420p", color_space="bt709"),
-                Exception("Probe failed")
+                VideoInfo(
+                    codec="h264",
+                    width=1920,
+                    height=1080,
+                    fps="60/1",
+                    duration=120.0,
+                    pix_fmt="yuv420p",
+                    color_space="bt709",
+                ),
+                Exception("Probe failed"),
             ]
 
             with pytest.raises(RuntimeError, match="Encoding failed"):
-                encode_parallel(
-                    encoder,
-                    [(source1, output1), (source2, output2)]
-                )
+                encode_parallel(encoder, [(source1, output1), (source2, output2)])
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("width,height,fps,codec,pix_fmt,expected", [
-    (1920, 1080, 60, "h264", "yuv420p", True),
-    (1280, 720, 60, "h264", "yuv420p", False),  # Wrong resolution
-    (1920, 1080, 30, "h264", "yuv420p", False),  # Wrong FPS
-    (1920, 1080, 60, "hevc", "yuv420p", False),  # Wrong codec
-    (1920, 1080, 60, "h264", "yuv422p", False),  # Wrong pixel format
-    (1920, 1080, 60, "hevc", "yuv420p10le", True),  # Valid for H.265
-    (1920, 1080, 60, "av1", "yuv420p10le", True),  # Valid for AV1
-])
-def test_compatibility_matrix(
-    mock_ffmpeg_runner, width, height, fps, codec, pix_fmt, expected
-):
+@pytest.mark.parametrize(
+    "width,height,fps,codec,pix_fmt,expected",
+    [
+        (1920, 1080, 60, "h264", "yuv420p", True),
+        (1280, 720, 60, "h264", "yuv420p", False),  # Wrong resolution
+        (1920, 1080, 30, "h264", "yuv420p", False),  # Wrong FPS
+        (1920, 1080, 60, "hevc", "yuv420p", False),  # Wrong codec
+        (1920, 1080, 60, "h264", "yuv422p", False),  # Wrong pixel format
+        (1920, 1080, 60, "hevc", "yuv420p10le", True),  # Valid for H.265
+        (1920, 1080, 60, "av1", "yuv420p10le", True),  # Valid for AV1
+    ],
+)
+def test_compatibility_matrix(mock_ffmpeg_runner, width, height, fps, codec, pix_fmt, expected):
     """Test compatibility matrix for different video configurations."""
-    from video_renderer.config import CODEC_H264, CODEC_H265, CODEC_AV1
+    from video_renderer.config import CODEC_AV1, CODEC_H264, CODEC_H265
 
     codec_map = {"h264": CODEC_H264, "hevc": CODEC_H265, "av1": CODEC_AV1}
     encoder = VideoEncoder(
-        mock_ffmpeg_runner,
-        codec_map[codec],
-        COLOR_BT709,
-        width=1920, height=1080, fps=60
+        mock_ffmpeg_runner, codec_map[codec], COLOR_BT709, width=1920, height=1080, fps=60
     )
 
-    with patch('video_renderer.video.probe_video') as mock_probe:
+    with patch("video_renderer.video.probe_video") as mock_probe:
         mock_probe.return_value = VideoInfo(
-            codec=codec, width=width, height=height, fps=f"{fps}/1",
-            duration=120.0, pix_fmt=pix_fmt, color_space="bt709"
+            codec=codec,
+            width=width,
+            height=height,
+            fps=f"{fps}/1",
+            duration=120.0,
+            pix_fmt=pix_fmt,
+            color_space="bt709",
         )
 
         is_compat, _ = encoder.check_compatibility(Path("test.mp4"))

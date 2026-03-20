@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Mode Selection Screen - choose render mode before all other TUI steps.
 """
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, Footer, Static
 
 
 class ModeSelectScreen(Screen):
@@ -20,19 +19,16 @@ class ModeSelectScreen(Screen):
     ]
 
     def compose(self) -> ComposeResult:
-        with Container(classes="main-wrapper"):
-            with Vertical(classes="center-container"):
-                with Container(classes="panel"):
-                    yield Static("Calisma Modu", classes="panel-title")
-                    yield Static(
-                        "Render oncesi modu secin: Normal veya RAM Disk.", classes="subtitle"
-                    )
-                    yield Static("")
+        with Container(classes="main-wrapper"), Vertical(classes="center-container"):
+            with Container(classes="panel"):
+                yield Static("Calisma Modu", classes="panel-title")
+                yield Static("Render oncesi modu secin: Normal veya RAM Disk.", classes="subtitle")
+                yield Static("")
 
-                    with Horizontal(classes="action-bar"):
-                        yield Button("1) 🖥️ Normal", id="standard", classes="-primary")
-                        yield Button("2) ⚡ RAM Disk", id="ramdisk", classes="-secondary")
-                        yield Button("🚪 Cikis", id="quit", classes="-error")
+                with Horizontal(classes="action-bar"):
+                    yield Button("1) 🖥️ Normal", id="standard", classes="-primary")
+                    yield Button("2) ⚡ RAM Disk", id="ramdisk", classes="-secondary")
+                    yield Button("🚪 Cikis", id="quit", classes="-error")
 
         yield Footer()
 

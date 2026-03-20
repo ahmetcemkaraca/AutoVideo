@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for HashLedger module.
 
@@ -13,17 +12,11 @@ Tests cover:
 - Persistence
 """
 
-import pytest
-import json
 import hashlib
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-from video_renderer.hash_ledger import (
-    HashLedger,
-    HashEntry,
-    SourcePair,
-    should_render
-)
+
+import pytest
+
+from video_renderer.hash_ledger import HashEntry, HashLedger, SourcePair, should_render
 
 
 @pytest.mark.unit
@@ -36,7 +29,7 @@ class TestHashEntry:
             file_hash="abc123",
             file_path="/path/to/video.mp4",
             timestamp="2024-01-01T00:00:00",
-            output_path="/path/to/output.mp4"
+            output_path="/path/to/output.mp4",
         )
 
         assert entry.file_hash == "abc123"
@@ -50,7 +43,7 @@ class TestHashEntry:
             file_hash="abc123",
             file_path="/path/to/video.mp4",
             timestamp="2024-01-01T00:00:00",
-            output_path="/path/to/output.mp4"
+            output_path="/path/to/output.mp4",
         )
 
         data = entry.to_dict()
@@ -66,7 +59,7 @@ class TestHashEntry:
             "file_hash": "abc123",
             "file_path": "/path/to/video.mp4",
             "timestamp": "2024-01-01T00:00:00",
-            "output_path": "/path/to/output.mp4"
+            "output_path": "/path/to/output.mp4",
         }
 
         entry = HashEntry.from_dict(data)
@@ -79,9 +72,7 @@ class TestHashEntry:
     def test_hash_entry_optional_output(self):
         """Test HashEntry with no output path."""
         entry = HashEntry(
-            file_hash="abc123",
-            file_path="/path/to/video.mp4",
-            timestamp="2024-01-01T00:00:00"
+            file_hash="abc123", file_path="/path/to/video.mp4", timestamp="2024-01-01T00:00:00"
         )
 
         assert entry.output_path is None
@@ -99,7 +90,7 @@ class TestSourcePair:
             intro_path="/path/to/intro.mp4",
             loop_path="/path/to/loop.mp4",
             timestamp="2024-01-01T00:00:00",
-            output_path="/path/to/output.mp4"
+            output_path="/path/to/output.mp4",
         )
 
         assert pair.intro_hash == "intro123"
@@ -116,7 +107,7 @@ class TestSourcePair:
             loop_hash="loop456",
             intro_path="/path/to/intro.mp4",
             loop_path="/path/to/loop.mp4",
-            timestamp="2024-01-01T00:00:00"
+            timestamp="2024-01-01T00:00:00",
         )
 
         combined = pair.combined_hash
@@ -134,7 +125,7 @@ class TestSourcePair:
             loop_hash="loop456",
             intro_path="/path/to/intro.mp4",
             loop_path="/path/to/loop.mp4",
-            timestamp="2024-01-01T00:00:00"
+            timestamp="2024-01-01T00:00:00",
         )
 
         data = pair.to_dict()
@@ -152,7 +143,7 @@ class TestSourcePair:
             "intro_path": "/path/to/intro.mp4",
             "loop_path": "/path/to/loop.mp4",
             "timestamp": "2024-01-01T00:00:00",
-            "output_path": None
+            "output_path": None,
         }
 
         pair = SourcePair.from_dict(data)
@@ -210,10 +201,7 @@ class TestHashLedger:
         output_file = temp_dir / "output.mp4"
 
         ledger = HashLedger(ledger_file=temp_dir / "ledger.json")
-        result = ledger.register(
-            single_path=test_file,
-            output_path=output_file
-        )
+        result = ledger.register(single_path=test_file, output_path=output_file)
 
         assert result is True
         assert ledger.entry_count == 1
@@ -229,9 +217,7 @@ class TestHashLedger:
 
         ledger = HashLedger(ledger_file=temp_dir / "ledger.json")
         result = ledger.register(
-            intro_path=intro_file,
-            loop_path=loop_file,
-            output_path=output_file
+            intro_path=intro_file, loop_path=loop_file, output_path=output_file
         )
 
         assert result is True
@@ -276,9 +262,7 @@ class TestHashLedger:
 
         ledger = HashLedger(ledger_file=temp_dir / "ledger.json")
         result = ledger.check_and_register(
-            intro_path=intro_file,
-            loop_path=loop_file,
-            output_path=output_file
+            intro_path=intro_file, loop_path=loop_file, output_path=output_file
         )
 
         assert result is True
@@ -293,17 +277,11 @@ class TestHashLedger:
         output_file = temp_dir / "output.mp4"
 
         ledger = HashLedger(ledger_file=temp_dir / "ledger.json")
-        
-        ledger.register(
-            intro_path=intro_file,
-            loop_path=loop_file,
-            output_path=output_file
-        )
+
+        ledger.register(intro_path=intro_file, loop_path=loop_file, output_path=output_file)
 
         result = ledger.check_and_register(
-            intro_path=intro_file,
-            loop_path=loop_file,
-            output_path=output_file
+            intro_path=intro_file, loop_path=loop_file, output_path=output_file
         )
 
         assert result is False
@@ -318,18 +296,11 @@ class TestHashLedger:
         output_file = temp_dir / "output.mp4"
 
         ledger = HashLedger(ledger_file=temp_dir / "ledger.json")
-        
-        ledger.register(
-            intro_path=intro_file,
-            loop_path=loop_file,
-            output_path=output_file
-        )
+
+        ledger.register(intro_path=intro_file, loop_path=loop_file, output_path=output_file)
 
         result = ledger.check_and_register(
-            intro_path=intro_file,
-            loop_path=loop_file,
-            output_path=output_file,
-            force=True
+            intro_path=intro_file, loop_path=loop_file, output_path=output_file, force=True
         )
 
         assert result is True
@@ -413,7 +384,7 @@ class TestHashLedger:
     def test_hash_ledger_persistence(self, temp_dir):
         """Test ledger persistence across instances."""
         ledger_file = temp_dir / "ledger.json"
-        
+
         intro_file = temp_dir / "intro.mp4"
         loop_file = temp_dir / "loop.mp4"
         intro_file.write_bytes(b"intro content")
@@ -441,11 +412,7 @@ class TestShouldRender:
 
         ledger = HashLedger(ledger_file=temp_dir / "ledger.json")
 
-        result = should_render(
-            ledger=ledger,
-            intro_path=intro_file,
-            loop_path=loop_file
-        )
+        result = should_render(ledger=ledger, intro_path=intro_file, loop_path=loop_file)
 
         assert result is True
 
@@ -459,11 +426,7 @@ class TestShouldRender:
         ledger = HashLedger(ledger_file=temp_dir / "ledger.json")
         ledger.register(intro_path=intro_file, loop_path=loop_file)
 
-        result = should_render(
-            ledger=ledger,
-            intro_path=intro_file,
-            loop_path=loop_file
-        )
+        result = should_render(ledger=ledger, intro_path=intro_file, loop_path=loop_file)
 
         assert result is False
 
@@ -478,10 +441,7 @@ class TestShouldRender:
         ledger.register(intro_path=intro_file, loop_path=loop_file)
 
         result = should_render(
-            ledger=ledger,
-            intro_path=intro_file,
-            loop_path=loop_file,
-            force=True
+            ledger=ledger, intro_path=intro_file, loop_path=loop_file, force=True
         )
 
         assert result is True

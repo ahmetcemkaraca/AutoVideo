@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Terminal utilities for clean output and proper cleanup.
 
@@ -10,22 +9,19 @@ Handles:
 - Proper signal handling and cleanup
 """
 
-import os
-import sys
-import subprocess
-import time
-import threading
 import atexit
+import os
 import signal
-from pathlib import Path
-from typing import Optional, List, Callable, Any
+import subprocess
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from io import StringIO
 
 
 @dataclass
 class ProcessOutput:
     """Container for subprocess output."""
+
     stdout: str = ""
     stderr: str = ""
     returncode: int = 0
@@ -42,7 +38,7 @@ class TerminalManager:
     def _setup_cleanup(self):
         """Setup proper cleanup handlers."""
         atexit.register(self.cleanup)
-        
+
         # Setup signal handlers
         if not self.is_windows:
             signal.signal(signal.SIGTERM, self._signal_handler)
@@ -68,33 +64,33 @@ class TerminalManager:
                 os.system("stty sane 2>/dev/null || true")
             except Exception:
                 pass
-        
+
         # Flush all streams
         sys.stdout.flush()
         sys.stderr.flush()
 
     def run_clean(
         self,
-        cmd: List[str],
+        cmd: list[str],
         task_name: str = "",
         capture_output: bool = False,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> ProcessOutput:
         """
         Run a subprocess with clean output formatting.
-        
+
         Args:
             cmd: Command and arguments
             task_name: Human-readable task name for logging
             capture_output: If True, capture stdout/stderr
             timeout: Process timeout in seconds
-            
+
         Returns:
             ProcessOutput with stdout, stderr, and returncode
         """
         if task_name:
             self._print_task_header(task_name)
-        
+
         try:
             if capture_output:
                 result = subprocess.run(
@@ -118,7 +114,7 @@ class TerminalManager:
                     stdin=subprocess.DEVNULL if sys.platform == "win32" else None,
                 )
                 return ProcessOutput(returncode=result.returncode)
-                
+
         except subprocess.TimeoutExpired:
             self._print_error(f"Process timeout after {timeout} seconds")
             return ProcessOutput(
@@ -134,26 +130,26 @@ class TerminalManager:
 
     def run_with_progress(
         self,
-        cmd: List[str],
+        cmd: list[str],
         task_name: str = "",
-        progress_callback: Optional[Callable[[str], None]] = None,
-        timeout: Optional[float] = None,
+        progress_callback: Callable[[str], None] | None = None,
+        timeout: float | None = None,
     ) -> int:
         """
         Run a subprocess with real-time output processing.
-        
+
         Args:
             cmd: Command and arguments
             task_name: Human-readable task name
             progress_callback: Callback for each output line
             timeout: Process timeout
-            
+
         Returns:
             Return code
         """
         if task_name:
             self._print_task_header(task_name)
-        
+
         try:
             process = subprocess.Popen(
                 cmd,
@@ -163,7 +159,7 @@ class TerminalManager:
                 bufsize=1,
                 stdin=subprocess.DEVNULL,
             )
-            
+
             # Read and process output line by line
             for line in iter(process.stdout.readline, ""):
                 if line:
@@ -171,16 +167,16 @@ class TerminalManager:
                         progress_callback(line.rstrip("\n\r"))
                     else:
                         print(line.rstrip("\n\r"))
-            
+
             returncode = process.wait(timeout=timeout)
-            
+
             if returncode == 0:
-                self._print_success(f"Task completed successfully")
+                self._print_success("Task completed successfully")
             else:
                 self._print_error(f"Task failed with code {returncode}")
-            
+
             return returncode
-            
+
         except subprocess.TimeoutExpired:
             process.kill()
             self._print_error(f"Process timeout after {timeout} seconds")
@@ -266,7 +262,7 @@ class OutputFormatter:
             percent = 0
         else:
             percent = current / total
-        
+
         filled = int(width * percent)
         bar = "█" * filled + "░" * (width - filled)
         print(f"\r[{bar}] {percent*100:.1f}%", end="", flush=True)

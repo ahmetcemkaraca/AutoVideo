@@ -1,37 +1,36 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Rich Terminal UI components for video renderer.
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple, Any, Callable
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 from rich.progress import (
-    Progress,
-    SpinnerColumn,
     BarColumn,
+    Progress,
+    ProgressColumn,
+    SpinnerColumn,
+    Task,
+    TaskProgressColumn,
     TextColumn,
     TimeRemainingColumn,
-    TaskProgressColumn,
-    MofNCompleteColumn,
-    ProgressColumn,
-    Task,
 )
-from rich.prompt import Prompt, IntPrompt, Confirm
+from rich.prompt import Confirm, Prompt
+from rich.table import Table
 from rich.text import Text
-from rich.style import Style
 from rich.theme import Theme
-from rich import box
 
 from .ffmpeg import VideoInfo
 
+
 class BackNavigation(Exception):
     """Raised when user wants to go back to previous step."""
+
     pass
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Theme & Console
@@ -106,7 +105,7 @@ def get_codec_style(codec: str) -> str:
     return "codec.unknown"
 
 
-def print_video_table(videos: List[Tuple[Path, VideoInfo]], title: str = "Video Dosyalari"):
+def print_video_table(videos: list[tuple[Path, VideoInfo]], title: str = "Video Dosyalari"):
     """Print a table of video files with info."""
     table = Table(
         title=f"[header]{title}[/]",
@@ -140,7 +139,7 @@ def print_video_table(videos: List[Tuple[Path, VideoInfo]], title: str = "Video 
     console.print()
 
 
-def print_audio_table(files: List[Path], title: str = "Ses Dosyalari"):
+def print_audio_table(files: list[Path], title: str = "Ses Dosyalari"):
     """Print a table of audio files."""
     table = Table(
         title=f"[header]{title}[/]",
@@ -192,19 +191,21 @@ def print_video_info_panel(label: str, path: Path, info: VideoInfo):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def ask_text(prompt: str, default: Optional[str] = None, allow_back: bool = True) -> str:
+def ask_text(prompt: str, default: str | None = None, allow_back: bool = True) -> str:
     """Ask for text input."""
     p_text = f"[highlight]?[/] {prompt}"
     if allow_back:
         p_text += " [dim](b=geri)[/]"
-    
+
     val = Prompt.ask(p_text, default=default, console=console)
     if allow_back and val.lower() == "b":
         raise BackNavigation()
     return val
 
 
-def ask_int(prompt: str, min_val: int, max_val: int, default: Optional[int] = None, allow_back: bool = True) -> int:
+def ask_int(
+    prompt: str, min_val: int, max_val: int, default: int | None = None, allow_back: bool = True
+) -> int:
     """Ask for integer input within range."""
     p_text = f"[highlight]?[/] {prompt}"
     if allow_back:
@@ -212,10 +213,12 @@ def ask_int(prompt: str, min_val: int, max_val: int, default: Optional[int] = No
 
     while True:
         try:
-            val_str = Prompt.ask(p_text, default=str(default) if default is not None else None, console=console)
+            val_str = Prompt.ask(
+                p_text, default=str(default) if default is not None else None, console=console
+            )
             if allow_back and val_str.lower() == "b":
                 raise BackNavigation()
-            
+
             value = int(val_str)
             if value < min_val or value > max_val:
                 console.print(f"[error]Aralik: {min_val}-{max_val}[/]")
@@ -230,7 +233,7 @@ def ask_confirm(prompt: str, default: bool = True) -> bool:
     return Confirm.ask(f"[highlight]?[/] {prompt}", default=default, console=console)
 
 
-def ask_choice(prompt: str, options: List[str], default: int = 1, allow_back: bool = True) -> int:
+def ask_choice(prompt: str, options: list[str], default: int = 1, allow_back: bool = True) -> int:
     """
     Ask user to choose from options.
     Returns 1-based index OR raises BackNavigation.
@@ -246,8 +249,12 @@ def ask_choice(prompt: str, options: List[str], default: int = 1, allow_back: bo
 
 
 def ask_multiple_choice(
-    prompt: str, options: List[str], min_count: int = 1, max_count: Optional[int] = None, allow_back: bool = True
-) -> List[int]:
+    prompt: str,
+    options: list[str],
+    min_count: int = 1,
+    max_count: int | None = None,
+    allow_back: bool = True,
+) -> list[int]:
     """
     Ask user to select multiple options.
     Returns list of 1-based indices.
@@ -260,10 +267,15 @@ def ask_multiple_choice(
         console.print(f"  [muted]○[/] [value]{i})[/] {opt}")
     console.print()
 
-    selected: List[int] = []
+    selected: list[int] = []
     used = set()
 
-    count = ask_int(f"Kac adet secilecek? ({min_count}-{max_count})", min_count, max_count, allow_back=allow_back)
+    count = ask_int(
+        f"Kac adet secilecek? ({min_count}-{max_count})",
+        min_count,
+        max_count,
+        allow_back=allow_back,
+    )
 
     for k in range(count):
         while True:
@@ -326,7 +338,7 @@ class MultiStepProgress:
     Prints step names only — FFmpeg shows its own raw terminal output.
     """
 
-    def __init__(self, steps: List[str]):
+    def __init__(self, steps: list[str]):
         self.steps = steps
 
     def __enter__(self):
@@ -335,7 +347,7 @@ class MultiStepProgress:
     def __exit__(self, *args):
         pass
 
-    def update(self, step_index: int, percent: float, description: Optional[str] = None, **kwargs):
+    def update(self, step_index: int, percent: float, description: str | None = None, **kwargs):
         """No-op. FFmpeg shows its own terminal output."""
         pass
 
@@ -371,15 +383,15 @@ def print_info(message: str):
 
 
 def print_summary(
-    intro: Optional[Path],
-    loop: Optional[Path],
+    intro: Path | None,
+    loop: Path | None,
     codec: str,
     duration: str,
-    tracks: List[Path],
-    backgrounds: List[Tuple[Path, float]],
+    tracks: list[Path],
+    backgrounds: list[tuple[Path, float]],
     output: Path,
     post_action: str,
-    single_video: Optional[Path] = None,
+    single_video: Path | None = None,
 ):
     """Print render summary before confirmation."""
     if single_video:

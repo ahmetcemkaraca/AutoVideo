@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Generate test video fixtures for validation testing.
 
@@ -12,12 +11,10 @@ Test videos include:
 - Edge case videos (very short, very long)
 """
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
-import shutil
-
 
 # Configuration
 FIXTURES_DIR = Path(__file__).parent / "videos"
@@ -47,7 +44,7 @@ def generate_test_video(
     pixel_format: str = "yuv420p",
     with_audio: bool = True,
     audio_freq: int = 440,
-    extra_args: Optional[list] = None,
+    extra_args: list | None = None,
 ) -> bool:
     """
     Generate a test video using FFmpeg.
@@ -69,47 +66,59 @@ def generate_test_video(
     cmd = [
         "ffmpeg",
         "-y",  # Overwrite output
-        "-f", "lavfi",
-        "-i", f"color=c=black:s={resolution}:d={duration}",  # Video input
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c=black:s={resolution}:d={duration}",  # Video input
     ]
 
     if with_audio:
-        cmd.extend([
-            "-f", "lavfi",
-            "-i", f"sine=frequency={audio_freq}:sample_rate=48000:duration={duration}",  # Audio input
-        ])
+        cmd.extend(
+            [
+                "-f",
+                "lavfi",
+                "-i",
+                f"sine=frequency={audio_freq}:sample_rate=48000:duration={duration}",  # Audio input
+            ]
+        )
 
-    cmd.extend([
-        "-c:v", codec,
-        "-preset", "fast",
-        "-crf", "23",
-        "-pix_fmt", pixel_format,
-        "-r", str(fps),
-        "-movflags", "+faststart",
-    ])
+    cmd.extend(
+        [
+            "-c:v",
+            codec,
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            pixel_format,
+            "-r",
+            str(fps),
+            "-movflags",
+            "+faststart",
+        ]
+    )
 
     if extra_args:
         cmd.extend(extra_args)
 
     if with_audio:
-        cmd.extend([
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-shortest",
-        ])
+        cmd.extend(
+            [
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-shortest",
+            ]
+        )
     else:
         cmd.append("-an")  # No audio
 
     cmd.append(str(output_path))
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=120
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120)
         print(f"  [OK] {output_path.name}")
         return True
     except subprocess.TimeoutExpired:
@@ -154,10 +163,7 @@ def create_valid_videos() -> None:
     # Valid 1080p60 AV1 video (if available)
     try:
         result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=5
         )
         if "libsvtav1" in result.stdout:
             generate_test_video(
@@ -342,7 +348,7 @@ def create_test_audios() -> None:
 
         if freq == 0:
             # Silence
-            src = f"anullsrc=r=48000:cl=stereo"
+            src = "anullsrc=r=48000:cl=stereo"
         else:
             # Sine wave
             src = f"sine=frequency={freq}:sample_rate=48000:duration={duration}"
@@ -350,10 +356,14 @@ def create_test_audios() -> None:
         cmd = [
             "ffmpeg",
             "-y",
-            "-f", "lavfi",
-            "-i", src,
-            "-c:a", "libmp3lame",
-            "-b:a", "192k",
+            "-f",
+            "lavfi",
+            "-i",
+            src,
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
             str(output_path),
         ]
 

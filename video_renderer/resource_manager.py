@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Resource Management System.
 
@@ -15,15 +14,14 @@ Key Features:
 - Automatic cleanup via atexit
 """
 
-import os
-import sys
-import signal
 import atexit
-import subprocess
-import threading
-from pathlib import Path
-from typing import Set, Optional, List, Callable
 import logging
+import signal
+import subprocess
+import sys
+import threading
+from collections.abc import Callable
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -202,12 +200,12 @@ class ResourceManager:
         with self._lock:
             return len(self._temp_files)
 
-    def get_processes(self) -> List[ProcessInfo]:
+    def get_processes(self) -> list[ProcessInfo]:
         """Get list of all tracked processes."""
         with self._lock:
             return list(self._processes.values())
 
-    def get_temp_files(self) -> Set[Path]:
+    def get_temp_files(self) -> set[Path]:
         """Get set of all tracked temp files."""
         with self._lock:
             return self._temp_files.copy()
@@ -337,8 +335,10 @@ class ResourceManager:
         # Restore terminal state (FFmpeg/Rich may corrupt echo settings)
         try:
             import sys
+
             if sys.platform != "win32":
                 import os
+
                 # Aggressive tty restoration
                 os.system("stty sane 2>/dev/null")
                 os.system("stty echo 2>/dev/null")
@@ -387,7 +387,7 @@ class TempFile:
     def __init__(
         self,
         path: Path,
-        resource_manager: Optional[ResourceManager] = None,
+        resource_manager: ResourceManager | None = None,
         auto_cleanup: bool = True,
     ):
         """
@@ -432,7 +432,7 @@ class TempFile:
 
 
 def cleanup_directory(
-    directory: Path, pattern: str = "*", max_age_seconds: Optional[float] = None
+    directory: Path, pattern: str = "*", max_age_seconds: float | None = None
 ) -> int:
     """
     Cleanup files in a directory matching a pattern.

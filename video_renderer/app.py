@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Video Renderer TUI Application.
 
@@ -12,39 +11,40 @@ Resource Management:
 - Automatic temp file cleanup
 """
 
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple, Literal
-from dataclasses import dataclass
 import os
-import time
-import uuid
-
-from textual.app import App
-from textual.binding import Binding
-
-from .screens import (
-    ModeSelectScreen,
-    HomeScreen,
-    VideoSelectScreen,
-    AudioSelectScreen,
-    SettingsScreen,
-    RenderScreen,
-    CompleteScreen,
-    BatchScreen,
-    SmartBatchScreen,
-    ValidationScreen,
-)
-from .ffmpeg import VideoInfo
 
 # Fix: Ensure project root is in Python path for config imports
 # This resolves the issue where files import from root `config/` which may not be in Python path
 import sys
+import time
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal
+
+from textual.app import App
+from textual.binding import Binding
+
+from .ffmpeg import VideoInfo
+from .screens import (
+    AudioSelectScreen,
+    BatchScreen,
+    CompleteScreen,
+    HomeScreen,
+    ModeSelectScreen,
+    RenderScreen,
+    SettingsScreen,
+    SmartBatchScreen,
+    ValidationScreen,
+    VideoSelectScreen,
+)
+
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from config import CodecConfig, RamTestConfig, get_render_config
+
 from .resource_manager import ResourceManager
 
 
@@ -115,34 +115,34 @@ class VideoRendererApp(App):
         self.ramtest_config = RamTestConfig(enabled=self.ramtest_mode)
 
         # State variables
-        self.intro_path: Optional[Path] = None
-        self.intro_info: Optional[VideoInfo] = None
-        self.loop_path: Optional[Path] = None
-        self.loop_info: Optional[VideoInfo] = None
-        self.single_video_path: Optional[Path] = None
-        self.single_video_info: Optional[VideoInfo] = None
+        self.intro_path: Path | None = None
+        self.intro_info: VideoInfo | None = None
+        self.loop_path: Path | None = None
+        self.loop_info: VideoInfo | None = None
+        self.single_video_path: Path | None = None
+        self.single_video_info: VideoInfo | None = None
         self.render_mode: str = "intro_loop"  # intro_loop or single
 
-        self.chosen_tracks: List[Path] = []
-        self.chosen_bgs: List[Tuple[Path, float]] = []
+        self.chosen_tracks: list[Path] = []
+        self.chosen_bgs: list[tuple[Path, float]] = []
 
         self.codec_family: str = "av1"
-        self.codec_config: Optional[CodecConfig] = None
+        self.codec_config: CodecConfig | None = None
         self.duration_str: str = "9:00:00"
         self.total_seconds: int = 32400
-        self.out_path: Optional[Path] = None
+        self.out_path: Path | None = None
 
-        self.session: Optional[Dict[str, Any]] = None
-        self.render_result: Optional[Dict[str, Any]] = None
+        self.session: dict[str, Any] | None = None
+        self.render_result: dict[str, Any] | None = None
 
         # Batch mode (uses StateManager internally)
         from .batch import BatchQueue
 
         self.queue = BatchQueue()
-        self.batch_job_id: Optional[int] = None
+        self.batch_job_id: int | None = None
 
         # Drive integration
-        self.drive_folder_id: Optional[str] = None
+        self.drive_folder_id: str | None = None
         self.enable_upload: bool = False
 
         # Validation control
@@ -154,7 +154,7 @@ class VideoRendererApp(App):
         self.runs_root = self.base_tmp_dir / "runs"
         self.runs_root.mkdir(parents=True, exist_ok=True)
         self.session_file = self.base_tmp_dir / "last_session.json"
-        self.current_run_id: Optional[str] = None
+        self.current_run_id: str | None = None
         self.current_run_tmp_dir: Path = self.base_tmp_dir
 
         # Mode-specific features

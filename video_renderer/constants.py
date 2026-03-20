@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Constants for video renderer application.
 
@@ -7,8 +6,6 @@ This module contains all magic numbers and configuration constants
 used throughout the video_renderer package. Grouped by functionality
 for easy maintenance and discovery.
 """
-
-from pathlib import Path
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Video Resolution Constants

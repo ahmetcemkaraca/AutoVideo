@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Logging filters for sensitive data redaction.
 
@@ -7,9 +6,9 @@ This module provides logging filters that automatically redact sensitive
 information such as API keys, tokens, and passwords from log output.
 """
 
-import re
 import logging
-from typing import Pattern, List, Optional
+import re
+from re import Pattern
 
 
 class SensitiveDataFilter(logging.Filter):
@@ -27,7 +26,7 @@ class SensitiveDataFilter(logging.Filter):
     """
 
     # Patterns for sensitive data (ordered by specificity)
-    SENSITIVE_PATTERNS: List[tuple[str, str]] = [
+    SENSITIVE_PATTERNS: list[tuple[str, str]] = [
         # Bearer tokens (RFC 6750)
         (r"Bearer\s+([A-Za-z0-9\-._~+/]+=*)", "Bearer [REDACTED]"),
         # Authorization headers
@@ -64,7 +63,7 @@ class SensitiveDataFilter(logging.Filter):
         (r'(["\']?)token\1[\s:]+(["\']?)([A-Za-z0-9\-._~+/]{20,}={0,2})\2', r"\1\1\2[REDACTED]\2"),
     ]
 
-    def __init__(self, patterns: Optional[List[tuple[str, str]]] = None):
+    def __init__(self, patterns: list[tuple[str, str]] | None = None):
         """
         Initialize the sensitive data filter.
 
@@ -74,7 +73,7 @@ class SensitiveDataFilter(logging.Filter):
         """
         super().__init__()
         self.patterns = patterns or self.SENSITIVE_PATTERNS
-        self._compiled_patterns: List[tuple[Pattern, str]] = [
+        self._compiled_patterns: list[tuple[Pattern, str]] = [
             (re.compile(pattern), replacement) for pattern, replacement in self.patterns
         ]
 
@@ -134,7 +133,7 @@ class PathRedactionFilter(logging.Filter):
     information like usernames or system details.
     """
 
-    def __init__(self, base_paths: Optional[List[str]] = None, replacement: str = "[PATH]"):
+    def __init__(self, base_paths: list[str] | None = None, replacement: str = "[PATH]"):
         """
         Initialize the path redaction filter.
 
@@ -147,7 +146,7 @@ class PathRedactionFilter(logging.Filter):
         self.base_paths = base_paths or self._detect_base_paths()
         self._compiled_patterns = self._compile_patterns()
 
-    def _detect_base_paths(self) -> List[str]:
+    def _detect_base_paths(self) -> list[str]:
         """
         Detect common base paths that should be redacted.
 
@@ -177,7 +176,7 @@ class PathRedactionFilter(logging.Filter):
 
         return paths
 
-    def _compile_patterns(self) -> List[Pattern]:
+    def _compile_patterns(self) -> list[Pattern]:
         """
         Compile regex patterns for path redaction.
 

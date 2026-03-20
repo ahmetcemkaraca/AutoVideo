@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 End-to-end tests for CLI wizard workflow.
 
@@ -14,16 +13,14 @@ Tests cover:
 - Error handling
 """
 
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch, call
-from io import StringIO
-import sys
+from unittest.mock import Mock, patch
 
+import pytest
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CLI Wizard Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.e2e
 class TestCLIWizard:
@@ -58,8 +55,8 @@ class TestCLIWizard:
         """Test wizard displays welcome message."""
         from video_renderer.main import main
 
-        with patch('builtins.input', return_value='q'):
-            with patch('sys.argv', ['video-renderer']):
+        with patch("builtins.input", return_value="q"):
+            with patch("sys.argv", ["video-renderer"]):
                 try:
                     main()
                 except SystemExit:
@@ -73,27 +70,35 @@ class TestCLIWizard:
         from video_renderer.main import main
 
         inputs = [
-            '1',  # Single video mode
+            "1",  # Single video mode
             str(work_dir / "intro.mp4"),  # Intro path
-            str(work_dir / "loop.mp4"),   # Loop path
-            '1:00:00',  # Duration
-            'y',  # Confirm music
-            '1',  # Select all tracks
-            'av1',  # Codec
-            'n',  # No upload
-            'n',  # No background
+            str(work_dir / "loop.mp4"),  # Loop path
+            "1:00:00",  # Duration
+            "y",  # Confirm music
+            "1",  # Select all tracks
+            "av1",  # Codec
+            "n",  # No upload
+            "n",  # No background
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video') as mock_probe, \
-                     patch('video_renderer.video.get_duration') as mock_duration, \
-                     patch('subprocess.run') as mock_subprocess:
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video") as mock_probe,
+                    patch("video_renderer.video.get_duration") as mock_duration,
+                    patch("subprocess.run") as mock_subprocess,
+                ):
 
                     from video_renderer.ffmpeg import VideoInfo
+
                     mock_probe.return_value = VideoInfo(
-                        codec="h264", width=1920, height=1080, fps="60/1",
-                        duration=30.0, pix_fmt="yuv420p", color_space="bt709"
+                        codec="h264",
+                        width=1920,
+                        height=1080,
+                        fps="60/1",
+                        duration=30.0,
+                        pix_fmt="yuv420p",
+                        color_space="bt709",
                     )
                     mock_duration.side_effect = [30.0, 60.0, 180.0, 240.0, 300.0, 3600.0]
                     mock_subprocess.return_value = Mock(returncode=0)
@@ -114,14 +119,14 @@ class TestCLIWizard:
         (work_dir / "video2_loop.mp4").touch()
 
         inputs = [
-            '2',  # Batch mode
-            '9:00:00',  # Duration
-            'av1',  # Codec
-            'y',  # Confirm all
+            "2",  # Batch mode
+            "9:00:00",  # Duration
+            "av1",  # Codec
+            "y",  # Confirm all
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
                 try:
                     main()
                 except SystemExit:
@@ -133,13 +138,13 @@ class TestCLIWizard:
 
         # Test with non-existent file
         inputs = [
-            '1',
-            '/nonexistent/video.mp4',  # Invalid path
-            'q',  # Quit
+            "1",
+            "/nonexistent/video.mp4",  # Invalid path
+            "q",  # Quit
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
                 try:
                     main()
                 except SystemExit:
@@ -153,22 +158,24 @@ class TestCLIWizard:
         from video_renderer.main import main
 
         inputs = [
-            '1',  # Single video mode
+            "1",  # Single video mode
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '1:00:00',
-            'y',  # Confirm music
-            '1,2',  # Select tracks 1 and 2
-            'av1',
-            'n',
-            'n',
+            "1:00:00",
+            "y",  # Confirm music
+            "1,2",  # Select tracks 1 and 2
+            "av1",
+            "n",
+            "n",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -179,29 +186,31 @@ class TestCLIWizard:
         from video_renderer.main import main
 
         duration_formats = [
-            '1:00:00',   # HH:MM:SS
-            '30:00',     # MM:SS
-            '60',        # Minutes only
-            'random_8_10',  # Random duration
+            "1:00:00",  # HH:MM:SS
+            "30:00",  # MM:SS
+            "60",  # Minutes only
+            "random_8_10",  # Random duration
         ]
 
         for duration in duration_formats:
             inputs = [
-                '1',
+                "1",
                 str(work_dir / "intro.mp4"),
                 str(work_dir / "loop.mp4"),
                 duration,
-                'n',  # No music
-                'av1',
-                'n',
-                'n',
+                "n",  # No music
+                "av1",
+                "n",
+                "n",
             ]
 
-            with patch('builtins.input', side_effect=inputs):
-                with patch('sys.argv', ['video-renderer']):
-                    with patch('video_renderer.video.probe_video'), \
-                         patch('video_renderer.video.get_duration'), \
-                         patch('subprocess.run', return_value=Mock(returncode=0)):
+            with patch("builtins.input", side_effect=inputs):
+                with patch("sys.argv", ["video-renderer"]):
+                    with (
+                        patch("video_renderer.video.probe_video"),
+                        patch("video_renderer.video.get_duration"),
+                        patch("subprocess.run", return_value=Mock(returncode=0)),
+                    ):
                         try:
                             main()
                         except SystemExit:
@@ -211,25 +220,27 @@ class TestCLIWizard:
         """Test codec selection."""
         from video_renderer.main import main
 
-        codecs = ['av1', 'h264', 'h265']
+        codecs = ["av1", "h264", "h265"]
 
         for codec in codecs:
             inputs = [
-                '1',
+                "1",
                 str(work_dir / "intro.mp4"),
                 str(work_dir / "loop.mp4"),
-                '1:00:00',
-                'n',
+                "1:00:00",
+                "n",
                 codec,
-                'n',
-                'n',
+                "n",
+                "n",
             ]
 
-            with patch('builtins.input', side_effect=inputs):
-                with patch('sys.argv', ['video-renderer']):
-                    with patch('video_renderer.video.probe_video'), \
-                         patch('video_renderer.video.get_duration'), \
-                         patch('subprocess.run', return_value=Mock(returncode=0)):
+            with patch("builtins.input", side_effect=inputs):
+                with patch("sys.argv", ["video-renderer"]):
+                    with (
+                        patch("video_renderer.video.probe_video"),
+                        patch("video_renderer.video.get_duration"),
+                        patch("subprocess.run", return_value=Mock(returncode=0)),
+                    ):
                         try:
                             main()
                         except SystemExit:
@@ -246,24 +257,26 @@ class TestCLIWizard:
         (bg_dir / "fire.mp3").touch()
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '1:00:00',
-            'n',  # No music
-            'av1',
-            'n',
-            'y',  # Add background
+            "1:00:00",
+            "n",  # No music
+            "av1",
+            "n",
+            "y",  # Add background
             str(bg_dir / "rain.mp3"),
-            '-8',
-            'n',  # No more backgrounds
+            "-8",
+            "n",  # No more backgrounds
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -275,21 +288,23 @@ class TestCLIWizard:
 
         # Test canceling at confirmation
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '1:00:00',
-            'n',
-            'av1',
-            'n',
-            'n',
-            'n',  # Don't confirm
+            "1:00:00",
+            "n",
+            "av1",
+            "n",
+            "n",
+            "n",  # Don't confirm
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -299,6 +314,7 @@ class TestCLIWizard:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CLI Command-Line Arguments Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.e2e
 class TestCLIArguments:
@@ -312,10 +328,12 @@ class TestCLIArguments:
         (work_dir / "test_intro.mp4").touch()
         (work_dir / "test_loop.mp4").touch()
 
-        with patch('sys.argv', ['video-renderer', '--batch']):
-            with patch('video_renderer.video.probe_video'), \
-                 patch('video_renderer.video.get_duration'), \
-                 patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("sys.argv", ["video-renderer", "--batch"]):
+            with (
+                patch("video_renderer.video.probe_video"),
+                patch("video_renderer.video.get_duration"),
+                patch("subprocess.run", return_value=Mock(returncode=0)),
+            ):
                 try:
                     main()
                 except SystemExit:
@@ -328,11 +346,12 @@ class TestCLIArguments:
         # Create interrupted session
         queue_file = work_dir / "batch_queue.json"
         from video_renderer.batch import BatchQueue
+
         queue = BatchQueue(queue_file=queue_file)
         job = queue.create_job()
         job.status.name = "queued"
 
-        with patch('sys.argv', ['video-renderer', '--resume']):
+        with patch("sys.argv", ["video-renderer", "--resume"]):
             try:
                 main()
             except SystemExit:
@@ -342,9 +361,8 @@ class TestCLIArguments:
         """Test --list-hw argument lists encoders."""
         from video_renderer.main import main
 
-        with patch('sys.argv', ['video-renderer', '--list-hw']):
-            with patch('video_renderer.config.detect_available_encoders',
-                       return_value={}):
+        with patch("sys.argv", ["video-renderer", "--list-hw"]):
+            with patch("video_renderer.config.detect_available_encoders", return_value={}):
                 try:
                     main()
                 except SystemExit:
@@ -355,6 +373,7 @@ class TestCLIArguments:
 # Error Handling Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 class TestCLIErrorHandling:
     """End-to-end tests for CLI error handling."""
@@ -363,8 +382,8 @@ class TestCLIErrorHandling:
         """Test error message when FFmpeg is missing."""
         from video_renderer.main import main
 
-        with patch('shutil.which', return_value=None):
-            with patch('sys.argv', ['video-renderer']):
+        with patch("shutil.which", return_value=None):
+            with patch("sys.argv", ["video-renderer"]):
                 with pytest.raises(SystemExit):
                     main()
 
@@ -373,22 +392,24 @@ class TestCLIErrorHandling:
         from video_renderer.main import main
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            'invalid',  # Invalid duration
-            '1:00:00',  # Correct on retry
-            'n',
-            'av1',
-            'n',
-            'n',
+            "invalid",  # Invalid duration
+            "1:00:00",  # Correct on retry
+            "n",
+            "av1",
+            "n",
+            "n",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -402,26 +423,27 @@ class TestCLIErrorHandling:
         from video_renderer.main import main
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '0:01:00',
-            'n',
-            'av1',
-            'n',
-            'n',
-            'y',
+            "0:01:00",
+            "n",
+            "av1",
+            "n",
+            "n",
+            "y",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run') as mock_run:
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run") as mock_run,
+                ):
                     # Simulate encoding error
                     mock_run.return_value = Mock(
-                        returncode=1,
-                        stderr="Encoding failed: Out of memory"
+                        returncode=1, stderr="Encoding failed: Out of memory"
                     )
 
                     try:
@@ -434,6 +456,7 @@ class TestCLIErrorHandling:
 # Progress Display Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 class TestCLIProgressDisplay:
     """End-to-end tests for CLI progress display."""
@@ -443,22 +466,24 @@ class TestCLIProgressDisplay:
         from video_renderer.main import main
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '0:01:00',  # Short duration for testing
-            'n',
-            'av1',
-            'n',
-            'n',
-            'y',
+            "0:01:00",  # Short duration for testing
+            "n",
+            "av1",
+            "n",
+            "n",
+            "y",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -469,22 +494,24 @@ class TestCLIProgressDisplay:
         from video_renderer.main import main
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '0:01:00',
-            'n',
-            'av1',
-            'n',
-            'n',
-            'y',
+            "0:01:00",
+            "n",
+            "av1",
+            "n",
+            "n",
+            "y",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -495,6 +522,7 @@ class TestCLIProgressDisplay:
 # Output Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 class TestCLIOutput:
     """End-to-end tests for CLI output handling."""
@@ -504,22 +532,24 @@ class TestCLIOutput:
         from video_renderer.main import main
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '0:01:00',
-            'n',
-            'av1',
-            'n',
-            'n',
-            'y',
+            "0:01:00",
+            "n",
+            "av1",
+            "n",
+            "n",
+            "y",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -535,22 +565,24 @@ class TestCLIOutput:
         from video_renderer.main import main
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '0:01:00',
-            'n',
-            'av1',
-            'n',
-            'n',
-            'y',
+            "0:01:00",
+            "n",
+            "av1",
+            "n",
+            "n",
+            "y",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer', '--work-dir', str(work_dir)]):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer", "--work-dir", str(work_dir)]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -561,6 +593,7 @@ class TestCLIOutput:
 # Resume Session Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 class TestResumeSession:
     """End-to-end tests for session resume functionality."""
@@ -568,25 +601,26 @@ class TestResumeSession:
     def test_save_session_state(self, work_dir, mock_video_files):
         """Test session state is saved."""
         from video_renderer.main import main
-        from video_renderer.batch import BatchQueue
 
         queue_file = work_dir / "batch_queue.json"
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '1:00:00',
-            'n',
-            'av1',
-            'n',
-            'n',
+            "1:00:00",
+            "n",
+            "av1",
+            "n",
+            "n",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -597,8 +631,8 @@ class TestResumeSession:
 
     def test_load_and_resume_session(self, work_dir):
         """Test loading and resuming saved session."""
-        from video_renderer.main import main
         from video_renderer.batch import BatchQueue, JobStatus
+        from video_renderer.main import main
 
         # Create interrupted session
         queue_file = work_dir / "batch_queue.json"
@@ -612,10 +646,12 @@ class TestResumeSession:
         (work_dir / "loop.mp4").touch()
 
         # Resume
-        with patch('sys.argv', ['video-renderer', '--resume']):
-            with patch('video_renderer.video.probe_video'), \
-                 patch('video_renderer.video.get_duration'), \
-                 patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("sys.argv", ["video-renderer", "--resume"]):
+            with (
+                patch("video_renderer.video.probe_video"),
+                patch("video_renderer.video.get_duration"),
+                patch("subprocess.run", return_value=Mock(returncode=0)),
+            ):
                 try:
                     main()
                 except SystemExit:
@@ -626,6 +662,7 @@ class TestResumeSession:
 # User Input Validation Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 class TestUserInputValidation:
     """End-to-end tests for user input validation."""
@@ -635,22 +672,24 @@ class TestUserInputValidation:
         from video_renderer.main import main
 
         inputs = [
-            '1',
-            '',  # Empty input
+            "1",
+            "",  # Empty input
             str(work_dir / "intro.mp4"),  # Valid input
             str(work_dir / "loop.mp4"),
-            '1:00:00',
-            'n',
-            'av1',
-            'n',
-            'n',
+            "1:00:00",
+            "n",
+            "av1",
+            "n",
+            "n",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:
@@ -661,23 +700,25 @@ class TestUserInputValidation:
         from video_renderer.main import main
 
         inputs = [
-            '1',
+            "1",
             str(work_dir / "intro.mp4"),
             str(work_dir / "loop.mp4"),
-            '1:00:00',
-            'y',
-            '99',  # Out of range
-            '1',  # Valid selection
-            'av1',
-            'n',
-            'n',
+            "1:00:00",
+            "y",
+            "99",  # Out of range
+            "1",  # Valid selection
+            "av1",
+            "n",
+            "n",
         ]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('sys.argv', ['video-renderer']):
-                with patch('video_renderer.video.probe_video'), \
-                     patch('video_renderer.video.get_duration'), \
-                     patch('subprocess.run', return_value=Mock(returncode=0)):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("sys.argv", ["video-renderer"]):
+                with (
+                    patch("video_renderer.video.probe_video"),
+                    patch("video_renderer.video.get_duration"),
+                    patch("subprocess.run", return_value=Mock(returncode=0)),
+                ):
                     try:
                         main()
                     except SystemExit:

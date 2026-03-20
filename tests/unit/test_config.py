@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for config module.
 
@@ -12,49 +11,51 @@ Tests cover:
 - RenderModeConfig factory
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
+
+import pytest
+
 from config import (
-    CodecConfig,
-    ColorConfig,
+    AUDIO_EXTENSIONS,
+    CHUNK_CONFIG,
     CODEC_AV1,
-    CODEC_H264,
-    CODEC_H265,
-    CODEC_H264_NVENC,
-    CODEC_H265_NVENC,
     CODEC_AV1_NVENC,
+    CODEC_H264,
+    CODEC_H264_NVENC,
     CODEC_H264_QSV,
-    CODEC_H265_QSV,
     CODEC_H264_VAAPI,
+    CODEC_H265,
+    CODEC_H265_NVENC,
+    CODEC_H265_QSV,
     CODEC_H265_VAAPI,
+    CODECS,
     COLOR_BT709,
     COLOR_BT2020,
+    DEFAULT_HEIGHT,
+    DEFAULT_WIDTH,
+    GPU_CONFIG,
+    VIDEO_EXTENSIONS,
+    CodecConfig,
+    ColorConfig,
+    RamTestConfig,
+    RenderConfig,
+    RenderModeConfig,
+    cleanup_ramdisk,
+    clear_encoder_cache,
     detect_available_encoders,
     get_best_encoder,
-    clear_encoder_cache,
-    RenderConfig,
-    get_ramdisk_path,
-    setup_temp_directory,
-    cleanup_ramdisk,
-    get_nvenc_extra_args,
     get_hwaccel_input_args,
-    RamTestConfig,
-    RenderModeConfig,
+    get_nvenc_extra_args,
+    get_ramdisk_path,
     get_render_config,
-    CODECS,
-    VIDEO_EXTENSIONS,
-    AUDIO_EXTENSIONS,
-    DEFAULT_WIDTH,
-    DEFAULT_HEIGHT,
-    CHUNK_CONFIG,
-    GPU_CONFIG,
+    setup_temp_directory,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CodecConfig Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.unit
 class TestCodecConfig:
@@ -62,12 +63,7 @@ class TestCodecConfig:
 
     def test_codec_config_creation(self):
         """Test creating a basic CodecConfig."""
-        config = CodecConfig(
-            name="Test",
-            encoder="test_encoder",
-            preset="medium",
-            crf=23
-        )
+        config = CodecConfig(name="Test", encoder="test_encoder", preset="medium", crf=23)
 
         assert config.name == "Test"
         assert config.encoder == "test_encoder"
@@ -86,7 +82,7 @@ class TestCodecConfig:
             crf=20,
             profile="high",
             level="4.2",
-            extra_args=["-g", "240", "-tune", "film"]
+            extra_args=["-g", "240", "-tune", "film"],
         )
 
         assert config.profile == "high"
@@ -124,8 +120,7 @@ class TestCodecConfig:
     def test_to_ffmpeg_args_with_extra(self):
         """Test FFmpeg args with extra arguments."""
         config = CodecConfig(
-            "Test", "test_enc", "fast", 23,
-            extra_args=["-g", "240", "-tune", "film"]
+            "Test", "test_enc", "fast", 23, extra_args=["-g", "240", "-tune", "film"]
         )
         args = config.to_ffmpeg_args()
 
@@ -139,17 +134,14 @@ class TestCodecConfig:
 # ColorConfig Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.unit
 class TestColorConfig:
     """Test suite for ColorConfig dataclass."""
 
     def test_color_config_creation(self):
         """Test creating ColorConfig."""
-        config = ColorConfig(
-            colorspace="bt709",
-            color_primaries="bt709",
-            color_trc="bt709"
-        )
+        config = ColorConfig(colorspace="bt709", color_primaries="bt709", color_trc="bt709")
 
         assert config.colorspace == "bt709"
         assert config.color_primaries == "bt709"
@@ -182,25 +174,25 @@ class TestColorConfig:
 # Hardware Encoder Detection Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.unit
 class TestEncoderDetection:
     """Test suite for hardware encoder detection."""
 
     def test_detect_available_encoders_no_ffmpeg(self):
         """Test detection when FFmpeg is not installed."""
-        with patch('shutil.which', return_value=None):
+        with patch("shutil.which", return_value=None):
             result = detect_available_encoders(use_cache=False)
 
             assert all(v is False for v in result.values())
 
     def test_detect_available_encoders_with_ffmpeg(self):
         """Test detection with FFmpeg installed."""
-        with patch('shutil.which', return_value='/usr/bin/ffmpeg'):
-            with patch('subprocess.run') as mock_run:
+        with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+            with patch("subprocess.run") as mock_run:
                 # Mock encoder list output
                 mock_run.return_value = Mock(
-                    returncode=0,
-                    stdout="""... h264_nvenc ... hevc_nvenc ... av1_nvenc ..."""
+                    returncode=0, stdout="""... h264_nvenc ... hevc_nvenc ... av1_nvenc ..."""
                 )
 
                 result = detect_available_encoders(use_cache=False)
@@ -211,8 +203,8 @@ class TestEncoderDetection:
 
     def test_detect_encoders_uses_cache(self):
         """Test that detection uses cache."""
-        with patch('shutil.which', return_value='/usr/bin/ffmpeg'):
-            with patch('subprocess.run') as mock_run:
+        with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = Mock(returncode=0, stdout="")
 
                 # First call
@@ -225,8 +217,8 @@ class TestEncoderDetection:
 
     def test_detect_encoders_cache_invalidation(self):
         """Test cache invalidation with force_refresh."""
-        with patch('shutil.which', return_value='/usr/bin/ffmpeg'):
-            with patch('subprocess.run') as mock_run:
+        with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = Mock(returncode=0, stdout="")
 
                 detect_available_encoders(use_cache=True)
@@ -238,16 +230,16 @@ class TestEncoderDetection:
     def test_clear_encoder_cache(self):
         """Test clearing encoder cache."""
         # Populate cache first
-        with patch('shutil.which', return_value='/usr/bin/ffmpeg'):
-            with patch('subprocess.run', return_value=Mock(returncode=0, stdout="")):
+        with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+            with patch("subprocess.run", return_value=Mock(returncode=0, stdout="")):
                 detect_available_encoders(use_cache=True)
 
         # Clear cache
         clear_encoder_cache()
 
         # Next call should re-detect
-        with patch('shutil.which', return_value='/usr/bin/ffmpeg'):
-            with patch('subprocess.run') as mock_run:
+        with patch("shutil.which", return_value="/usr/bin/ffmpeg"):
+            with patch("subprocess.run") as mock_run:
                 mock_run.return_value = Mock(returncode=0, stdout="")
                 detect_available_encoders(use_cache=True)
 
@@ -258,82 +250,90 @@ class TestEncoderDetection:
 # Get Best Encoder Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.unit
 class TestGetBestEncoder:
     """Test suite for get_best_encoder function."""
 
     def test_get_best_encoder_av1_no_hw(self):
         """Test AV1 encoder selection with no hardware acceleration."""
-        with patch('video_renderer.config.detect_available_encoders', return_value={}):
+        with patch("video_renderer.config.detect_available_encoders", return_value={}):
             result = get_best_encoder("av1")
 
             assert result == CODEC_AV1
 
     def test_get_best_encoder_h264_no_hw(self):
         """Test H.264 encoder selection with no hardware acceleration."""
-        with patch('video_renderer.config.detect_available_encoders', return_value={}):
+        with patch("video_renderer.config.detect_available_encoders", return_value={}):
             result = get_best_encoder("h264")
 
             assert result == CODEC_H264
 
     def test_get_best_encoder_h265_no_hw(self):
         """Test H.265 encoder selection with no hardware acceleration."""
-        with patch('video_renderer.config.detect_available_encoders', return_value={}):
+        with patch("video_renderer.config.detect_available_encoders", return_value={}):
             result = get_best_encoder("h265")
 
             assert result == CODEC_H265
 
     def test_get_best_encoder_h264_nvenc(self):
         """Test H.264 with NVENC available."""
-        with patch('video_renderer.config.detect_available_encoders',
-                   return_value={"h264_nvenc": True}):
+        with patch(
+            "video_renderer.config.detect_available_encoders", return_value={"h264_nvenc": True}
+        ):
             result = get_best_encoder("h264")
 
             assert result == CODEC_H264_NVENC
 
     def test_get_best_encoder_h265_nvenc(self):
         """Test H.265 with NVENC available."""
-        with patch('video_renderer.config.detect_available_encoders',
-                   return_value={"hevc_nvenc": True}):
+        with patch(
+            "video_renderer.config.detect_available_encoders", return_value={"hevc_nvenc": True}
+        ):
             result = get_best_encoder("h265")
 
             assert result == CODEC_H265_NVENC
 
     def test_get_best_encoder_av1_nvenc(self):
         """Test AV1 with NVENC available."""
-        with patch('video_renderer.config.detect_available_encoders',
-                   return_value={"av1_nvenc": True}):
+        with patch(
+            "video_renderer.config.detect_available_encoders", return_value={"av1_nvenc": True}
+        ):
             result = get_best_encoder("av1")
 
             assert result == CODEC_AV1_NVENC
 
     def test_get_best_encoder_h264_qsv(self):
         """Test H.264 with QSV available."""
-        with patch('video_renderer.config.detect_available_encoders',
-                   return_value={"h264_qsv": True}):
+        with patch(
+            "video_renderer.config.detect_available_encoders", return_value={"h264_qsv": True}
+        ):
             result = get_best_encoder("h264")
 
             assert result == CODEC_H264_QSV
 
     def test_get_best_encoder_h264_vaapi(self):
         """Test H.264 with VAAPI available."""
-        with patch('video_renderer.config.detect_available_encoders',
-                   return_value={"h264_vaapi": True}):
+        with patch(
+            "video_renderer.config.detect_available_encoders", return_value={"h264_vaapi": True}
+        ):
             result = get_best_encoder("h264")
 
             assert result == CODEC_H264_VAAPI
 
     def test_get_best_encoder_priority_nvenc_over_qsv(self):
         """Test NVENC is prioritized over QSV."""
-        with patch('video_renderer.config.detect_available_encoders',
-                   return_value={"h264_nvenc": True, "h264_qsv": True}):
+        with patch(
+            "video_renderer.config.detect_available_encoders",
+            return_value={"h264_nvenc": True, "h264_qsv": True},
+        ):
             result = get_best_encoder("h264")
 
             assert result == CODEC_H264_NVENC
 
     def test_get_best_encoder_unknown_codec(self):
         """Test unknown codec falls back to H.264."""
-        with patch('video_renderer.config.detect_available_encoders', return_value={}):
+        with patch("video_renderer.config.detect_available_encoders", return_value={}):
             result = get_best_encoder("unknown")
 
             assert result == CODEC_H264
@@ -343,6 +343,7 @@ class TestGetBestEncoder:
 # RAM Disk Configuration Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.unit
 class TestRamDiskConfig:
     """Test suite for RAM disk configuration."""
@@ -350,13 +351,12 @@ class TestRamDiskConfig:
     @pytest.mark.posix
     def test_get_ramdisk_path_linux(self):
         """Test RAM disk path on Linux."""
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('pathlib.Path.is_dir', return_value=True):
-                with patch('os.statvfs') as mock_stat:
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("pathlib.Path.is_dir", return_value=True):
+                with patch("os.statvfs") as mock_stat:
                     # Mock 20GB free space
                     mock_stat.return_value = Mock(
-                        f_bavail=20971520,  # blocks
-                        f_frsize=512        # block size
+                        f_bavail=20971520, f_frsize=512  # blocks  # block size
                     )
 
                     result = get_ramdisk_path()
@@ -367,14 +367,11 @@ class TestRamDiskConfig:
     @pytest.mark.posix
     def test_get_ramdisk_path_insufficient_space(self):
         """Test RAM disk path with insufficient space."""
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('pathlib.Path.is_dir', return_value=True):
-                with patch('os.statvfs') as mock_stat:
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("pathlib.Path.is_dir", return_value=True):
+                with patch("os.statvfs") as mock_stat:
                     # Mock only 1GB free space
-                    mock_stat.return_value = Mock(
-                        f_bavail=2097152,
-                        f_frsize=512
-                    )
+                    mock_stat.return_value = Mock(f_bavail=2097152, f_frsize=512)
 
                     result = get_ramdisk_path()
 
@@ -388,15 +385,14 @@ class TestRamDiskConfig:
 
     def test_setup_temp_directory_with_ramdisk(self, temp_dir):
         """Test setup temp directory preferring RAM disk."""
-        with patch('video_renderer.config.get_ramdisk_path',
-                   return_value=temp_dir / "ramdisk"):
+        with patch("video_renderer.config.get_ramdisk_path", return_value=temp_dir / "ramdisk"):
             result = setup_temp_directory(temp_dir, use_ramdisk=True)
 
             assert "ramdisk" in str(result)
 
     def test_setup_temp_directory_fallback(self, temp_dir):
         """Test setup temp directory fallback to disk."""
-        with patch('video_renderer.config.get_ramdisk_path', return_value=None):
+        with patch("video_renderer.config.get_ramdisk_path", return_value=None):
             result = setup_temp_directory(temp_dir, use_ramdisk=True)
 
             assert "tmp" in str(result)
@@ -404,8 +400,7 @@ class TestRamDiskConfig:
 
     def test_cleanup_ramdisk(self):
         """Test RAM disk cleanup."""
-        with patch('video_renderer.config.get_ramdisk_path',
-                   return_value=None):
+        with patch("video_renderer.config.get_ramdisk_path", return_value=None):
             # Should not raise
             cleanup_ramdisk()
 
@@ -413,6 +408,7 @@ class TestRamDiskConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 # NVENC Args Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.unit
 class TestNVENCArgs:
@@ -474,6 +470,7 @@ class TestNVENCArgs:
 # RenderConfig Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.unit
 class TestRenderConfig:
     """Test suite for RenderConfig dataclass."""
@@ -500,12 +497,7 @@ class TestRenderConfig:
     def test_render_config_custom_values(self, temp_dir):
         """Test RenderConfig with custom values."""
         config = RenderConfig(
-            work_dir=temp_dir,
-            width=1280,
-            height=720,
-            fps=30,
-            codec="h264",
-            duration_seconds=1800
+            work_dir=temp_dir, width=1280, height=720, fps=30, codec="h264", duration_seconds=1800
         )
 
         assert config.width == 1280
@@ -518,8 +510,7 @@ class TestRenderConfig:
         """Test get_codec_config with hardware acceleration enabled."""
         config = RenderConfig(use_hw_accel=True)
 
-        with patch('video_renderer.config.get_best_encoder',
-                   return_value=CODEC_H264):
+        with patch("video_renderer.config.get_best_encoder", return_value=CODEC_H264):
             codec_config = config.get_codec_config()
 
             assert codec_config == CODEC_H264
@@ -536,6 +527,7 @@ class TestRenderConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 # RamTestConfig Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.unit
 class TestRamTestConfig:
@@ -554,8 +546,9 @@ class TestRamTestConfig:
         """Test get_temp_dir method."""
         config = RamTestConfig(use_ramdisk=True)
 
-        with patch('video_renderer.config.setup_temp_directory',
-                   return_value=temp_dir / "ramdisk") as mock_setup:
+        with patch(
+            "video_renderer.config.setup_temp_directory", return_value=temp_dir / "ramdisk"
+        ) as mock_setup:
             result = config.get_temp_dir(temp_dir)
 
             mock_setup.assert_called_once_with(temp_dir, True)
@@ -565,8 +558,9 @@ class TestRamTestConfig:
         """Test get_nvenc_args method."""
         config = RamTestConfig(high_vram=True)
 
-        with patch('video_renderer.config.get_nvenc_extra_args',
-                   return_value=["-test"]) as mock_get:
+        with patch(
+            "video_renderer.config.get_nvenc_extra_args", return_value=["-test"]
+        ) as mock_get:
             result = config.get_nvenc_args("h264")
 
             mock_get.assert_called_once_with("h264", True)
@@ -576,8 +570,9 @@ class TestRamTestConfig:
         """Test get_hwaccel_args method."""
         config = RamTestConfig(high_vram=True)
 
-        with patch('video_renderer.config.get_hwaccel_input_args',
-                   return_value=["-hwaccel", "cuda"]) as mock_get:
+        with patch(
+            "video_renderer.config.get_hwaccel_input_args", return_value=["-hwaccel", "cuda"]
+        ) as mock_get:
             result = config.get_hwaccel_args()
 
             mock_get.assert_called_once_with(True)
@@ -587,6 +582,7 @@ class TestRamTestConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 # RenderModeConfig Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.unit
 class TestRenderModeConfig:
@@ -648,6 +644,7 @@ class TestRenderModeConfig:
 # Constants Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.unit
 class TestConstants:
     """Test suite for module constants."""
@@ -696,6 +693,7 @@ class TestConstants:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Codec Config Instances Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.unit
 class TestCodecConfigInstances:

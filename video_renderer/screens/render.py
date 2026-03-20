@@ -1,31 +1,26 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Render Screen - Shows render progress with live updates.
 
 Supports both standard and RAM-optimized (ramtest) rendering modes.
 """
 
-from pathlib import Path
-from typing import Optional
-import asyncio
-import time
 import json
-import threading
-import psutil
 import os
+import time
+from pathlib import Path
 
+import psutil
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer, ProgressBar, Log
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, Footer, Log, ProgressBar, Static
 from textual.worker import Worker, get_current_worker
 
-from ..ffmpeg import FFmpegRunner, FFmpegProgress, get_duration
 from ..audio import AudioProcessor, mux_video_audio
+from ..ffmpeg import FFmpegProgress, FFmpegRunner, get_duration
+from ..validator import PostRenderValidator, PreRenderValidator
 from ..video import VideoEncoder
-from ..config import get_render_config
-from ..validator import PreRenderValidator, PostRenderValidator
 
 
 class RenderStep:
@@ -56,8 +51,8 @@ class RenderScreen(Screen):
         ]
         self.current_step = 0
         self.is_running = False
-        self.error_message: Optional[str] = None
-        self.render_worker: Optional[Worker] = None
+        self.error_message: str | None = None
+        self.render_worker: Worker | None = None
 
         # Unified mode support
         self.app_mode = getattr(self.app, "mode", "standard")
@@ -138,7 +133,7 @@ class RenderScreen(Screen):
 
             if self.app_mode == "high_vram":
                 self._log("✓ High VRAM modu aktif")
-                self._log(f"  - GPU buffer artirildi")
+                self._log("  - GPU buffer artirildi")
             else:
                 if self.mode_config.use_ramdisk:
                     ramdisk = get_ramdisk_path()
@@ -219,7 +214,7 @@ class RenderScreen(Screen):
                 self.query_one("#memory_info", Static).update(memory_text)
             except Exception:
                 pass
-        except Exception as e:
+        except Exception:
             pass  # Silently fail memory tracking
 
     def _update_step_status(self, step_name: str, status: str, progress: float = 0) -> None:
@@ -383,7 +378,7 @@ class RenderScreen(Screen):
                 pre_validator = PreRenderValidator(
                     target_width=getattr(codec_config, "width", 1920),
                     target_height=getattr(codec_config, "height", 1080),
-                    target_fps=getattr(codec_config, "fps", 60)
+                    target_fps=getattr(codec_config, "fps", 60),
                 )
 
                 pre_result = pre_validator.validate_render_specs(
@@ -392,16 +387,20 @@ class RenderScreen(Screen):
                     single_path=single_video_path,
                     tracks=chosen_tracks,
                     target_duration=total_seconds,
-                    output_dir=out_path.parent
+                    output_dir=out_path.parent,
                 )
 
                 # Log validation results
                 if pre_result.errors:
-                    self.call_from_thread(self._log, f"✗ Doğrulama hatası: {len(pre_result.errors)} hata")
+                    self.call_from_thread(
+                        self._log, f"✗ Doğrulama hatası: {len(pre_result.errors)} hata"
+                    )
                     for error in pre_result.errors:
                         self.call_from_thread(self._log, f"  - {error.message}")
                 elif pre_result.warnings:
-                    self.call_from_thread(self._log, f"⚠ Doğrulama uyarısı: {len(pre_result.warnings)} uyarı")
+                    self.call_from_thread(
+                        self._log, f"⚠ Doğrulama uyarısı: {len(pre_result.warnings)} uyarı"
+                    )
 
                 # Show validation screen if issues found
                 if not pre_result.valid:
@@ -413,7 +412,7 @@ class RenderScreen(Screen):
                         f"❌ Doğrulama başarısız: {len(pre_result.errors)} hata tespit edildi",
                         title="Doğrulama Hatası",
                         severity="error",
-                        timeout=5
+                        timeout=5,
                     )
 
                     self.call_from_thread(show_validation_result, app, pre_result)
@@ -433,7 +432,7 @@ class RenderScreen(Screen):
                         f"⚠️ Doğrulama uyarısı: {len(pre_result.warnings)} uyarı tespit edildi",
                         title="Doğrulama Uyarısı",
                         severity="warning",
-                        timeout=3
+                        timeout=3,
                     )
                     self.call_from_thread(self._log, "⚠️ Uyarılarla devam ediliyor...")
 
@@ -494,7 +493,9 @@ class RenderScreen(Screen):
                             self._update_step_status, "intro", "active", p.percent
                         )
 
-                    encoder.normalize_video(intro_path, intro_norm, intro_progress, bitrate=video_bitrate)
+                    encoder.normalize_video(
+                        intro_path, intro_norm, intro_progress, bitrate=video_bitrate
+                    )
 
                 self.call_from_thread(self._update_step_status, "intro", "complete", 100)
 
@@ -512,7 +513,9 @@ class RenderScreen(Screen):
                     def loop_progress(p: FFmpegProgress):
                         self.call_from_thread(self._update_step_status, "loop", "active", p.percent)
 
-                    encoder.normalize_video(loop_path, loop_norm, loop_progress, bitrate=video_bitrate)
+                    encoder.normalize_video(
+                        loop_path, loop_norm, loop_progress, bitrate=video_bitrate
+                    )
 
                 self.call_from_thread(self._update_step_status, "loop", "complete", 100)
 
@@ -631,28 +634,28 @@ class RenderScreen(Screen):
             }
 
             post_result = post_validator.validate_output(
-                output_path=out_path,
-                target_duration=total_seconds,
-                target_specs=target_specs
+                output_path=out_path, target_duration=total_seconds, target_specs=target_specs
             )
 
             if not post_result.valid:
-                self.call_from_thread(self._log, f"✗ Çıktı doğrulaması başarısız")
+                self.call_from_thread(self._log, "✗ Çıktı doğrulaması başarısız")
                 self.call_from_thread(
                     app.notify,
                     f"❌ Çıktı doğrulaması başarısız: {len(post_result.errors)} hata tespit edildi",
                     title="Çıktı Doğrulama Hatası",
                     severity="error",
-                    timeout=5
+                    timeout=5,
                 )
             elif post_result.warnings:
-                self.call_from_thread(self._log, f"⚠️ Çıktı doğrulaması: {len(post_result.warnings)} uyarı")
+                self.call_from_thread(
+                    self._log, f"⚠️ Çıktı doğrulaması: {len(post_result.warnings)} uyarı"
+                )
                 self.call_from_thread(
                     app.notify,
                     f"⚠️ Çıktı doğrulaması uyarısı: {len(post_result.warnings)} uyarı tespit edildi",
                     title="Çıktı Doğrulama Uyarısı",
                     severity="warning",
-                    timeout=3
+                    timeout=3,
                 )
             else:
                 self.call_from_thread(self._log, "✓ Çıktı doğrulaması başarılı")
@@ -674,14 +677,13 @@ class RenderScreen(Screen):
                     "post_render": post_result.valid,
                     "issues": len(post_result.issues),
                     "post_result": post_result,  # Store full validation result for export
-                }
+                },
             }
 
             # Go to complete screen
             self.call_from_thread(self._go_to_complete)
 
         except Exception as e:
-            import traceback
 
             self.error_message = str(e)
             self.call_from_thread(self._log, f"✗ Hata: {e}")

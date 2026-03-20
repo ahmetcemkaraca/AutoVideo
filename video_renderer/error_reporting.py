@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Error reporting and aggregation system.
 
@@ -8,23 +7,21 @@ debug information management, and error reporting.
 """
 
 import sys
+import threading
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, Union
 from functools import wraps
-import threading
+from typing import Any
 
 from .exceptions import (
-    VideoRendererError,
-    ErrorContext,
     ErrorSeverity,
+    VideoRendererError,
     get_user_message,
-    create_error_report,
 )
-from .logging import get_logger, LogContext, generate_request_id
+from .logging import generate_request_id, get_logger
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Error Reporter Configuration
@@ -66,16 +63,16 @@ class ErrorRecord:
     exception_type: str
     message: str
     user_message: str
-    component: Optional[str]
-    operation: Optional[str]
+    component: str | None
+    operation: str | None
     severity: ErrorSeverity
     recovery_possible: bool
-    suggested_action: Optional[str]
-    stack_trace: Optional[str]
-    request_id: Optional[str]
-    context: Dict[str, Any] = field(default_factory=dict)
+    suggested_action: str | None
+    stack_trace: str | None
+    request_id: str | None
+    context: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -108,18 +105,18 @@ class ErrorAggregator:
     user-friendly error messages and recovery suggestions.
     """
 
-    def __init__(self, config: Optional[ErrorReportConfig] = None):
+    def __init__(self, config: ErrorReportConfig | None = None):
         self.config = config or ErrorReportConfig()
         self.logger = get_logger("ErrorAggregator")
-        self._error_history: List[ErrorRecord] = []
-        self._error_counts: Dict[str, int] = {}
+        self._error_history: list[ErrorRecord] = []
+        self._error_counts: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def report_error(
         self,
         exception: Exception,
-        request_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        request_id: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> ErrorRecord:
         """
         Report an error and create an error record.
@@ -234,7 +231,7 @@ class ErrorAggregator:
         record = self.report_error(exception, context=kwargs)
         return self.get_user_message(record)
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_error_summary(self) -> dict[str, Any]:
         """
         Get summary of all reported errors.
 
@@ -271,7 +268,7 @@ class ErrorAggregator:
             self._error_history.clear()
             self._error_counts.clear()
 
-    def get_recent_errors(self, count: int = 10) -> List[ErrorRecord]:
+    def get_recent_errors(self, count: int = 10) -> list[ErrorRecord]:
         """
         Get recent error records.
 
@@ -289,7 +286,7 @@ class ErrorAggregator:
 # Global Error Aggregator
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_global_aggregator: Optional[ErrorAggregator] = None
+_global_aggregator: ErrorAggregator | None = None
 
 
 def get_error_aggregator() -> ErrorAggregator:
@@ -347,8 +344,8 @@ def format_error(exception: Exception, **kwargs) -> str:
 def handle_errors(
     default_return: Any = None,
     raise_on_error: bool = False,
-    error_callback: Optional[Callable[[Exception], Any]] = None,
-    component: Optional[str] = None,
+    error_callback: Callable[[Exception], Any] | None = None,
+    component: str | None = None,
 ):
     """
     Decorator to automatically handle and report errors.
@@ -404,7 +401,7 @@ def safe_execute(
     *args,
     default_return: Any = None,
     raise_on_error: bool = False,
-    error_callback: Optional[Callable[[Exception], Any]] = None,
+    error_callback: Callable[[Exception], Any] | None = None,
     **kwargs,
 ) -> Any:
     """
@@ -560,7 +557,7 @@ class RecoveryAction:
         """Check if this action can recover from the error."""
         raise NotImplementedError
 
-    def recover(self, error: Exception, context: Dict[str, Any]) -> bool:
+    def recover(self, error: Exception, context: dict[str, Any]) -> bool:
         """
         Attempt to recover from the error.
 
@@ -583,7 +580,7 @@ class RetryRecovery(RecoveryAction):
         """Can retry on most errors."""
         return True
 
-    def recover(self, error: Exception, context: Dict[str, Any]) -> bool:
+    def recover(self, error: Exception, context: dict[str, Any]) -> bool:
         """Retry the operation."""
         retry_count = context.get("retry_count", 0)
         return retry_count < self.max_retries
@@ -600,7 +597,7 @@ class FallbackRecovery(RecoveryAction):
         """Can fall back for certain error types."""
         return isinstance(error, (VideoProcessingError, AudioProcessingError))
 
-    def recover(self, error: Exception, context: Dict[str, Any]) -> bool:
+    def recover(self, error: Exception, context: dict[str, Any]) -> bool:
         """Execute fallback function."""
         try:
             self.fallback_func(**context)
@@ -613,14 +610,14 @@ class ErrorRecoveryManager:
     """Manages error recovery strategies."""
 
     def __init__(self):
-        self.recovery_actions: List[RecoveryAction] = []
+        self.recovery_actions: list[RecoveryAction] = []
         self.logger = get_logger("ErrorRecovery")
 
     def register_action(self, action: RecoveryAction) -> None:
         """Register a recovery action."""
         self.recovery_actions.append(action)
 
-    def attempt_recovery(self, error: Exception, context: Dict[str, Any]) -> bool:
+    def attempt_recovery(self, error: Exception, context: dict[str, Any]) -> bool:
         """
         Attempt to recover from an error.
 
@@ -650,7 +647,7 @@ class ErrorRecoveryManager:
 
 
 # Global recovery manager
-_recovery_manager: Optional[ErrorRecoveryManager] = None
+_recovery_manager: ErrorRecoveryManager | None = None
 
 
 def get_recovery_manager() -> ErrorRecoveryManager:
@@ -679,7 +676,6 @@ def format_cli_error(exception: Exception, show_traceback: bool = False) -> str:
     Returns:
         Formatted error string for CLI
     """
-    from .logging import LogLevel
 
     config = ErrorReportConfig(
         mode=ErrorReportingMode.DEBUG if show_traceback else ErrorReportingMode.USER_FRIENDLY,

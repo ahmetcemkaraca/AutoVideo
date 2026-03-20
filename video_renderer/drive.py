@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Google Drive integration for uploading rendered videos.
 
@@ -11,17 +10,16 @@ Production-ready v1.0.0:
 - Proper exception handling
 """
 
-import pickle
-import os.path
-import time
-import threading
-import secrets
-from pathlib import Path
-from typing import Optional, List, Dict, Tuple, Callable
 import logging
+import pickle
+import secrets
+import threading
+import time
+from collections.abc import Callable
+from pathlib import Path
 
-from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
@@ -56,8 +54,8 @@ class DriveUploader:
 
     def __init__(
         self,
-        credentials_path: Optional[Path] = None,
-        token_path: Optional[Path] = None,
+        credentials_path: Path | None = None,
+        token_path: Path | None = None,
         max_retries: int = 3,
     ):
         self.credentials_path = credentials_path or self._find_credentials()
@@ -76,7 +74,7 @@ class DriveUploader:
                     return p
         return Path("credentials.json")
 
-    def _authenticate_with_retry(self, max_retries: Optional[int] = None) -> bool:
+    def _authenticate_with_retry(self, max_retries: int | None = None) -> bool:
         """
         Authenticate with retry logic.
 
@@ -196,7 +194,7 @@ class DriveUploader:
             print(f"Authentication error: {e}")
             return False
 
-    def list_folders(self, page_size: int = 10) -> List[Dict[str, str]]:
+    def list_folders(self, page_size: int = 10) -> list[dict[str, str]]:
         """
         List folders in root or last accessed.
 
@@ -228,10 +226,10 @@ class DriveUploader:
     def upload_file(
         self,
         file_path: Path,
-        folder_id: Optional[str] = None,
-        progress_callback: Optional[Callable[[float], None]] = None,
-        max_retries: Optional[int] = None,
-    ) -> Tuple[bool, str]:
+        folder_id: str | None = None,
+        progress_callback: Callable[[float], None] | None = None,
+        max_retries: int | None = None,
+    ) -> tuple[bool, str]:
         """
         Upload a file to Google Drive with progress tracking and retry logic.
 

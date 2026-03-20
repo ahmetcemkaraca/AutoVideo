@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Güvenlik modülü: Input validation, path security, ve sanitization.
 
@@ -7,15 +6,14 @@ Bu modül tüm kullanıcı girdilerini ve dosya yollarını güvenli bir şekild
 validate etmek için kullanılır.
 """
 
+import hashlib
+import json
+import logging
 import os
 import re
-import hashlib
-import stat
-import json
 import secrets
 from pathlib import Path
-from typing import Optional, List, Set, Dict, Any
-import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +23,10 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # İzin verilen video dosya formatları
-ALLOWED_VIDEO_EXTENSIONS: Set[str] = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".wmv"}
+ALLOWED_VIDEO_EXTENSIONS: set[str] = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".wmv"}
 
 # İzin verilen audio dosya formatları
-ALLOWED_AUDIO_EXTENSIONS: Set[str] = {
+ALLOWED_AUDIO_EXTENSIONS: set[str] = {
     ".mp3",
     ".wav",
     ".flac",
@@ -40,7 +38,7 @@ ALLOWED_AUDIO_EXTENSIONS: Set[str] = {
 }
 
 # İzin verilen resim formatları
-ALLOWED_IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+ALLOWED_IMAGE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
 # Tehlikeli karakterler (path traversal için)
 DANGEROUS_CHARS = set("..\\\\")
@@ -65,10 +63,10 @@ class PathSecurityError(Exception):
 
 def validate_path(
     path: Path | str,
-    allowed_extensions: Optional[Set[str]] = None,
-    base_dir: Optional[Path] = None,
+    allowed_extensions: set[str] | None = None,
+    base_dir: Path | None = None,
     check_exists: bool = False,
-    max_size: Optional[int] = None,
+    max_size: int | None = None,
 ) -> Path:
     """
     Dosya yolunu güvenli bir şekilde validate eder.
@@ -142,7 +140,7 @@ def validate_path(
     return resolved_path
 
 
-def validate_video_path(path: Path | str, base_dir: Optional[Path] = None) -> Path:
+def validate_video_path(path: Path | str, base_dir: Path | None = None) -> Path:
     """Video dosyası path'ini validate eder."""
     return validate_path(
         path,
@@ -153,7 +151,7 @@ def validate_video_path(path: Path | str, base_dir: Optional[Path] = None) -> Pa
     )
 
 
-def validate_audio_path(path: Path | str, base_dir: Optional[Path] = None) -> Path:
+def validate_audio_path(path: Path | str, base_dir: Path | None = None) -> Path:
     """Audio dosyası path'ini validate eder."""
     return validate_path(
         path,
@@ -164,7 +162,7 @@ def validate_audio_path(path: Path | str, base_dir: Optional[Path] = None) -> Pa
     )
 
 
-def validate_image_path(path: Path | str, base_dir: Optional[Path] = None) -> Path:
+def validate_image_path(path: Path | str, base_dir: Path | None = None) -> Path:
     """Resim dosyası path'ini validate eder."""
     return validate_path(
         path,
@@ -301,7 +299,7 @@ def validate_command_arg(arg: str) -> bool:
     return True
 
 
-def validate_ffmpeg_args(args: List[str]) -> bool:
+def validate_ffmpeg_args(args: list[str]) -> bool:
     """
     FFmpeg argümanlarını validate eder.
 
@@ -398,7 +396,7 @@ def validate_media_file(path: Path) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> bool:
+def check_file_permissions(path: Path, expected_mode: int | None = None) -> bool:
     """
     Check if credential file has secure permissions.
 
@@ -438,9 +436,9 @@ def check_file_permissions(path: Path, expected_mode: Optional[int] = None) -> b
         elif os.name == "nt":
             # Windows systems - check for Everyone/Anonymous access
             try:
-                import win32security
                 import win32api
                 import win32con
+                import win32security
 
                 # Get security descriptor
                 sd = win32security.GetFileSecurity(
@@ -502,9 +500,9 @@ def set_secure_permissions(path: Path) -> bool:
         elif os.name == "nt":
             # Windows - remove inherited permissions
             try:
-                import win32security
                 import win32api
                 import win32con
+                import win32security
 
                 # Get current user
                 user_sid = win32security.GetTokenInformation(
@@ -556,14 +554,12 @@ def validate_client_secrets(path: Path) -> bool:
         return False
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Check for valid client type
         if "installed" not in data and "web" not in data:
-            logger.error(
-                f"Invalid client_secrets.json format: " f"missing 'installed' or 'web' key"
-            )
+            logger.error("Invalid client_secrets.json format: " "missing 'installed' or 'web' key")
             return False
 
         # Get client config
@@ -578,13 +574,13 @@ def validate_client_secrets(path: Path) -> bool:
 
         # Check for redirect URIs
         if "redirect_uris" not in client_config:
-            logger.warning(f"client_secrets.json missing 'redirect_uris' field")
+            logger.warning("client_secrets.json missing 'redirect_uris' field")
 
         # Check for insecure configurations
         if "redirect_uris" in client_config:
             redirect_uris = client_config["redirect_uris"]
             if any(uri.startswith("http://") for uri in redirect_uris if uri):
-                logger.warning(f"client_secrets.json contains insecure HTTP redirect URIs")
+                logger.warning("client_secrets.json contains insecure HTTP redirect URIs")
 
         return True
 
@@ -647,8 +643,8 @@ def validate_integrity(path: Path, expected_hash: str, algorithm: str = "sha256"
 
 
 def sanitize_log_data(
-    data: Dict[str, Any], sensitive_keys: Optional[List[str]] = None
-) -> Dict[str, Any]:
+    data: dict[str, Any], sensitive_keys: list[str] | None = None
+) -> dict[str, Any]:
     """
     Sanitize dictionary data for logging by redacting sensitive fields.
 

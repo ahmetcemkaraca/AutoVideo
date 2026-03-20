@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Smart Batch Screen - Wizard for auto-detecting and configuring batch jobs.
 """
 
-from pathlib import Path
-from typing import List, Tuple, Set, Optional
 import random
+from pathlib import Path
 
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
-from textual.widgets import Static, Button, Footer, DataTable, Input, Label, Select, Checkbox
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, Checkbox, DataTable, Footer, Input, Label, Select, Static
 
-from ..batch import BatchQueue, RenderJob, JobStatus, SmartBatchDetector, BatchPair, parse_duration
-from ..ffmpeg import get_duration, probe_video
 from ..audio import is_background_file
+from ..batch import BatchPair, BatchQueue, JobStatus, SmartBatchDetector, parse_duration
 
 
 class SmartBatchScreen(Screen):
@@ -28,22 +25,22 @@ class SmartBatchScreen(Screen):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.detector = SmartBatchDetector()
-        self.pairs: List[BatchPair] = []
-        self.selected_indices: Set[int] = set()
+        self.pairs: list[BatchPair] = []
+        self.selected_indices: set[int] = set()
 
         # Wizard state
         self.step = 1  # 1: Global Settings, 2: Customization (Loop)
         self.current_pair_idx = 0
-        self.customizing_pairs: List[int] = []  # Indices of pairs to customize
+        self.customizing_pairs: list[int] = []  # Indices of pairs to customize
 
         # Settings
         self.global_duration = "9:00:00"
         self.global_codec = "av1"
         self.music_mode = "random"  # random, specific, none
-        self.music_tracks: List[Path] = []  # All available tracks
-        self.global_selected_tracks: List[Path] = []
-        self.global_selected_tracks: List[Path] = []
-        self.global_bg_files: List[Path] = []
+        self.music_tracks: list[Path] = []  # All available tracks
+        self.global_selected_tracks: list[Path] = []
+        self.global_selected_tracks: list[Path] = []
+        self.global_bg_files: list[Path] = []
         self.global_bitrate = ""  # New: Bitrate support
 
         # Per-project settings (index -> settings dict)
@@ -57,43 +54,39 @@ class SmartBatchScreen(Screen):
         )
 
         # STEP 1: Global Settings & Selection
-        with Container(id="step1_container"):
-            with Horizontal():
-                # Left: Pairs List
-                with Container(classes="panel"):
-                    yield Static("📂 Tespit Edilen Projeler", classes="panel-title")
-                    yield DataTable(id="pairs_table")
+        with Container(id="step1_container"), Horizontal():
+            # Left: Pairs List
+            with Container(classes="panel"):
+                yield Static("📂 Tespit Edilen Projeler", classes="panel-title")
+                yield DataTable(id="pairs_table")
 
-                # Right: Settings
-                with Container(classes="panel"):
-                    yield Static("⚙️ Genel Ayarlar", classes="panel-title")
+            # Right: Settings
+            with Container(classes="panel"):
+                yield Static("⚙️ Genel Ayarlar", classes="panel-title")
 
-                    yield Label("Hedef Sure:")
-                    yield Input(value="9:00:00", id="duration_input")
+                yield Label("Hedef Sure:")
+                yield Input(value="9:00:00", id="duration_input")
 
-                    yield Label("Codec:")
-                    yield Select.from_values(
-                        ["av1", "h264", "h265"], value="av1", id="codec_select"
-                    )
+                yield Label("Codec:")
+                yield Select.from_values(["av1", "h264", "h265"], value="av1", id="codec_select")
 
-                    yield Label("Video Bitrate (Bos=Oto):")
-                    yield Input(placeholder="Orn: 5000k, 5M", id="bitrate_input")
+                yield Label("Video Bitrate (Bos=Oto):")
+                yield Input(placeholder="Orn: 5000k, 5M", id="bitrate_input")
 
+                yield Label("Muzik Secimi:")
+                yield Select(
+                    [
+                        ("🔀 Rastgele (Muzik klasorunden)", "random"),
+                        ("🎵 Sabit Liste (Tum projeler ayni)", "fixed"),
+                        ("🔇 Sessiz", "none"),
+                    ],
+                    value="random",
+                    id="music_mode_select",
+                )
 
-                    yield Label("Muzik Secimi:")
-                    yield Select(
-                        [
-                            ("🔀 Rastgele (Muzik klasorunden)", "random"),
-                            ("🎵 Sabit Liste (Tum projeler ayni)", "fixed"),
-                            ("🔇 Sessiz", "none"),
-                        ],
-                        value="random",
-                        id="music_mode_select",
-                    )
-
-                    yield Checkbox(
-                        "Her projeyi ayri ayri ozellestir", value=False, id="customize_check"
-                    )
+                yield Checkbox(
+                    "Her projeyi ayri ayri ozellestir", value=False, id="customize_check"
+                )
 
         # STEP 2: Customization (Hidden initially)
         with Container(id="step2_container", classes="hidden"):

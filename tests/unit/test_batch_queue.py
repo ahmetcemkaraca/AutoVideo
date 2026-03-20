@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Unit tests for BatchQueue and related classes.
 
@@ -12,18 +11,18 @@ Tests cover:
 - Duration parsing
 """
 
-import pytest
-import json
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
+
 from video_renderer.batch import (
-    BatchQueue,
-    RenderJob,
-    JobStatus,
     BatchPair,
+    BatchQueue,
+    JobStatus,
+    RenderJob,
     SmartBatchDetector,
-    parse_duration
+    parse_duration,
 )
 
 
@@ -65,7 +64,7 @@ class TestRenderJob:
             total_seconds=3600,
             tracks=tracks,
             backgrounds=backgrounds,
-            output_path=work_dir / "output.mp4"
+            output_path=work_dir / "output.mp4",
         )
 
         assert job.intro_path == intro
@@ -84,7 +83,7 @@ class TestRenderJob:
             intro_path=work_dir / "intro.mp4",
             loop_path=work_dir / "loop.mp4",
             tracks=[work_dir / "track1.mp3"],
-            backgrounds=[(work_dir / "bg.mp3", -8.0)]
+            backgrounds=[(work_dir / "bg.mp3", -8.0)],
         )
 
         data = job.to_dict()
@@ -115,7 +114,7 @@ class TestRenderJob:
             "progress": 50.0,
             "error": None,
             "started_at": None,
-            "completed_at": None
+            "completed_at": None,
         }
 
         job = RenderJob.from_dict(data)
@@ -472,16 +471,19 @@ class TestBatchQueue:
 class TestParseDuration:
     """Test suite for parse_duration function."""
 
-    @pytest.mark.parametrize("duration_str, expected_seconds", [
-        ("1:00:00", 3600),
-        ("0:30:00", 1800),
-        ("0:00:30", 30),
-        ("2:30:45", 9045),
-        ("30:00", 1800),
-        ("5:00", 300),
-        ("60", 3600),  # 60 minutes = 3600 seconds
-        ("1", 3600),   # 1 minute = 60 seconds, but 1 hour = 3600 seconds (ambiguous case)
-    ])
+    @pytest.mark.parametrize(
+        "duration_str, expected_seconds",
+        [
+            ("1:00:00", 3600),
+            ("0:30:00", 1800),
+            ("0:00:30", 30),
+            ("2:30:45", 9045),
+            ("30:00", 1800),
+            ("5:00", 300),
+            ("60", 3600),  # 60 minutes = 3600 seconds
+            ("1", 3600),  # 1 minute = 60 seconds, but 1 hour = 3600 seconds (ambiguous case)
+        ],
+    )
     def test_parse_duration_valid(self, duration_str, expected_seconds):
         """Test parsing valid duration strings."""
         result = parse_duration(duration_str)

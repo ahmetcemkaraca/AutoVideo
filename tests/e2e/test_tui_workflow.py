@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 End-to-end tests for TUI workflow.
 
@@ -13,16 +12,14 @@ Tests cover:
 - Error handling in TUI
 """
 
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
-from textual.app import App
-from textual.widgets import Button, Input, Select
+from unittest.mock import patch
 
+import pytest
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TUI Application Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
@@ -60,18 +57,18 @@ class TestTUIApplication:
         """Test TUI application initializes correctly."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
 
             assert app is not None
-            assert hasattr(app, 'queue')
-            assert hasattr(app, 'render_mode')
+            assert hasattr(app, "queue")
+            assert hasattr(app, "render_mode")
 
     async def test_home_screen_navigation(self):
         """Test navigating from home screen to other screens."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Start at home screen
@@ -85,7 +82,7 @@ class TestTUIApplication:
         """Test complete single video mode workflow."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Workflow:
@@ -108,7 +105,7 @@ class TestTUIApplication:
         from video_renderer.app import VideoRendererApp
         from video_renderer.batch import SmartBatchDetector
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Workflow:
@@ -137,7 +134,7 @@ class TestTUIApplication:
         (work_dir / "lofi_intro.mp4").touch()
         (work_dir / "lofi_loop.mp4").touch()
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Workflow:
@@ -155,7 +152,7 @@ class TestTUIApplication:
         """Test settings screen configuration."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Workflow:
@@ -172,7 +169,7 @@ class TestTUIApplication:
         """Test TUI error handling for various scenarios."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Test error scenarios:
@@ -187,6 +184,7 @@ class TestTUIApplication:
 # ═══════════════════════════════════════════════════════════════════════════════
 # Screen-Specific Tests
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
@@ -292,6 +290,7 @@ class TestSettingsScreen:
 # Batch Screen Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
 class TestBatchScreen:
@@ -299,8 +298,8 @@ class TestBatchScreen:
 
     async def test_batch_queue_display(self, work_dir):
         """Test batch screen displays queue correctly."""
-        from video_renderer.screens.batch import BatchScreen
         from video_renderer.batch import BatchQueue
+        from video_renderer.screens.batch import BatchScreen
 
         queue_file = work_dir / "queue.json"
         queue = BatchQueue(queue_file=queue_file)
@@ -324,8 +323,8 @@ class TestSmartBatchScreen:
 
     async def test_smart_batch_detection_display(self, work_dir):
         """Test smart batch screen shows detected pairs."""
-        from video_renderer.screens.smart_batch import SmartBatchScreen
         from video_renderer.batch import SmartBatchDetector
+        from video_renderer.screens.smart_batch import SmartBatchScreen
 
         # Create intro/loop pairs
         (work_dir / "test1_intro.mp4").touch()
@@ -345,6 +344,7 @@ class TestSmartBatchScreen:
 # Integration with BatchQueue
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
 class TestTUIBatchQueueIntegration:
@@ -363,7 +363,7 @@ class TestTUIBatchQueueIntegration:
         job.loop_path = work_dir / "loop.mp4"
         queue.queue_job(job.id)
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             app.queue = queue
 
@@ -386,6 +386,7 @@ class TestTUIBatchQueueIntegration:
 # Keyboard Navigation Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
 class TestTUIKeyboardNavigation:
@@ -395,7 +396,7 @@ class TestTUIKeyboardNavigation:
         """Test tab key navigates between widgets."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Test tab navigation
@@ -406,7 +407,7 @@ class TestTUIKeyboardNavigation:
         """Test enter key triggers actions."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Test enter key on buttons
@@ -417,7 +418,7 @@ class TestTUIKeyboardNavigation:
         """Test escape key for going back."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Test escape key
@@ -429,6 +430,7 @@ class TestTUIKeyboardNavigation:
 # Theme and Display Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
 class TestTUITheme:
@@ -438,7 +440,7 @@ class TestTUITheme:
         """Test dark theme is applied correctly."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             # Verify theme is dark
             assert app.theme == "dark"
@@ -462,6 +464,7 @@ class TestTUITheme:
 # Performance Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
 class TestTUIPerformance:
@@ -469,12 +472,13 @@ class TestTUIPerformance:
 
     async def test_app_startup_time(self):
         """Test app starts up quickly."""
-        from video_renderer.app import VideoRendererApp
         import time
+
+        from video_renderer.app import VideoRendererApp
 
         start = time.time()
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
 
         startup_time = time.time() - start
@@ -484,7 +488,7 @@ class TestTUIPerformance:
         """Test screen transitions are fast."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 import time
@@ -517,6 +521,7 @@ class TestTUIPerformance:
 # Accessibility Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.e2e
 @pytest.mark.skipif(True, reason="TUI tests require interactive terminal")
 class TestTUIAccessibility:
@@ -526,7 +531,7 @@ class TestTUIAccessibility:
         """Test focus is clearly visible."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             # Verify focused widgets have visual indicators
 
@@ -534,7 +539,7 @@ class TestTUIAccessibility:
         """Test colors have sufficient contrast."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             # Verify text colors contrast well with background
 
@@ -542,7 +547,7 @@ class TestTUIAccessibility:
         """Test app can be used without mouse."""
         from video_renderer.app import VideoRendererApp
 
-        with patch('video_renderer.app.detect_available_encoders', return_value={}):
+        with patch("video_renderer.app.detect_available_encoders", return_value={}):
             app = VideoRendererApp()
             async with app.run_test() as pilot:
                 # Navigate entire app using only keyboard

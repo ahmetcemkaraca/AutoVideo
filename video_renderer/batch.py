@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Batch Rendering System.
 
@@ -17,22 +16,18 @@ State Management:
 - Automatic stale lock cleanup
 """
 
-import json
-import time
-import threading
-import tempfile
-import shutil
-from dataclasses import dataclass, field, replace
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Callable
-from enum import Enum
-from concurrent.futures import ThreadPoolExecutor
-import contextlib
 import logging
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
-from .state_manager import StateManager
+from .ffmpeg import check_disk_space
 from .hash_ledger import HashLedger
-from .ffmpeg import cleanup_temp_files, check_disk_space
+from .state_manager import StateManager
 
 logger = logging.getLogger(__name__)
 
@@ -59,31 +54,31 @@ class RenderJob:
     """
 
     id: int
-    intro_path: Optional[Path] = None
-    loop_path: Optional[Path] = None
-    single_video_path: Optional[Path] = None
+    intro_path: Path | None = None
+    loop_path: Path | None = None
+    single_video_path: Path | None = None
     mode: str = "intro_loop"  # intro_loop or single
     codec_family: str = "av1"
     target_fps: float = 60.0
-    video_bitrate: Optional[str] = None  # e.g., "5000k" or "5M"
+    video_bitrate: str | None = None  # e.g., "5000k" or "5M"
     duration_str: str = "9:00:00"
     total_seconds: int = 32400
-    tracks: List[Path] = field(default_factory=list)
-    backgrounds: List[tuple] = field(default_factory=list)
-    output_path: Optional[Path] = None
+    tracks: list[Path] = field(default_factory=list)
+    backgrounds: list[tuple] = field(default_factory=list)
+    output_path: Path | None = None
     status: JobStatus = JobStatus.PENDING
     progress: float = 0.0
-    error_message: Optional[str] = None
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    error_message: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
     upload_enabled: bool = False
-    upload_folder_id: Optional[str] = None
+    upload_folder_id: str | None = None
     upload_status: str = "pending"  # pending, uploading, complete, error
-    upload_file_id: Optional[str] = None
+    upload_file_id: str | None = None
     skip_duplicate: bool = True  # Skip if source already rendered
     force_render: bool = False  # Force render even if duplicate
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to serializable dict."""
         return {
             "id": self.id,
@@ -112,7 +107,7 @@ class RenderJob:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RenderJob":
+    def from_dict(cls, data: dict[str, Any]) -> "RenderJob":
         """Create from dict."""
         job = cls(id=data["id"])
         job.intro_path = Path(data["intro"]) if data.get("intro") else None
@@ -185,9 +180,9 @@ class BatchQueue:
 
     def __init__(
         self,
-        queue_file: Optional[Path] = None,
-        max_queue_size: Optional[int] = None,
-        memory_limit_gb: Optional[int] = None,
+        queue_file: Path | None = None,
+        max_queue_size: int | None = None,
+        memory_limit_gb: int | None = None,
         enable_locking: bool = True,
     ):
         """
@@ -199,14 +194,14 @@ class BatchQueue:
             memory_limit_gb: Memory limit in GB
             enable_locking: Enable cross-process file locking
         """
-        self._jobs: List[RenderJob] = []
-        self._current_job_id: Optional[int] = None
+        self._jobs: list[RenderJob] = []
+        self._current_job_id: int | None = None
         self._queue_file = queue_file or Path.cwd() / "tmp" / "batch_queue.json"
         self._next_id = 1
         self._lock = threading.RLock()  # RLock for reentrant calls
-        self._on_job_complete: Optional[Callable[[RenderJob], None]] = None
-        self._on_job_error: Optional[Callable[[RenderJob, str], None]] = None
-        self._on_progress: Optional[Callable[[RenderJob, float], None]] = None
+        self._on_job_complete: Callable[[RenderJob], None] | None = None
+        self._on_job_error: Callable[[RenderJob, str], None] | None = None
+        self._on_progress: Callable[[RenderJob, float], None] | None = None
         self._callback_lock = threading.Lock()  # Separate lock for callbacks
 
         # Memory management
@@ -223,10 +218,7 @@ class BatchQueue:
 
         # Initialize HashLedger for duplicate prevention
         ledger_file = Path.cwd() / "config" / "ledger.json"
-        self.hash_ledger = HashLedger(
-            ledger_file=ledger_file,
-            enable_locking=enable_locking
-        )
+        self.hash_ledger = HashLedger(ledger_file=ledger_file, enable_locking=enable_locking)
 
         # Load existing queue
         self._load()
@@ -247,7 +239,6 @@ class BatchQueue:
             return limit
         except ImportError:
             # Fallback if psutil not available
-            import os
 
             # Rough estimate: assume 8GB if we can't detect
             return max(1, 8 - self.SYSTEM_RESERVED_GB)
@@ -291,9 +282,9 @@ class BatchQueue:
 
         # Validate each job before serialization
         for job in self._jobs:
-            if not hasattr(job, 'id') or not isinstance(job.id, int):
+            if not hasattr(job, "id") or not isinstance(job.id, int):
                 logger.error(f"Invalid job in queue: {job}")
-                raise ValueError(f"All jobs must have valid id attribute")
+                raise ValueError("All jobs must have valid id attribute")
 
         data = {
             "jobs": [j.to_dict() for j in self._jobs],
@@ -341,7 +332,7 @@ class BatchQueue:
             self._save()
             return job.copy()
 
-    def queue_job(self, job_id: int) -> Optional[RenderJob]:
+    def queue_job(self, job_id: int) -> RenderJob | None:
         """
         Mark a job as ready to run.
 
@@ -355,7 +346,7 @@ class BatchQueue:
                 return job.copy()
         return None
 
-    def get_job(self, job_id: int) -> Optional[RenderJob]:
+    def get_job(self, job_id: int) -> RenderJob | None:
         """
         Get a job by ID.
 
@@ -365,14 +356,14 @@ class BatchQueue:
             job = self._get_job_unsafe(job_id)
             return job.copy() if job else None
 
-    def _get_job_unsafe(self, job_id: int) -> Optional[RenderJob]:
+    def _get_job_unsafe(self, job_id: int) -> RenderJob | None:
         """Internal: Get job without lock (caller must hold lock)."""
         for job in self._jobs:
             if job.id == job_id:
                 return job
         return None
 
-    def get_queued_jobs(self) -> List[RenderJob]:
+    def get_queued_jobs(self) -> list[RenderJob]:
         """
         Get all queued jobs.
 
@@ -381,7 +372,7 @@ class BatchQueue:
         with self._lock:
             return [j.copy() for j in self._jobs if j.status == JobStatus.QUEUED]
 
-    def get_pending_jobs(self) -> List[RenderJob]:
+    def get_pending_jobs(self) -> list[RenderJob]:
         """
         Get all pending/configuring jobs.
 
@@ -394,7 +385,7 @@ class BatchQueue:
                 if j.status in (JobStatus.PENDING, JobStatus.CONFIGURING)
             ]
 
-    def get_all_jobs(self) -> List[RenderJob]:
+    def get_all_jobs(self) -> list[RenderJob]:
         """
         Get all jobs regardless of status.
 
@@ -403,7 +394,7 @@ class BatchQueue:
         with self._lock:
             return [j.copy() for j in self._jobs]
 
-    def get_next_job(self) -> Optional[RenderJob]:
+    def get_next_job(self) -> RenderJob | None:
         """
         Get next job to run.
 
@@ -415,7 +406,7 @@ class BatchQueue:
                     return job.copy()
         return None
 
-    def start_job(self, job_id: int) -> Optional[RenderJob]:
+    def start_job(self, job_id: int) -> RenderJob | None:
         """
         Mark a job as running.
 
@@ -449,7 +440,7 @@ class BatchQueue:
         if job_copy and self._on_progress:
             self._invoke_callback_safe(self._on_progress, job_copy, job_copy.progress)
 
-    def complete_job(self, job_id: int) -> Optional[RenderJob]:
+    def complete_job(self, job_id: int) -> RenderJob | None:
         """
         Mark a job as complete.
 
@@ -472,7 +463,7 @@ class BatchQueue:
 
         return job_copy
 
-    def fail_job(self, job_id: int, error: str) -> Optional[RenderJob]:
+    def fail_job(self, job_id: int, error: str) -> RenderJob | None:
         """
         Mark a job as failed.
 
@@ -495,7 +486,7 @@ class BatchQueue:
 
         return job_copy
 
-    def cancel_job(self, job_id: int) -> Optional[RenderJob]:
+    def cancel_job(self, job_id: int) -> RenderJob | None:
         """
         Cancel a job.
 
@@ -539,7 +530,7 @@ class BatchQueue:
             self._save()
             return initial - len(self._jobs)
 
-    def get_summary(self) -> Dict[str, int]:
+    def get_summary(self) -> dict[str, int]:
         """
         Get queue summary.
 
@@ -566,14 +557,11 @@ class BatchQueue:
 
         if job.mode == "single" and job.single_video_path:
             return self.hash_ledger.check_and_register(
-                single_path=job.single_video_path,
-                force=False
+                single_path=job.single_video_path, force=False
             )
         elif job.intro_path and job.loop_path:
             return self.hash_ledger.check_and_register(
-                intro_path=job.intro_path,
-                loop_path=job.loop_path,
-                force=False
+                intro_path=job.intro_path, loop_path=job.loop_path, force=False
             )
 
         return True
@@ -590,23 +578,20 @@ class BatchQueue:
         """
         if job.mode == "single" and job.single_video_path:
             return self.hash_ledger.register(
-                single_path=job.single_video_path,
-                output_path=job.output_path
+                single_path=job.single_video_path, output_path=job.output_path
             )
         elif job.intro_path and job.loop_path:
             return self.hash_ledger.register(
-                intro_path=job.intro_path,
-                loop_path=job.loop_path,
-                output_path=job.output_path
+                intro_path=job.intro_path, loop_path=job.loop_path, output_path=job.output_path
             )
 
         return False
 
     def set_callbacks(
         self,
-        on_complete: Optional[Callable[[RenderJob], None]] = None,
-        on_error: Optional[Callable[[RenderJob, str], None]] = None,
-        on_progress: Optional[Callable[[RenderJob, float], None]] = None,
+        on_complete: Callable[[RenderJob], None] | None = None,
+        on_error: Callable[[RenderJob, str], None] | None = None,
+        on_progress: Callable[[RenderJob, float], None] | None = None,
     ) -> None:
         """
         Set event callbacks.
@@ -621,31 +606,28 @@ class BatchQueue:
     def cleanup_temp_files(self, min_age_hours: float = 1.0) -> dict:
         """
         Clean up temporary files from render operations.
-        
+
         Args:
             min_age_hours: Minimum file age in hours before deletion
-            
+
         Returns:
             Dict with cleanup results
         """
-        from .ffmpeg import cleanup_temp_files as do_cleanup, check_disk_space
-        
+        from .ffmpeg import cleanup_temp_files as do_cleanup
+
         tmp_dir = self._queue_file.parent
-        
+
         should_warn, should_auto = check_disk_space(tmp_dir)
-        
+
         if should_auto:
             min_age_hours = 0.5
-        
-        result = do_cleanup(
-            tmp_dir=tmp_dir,
-            min_age_hours=min_age_hours
-        )
-        
+
+        result = do_cleanup(tmp_dir=tmp_dir, min_age_hours=min_age_hours)
+
         return {
             "deleted": len(result.deleted_files),
             "size_mb": result.deleted_size_mb,
-            "errors": result.errors
+            "errors": result.errors,
         }
 
     @property
@@ -654,7 +636,7 @@ class BatchQueue:
         return self._queue_file
 
     @property
-    def current_job_id(self) -> Optional[int]:
+    def current_job_id(self) -> int | None:
         """Get current job ID (thread-safe)."""
         with self._lock:
             return self._current_job_id
@@ -715,7 +697,7 @@ class SmartBatchDetector:
     def __init__(self, directory: Path = None):
         self.directory = directory or Path.cwd()
 
-    def scan(self) -> List[BatchPair]:
+    def scan(self) -> list[BatchPair]:
         """
         Scan directory for matching pairs using regex.
 
@@ -733,7 +715,7 @@ class SmartBatchDetector:
         - intro-{name}.mp4 / loop-{name}.mp4
         - intro.mp4 / loop.mp4 (treated as "Video")
         """
-        pairs: List[BatchPair] = []
+        pairs: list[BatchPair] = []
         import re
 
         # Get all video files
@@ -744,7 +726,7 @@ class SmartBatchDetector:
             videos.extend(list(self.directory.glob(f"*{ext}")))
 
         # Helper to find base name (supports both suffix and prefix patterns)
-        def extract_base(name: str, type_key: str) -> Optional[str]:
+        def extract_base(name: str, type_key: str) -> str | None:
             """
             Extract base name by removing type suffix OR prefix.
 
