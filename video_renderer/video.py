@@ -751,12 +751,25 @@ class VideoEncoder:
                 print(f"  [TS Remux] loop -> .ts")
                 self._remux_to_ts(loop, loop_ts, keep_audio=keep_audio)
 
+            # Use stream_loop to create a looped TS file (Feature 3 integration)
+            looped_ts = tmp_dir / "loop_streamed.ts"
+            if not looped_ts.exists():
+                print(f"  [TS Loop] stream_loop ile loop.ts uzatiliyor...")
+                cmd_loop = [
+                    "ffmpeg", "-y",
+                    "-stream_loop", str(loop_count - 1 if loop_count > 0 else 0),
+                    "-i", str(loop_ts),
+                    "-c", "copy",
+                    str(looped_ts)
+                ]
+                self.runner.run(cmd_loop, capture_progress=False)
+
             # Concat demuxer on TS files → MP4 (frame-exact via -vframes)
             concat_list_ts = tmp_dir / "video_list_ts.txt"
-            ts_files = [intro_ts] + [loop_ts] * loop_count
+            ts_files = [intro_ts, looped_ts] if loop_count > 0 else [intro_ts]
             write_concat_list(ts_files, concat_list_ts)
 
-            print(f"  [Concat] 1 intro + {loop_count} loop (TS stream copy)")
+            print(f"  [Concat] intro + stream_looped_loop (TS stream copy)")
             cmd = [
                 "ffmpeg", "-y",
                 "-f", "concat", "-safe", "0",
@@ -783,9 +796,10 @@ class VideoEncoder:
                 if output_duration > 10 and abs(output_duration - total_seconds) <= tolerance:
                     print(f"  [OK] video_only.mp4: {output_duration:.1f}s (TS concat)")
                     # Cleanup TS intermediates
-                    for f in [intro_ts, loop_ts, concat_list_ts]:
+                    for f in [intro_ts, loop_ts, looped_ts, concat_list_ts]:
                         if f.exists():
-                            f.unlink()
+                            try: f.unlink()
+                            except: pass
                     return output
                 else:
                     raise RuntimeError(
@@ -799,9 +813,10 @@ class VideoEncoder:
             print(f"  [WARN] TS concat basarisiz: {ts_err}")
             # Cleanup
             for f in [tmp_dir / "intro_concat.ts", tmp_dir / "loop_concat.ts",
-                       tmp_dir / "video_list_ts.txt"]:
+                       tmp_dir / "loop_streamed.ts", tmp_dir / "video_list_ts.txt"]:
                 if f.exists():
-                    f.unlink()
+                    try: f.unlink()
+                    except: pass
             if output.exists():
                 output.unlink()
 

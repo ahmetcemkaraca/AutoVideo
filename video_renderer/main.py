@@ -1804,6 +1804,7 @@ def render_pipeline(
     suppress_progress: bool = False,
     video_bitrate: Optional[str] = None,
     global_music_db: float = 0.0,
+    high_vram: bool = False,
 ) -> Tuple[Path, dict]:
     """
     Execute the render pipeline.
@@ -1872,6 +1873,7 @@ def render_pipeline(
             width=target_width,
             height=target_height,
             fps=target_fps,
+            high_vram=high_vram,
         )
 
         intro_norm = tmp_dir / f"intro_norm_{codec_config.codec_family}.mp4"
@@ -2130,9 +2132,7 @@ def render_pipeline(
         print(f"  [WARN] Post-render validation skipped: {e}")
 
     # Calculate total render time
-    render_total = time.perf_counter() - render_start
-
-    # Format render time for filename
+    render_total = sum(step_times.values())
     render_mins = int(render_total // 60)
     render_secs = int(render_total % 60)
     time_suffix = f"_{render_mins}m{render_secs}s"
@@ -2640,6 +2640,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         "drive_folder_id": "",
         "out_path": None,
         "post_action": "keep",
+        "high_vram": False, # Added for high VRAM optimization flag
     }
 
     # Step Functions
@@ -2698,6 +2699,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         
         # Apply High VRAM settings
         if render_cfg.high_vram:
+            s["high_vram"] = True
             print_info("High VRAM optimizasyonlari uygulanacak.")
             # We pass this to session or renderer later via state
         return 0
