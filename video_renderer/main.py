@@ -3031,17 +3031,18 @@ def run_interactive(ozel1_mode: bool = False) -> int:
 
     steps = [
         step_check_env,     # 0
-        step_select_mode,   # 1
-        step_select_videos, # 2
-        step_config,        # 3
-        step_check_compat,  # 4
-        step_duration_audio,# 5
-        step_std_audio,     # 6
-        step_drive,         # 7
-        step_post,          # 8
-        step_summary,       # 9
-        step_final_confirm, # 10
-        step_execute        # 11
+        step_select_ram_mode, # 1
+        step_select_mode,   # 2
+        step_select_videos, # 3
+        step_config,        # 4
+        step_check_compat,  # 5
+        step_duration_audio,# 6
+        step_std_audio,     # 7
+        step_drive,         # 8
+        step_post,          # 9
+        step_summary,       # 10
+        step_final_confirm, # 11
+        step_execute        # 12
     ]
 
     curr = 0
