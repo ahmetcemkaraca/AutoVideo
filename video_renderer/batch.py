@@ -65,7 +65,7 @@ class RenderJob:
     mode: str = "intro_loop"  # intro_loop or single
     codec_family: str = "av1"
     target_fps: float = 60.0
-    video_bitrate: Optional[str] = None  # e.g., "5000k" or "5M"
+    video_bitrate: Optional[str] = None  # e.g., "5000k" or "5M"\n    keep_video_audio: bool = False
     duration_str: str = "9:00:00"
     total_seconds: int = 32400
     tracks: List[Path] = field(default_factory=list)
@@ -108,7 +108,7 @@ class RenderJob:
             "upload_status": self.upload_status,
             "upload_file_id": self.upload_file_id,
             "skip_duplicate": self.skip_duplicate,
-            "force_render": self.force_render,
+            "force_render": self.force_render,\n            "keep_video_audio": self.keep_video_audio,
         }
 
     @classmethod
@@ -136,7 +136,7 @@ class RenderJob:
         job.upload_status = data.get("upload_status", "pending")
         job.upload_file_id = data.get("upload_file_id")
         job.skip_duplicate = data.get("skip_duplicate", True)
-        job.force_render = data.get("force_render", False)
+        job.force_render = data.get("force_render", False)\n        job.keep_video_audio = data.get("keep_video_audio", False)
         return job
 
     def copy(self) -> "RenderJob":

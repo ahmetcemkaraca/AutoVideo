@@ -2663,6 +2663,45 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         print_video_table(videos)
         return 0
 
+    def step_select_ram_mode(s):
+        console.print()
+        mode_idx = ask_choice(
+            "RAM / Performans Optimizasyon Modu",
+            [
+                "Standart (Secili)",
+                "Hizli RAM Optimizasyonu (ramtest)",
+                "Sadece RAM Disk (ramdisk)",
+                "Yüksek VRAM (high_vram: 8GB+ GPU)"
+            ],
+            1,
+        )
+        modes = ["standard", "ramtest", "ramdisk", "high_vram"]
+        selected_mode = modes[mode_idx - 1]
+        s["ram_mode"] = selected_mode
+        
+        from config import get_render_config, get_ramdisk_path
+        render_cfg = get_render_config(selected_mode)
+        
+        # Update tmp_dir if ramdisk is used
+        if render_cfg.use_ramdisk:
+            ramdisk = get_ramdisk_path()
+            if ramdisk:
+                import uuid, time, os
+                run_id = s["run_id"]
+                new_tmp = ramdisk / "runs" / run_id
+                new_tmp.mkdir(parents=True, exist_ok=True)
+                s["tmp_dir"] = new_tmp
+                s["run_log"] = new_tmp / "run_log.txt"
+                print_info(f"RAM Disk aktif edildi: {new_tmp}")
+            else:
+                print_warning("RAM Disk desteklenmiyor veya yer yok, disk kullanilacak.")
+        
+        # Apply High VRAM settings
+        if render_cfg.high_vram:
+            print_info("High VRAM optimizasyonlari uygulanacak.")
+            # We pass this to session or renderer later via state
+        return 0
+
     def step_select_mode(s):
         try:
             s["mode"] = select_render_mode(s["videos"]) # Has no back logic inside, modify if need
@@ -2918,6 +2957,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             "timed_effects": s.get("timed_effects", []),
             "out": s["out_path"].as_posix(),
             "post_action": s["post_action"],
+            "ram_mode": s.get("ram_mode", "standard"),
             "config": {
                 "width": s["target_width"],
                 "height": s["target_height"],
@@ -3152,12 +3192,6 @@ Ornekler:
             console.print(f"  {name}: {status}")
 
         return 0
-
-    # Launch Textual TUI if requested
-    if args.tui:
-        from .app import run_tui
-
-        return run_tui(mode=mode)
 
     # Smart Batch mode
     if args.batch:
