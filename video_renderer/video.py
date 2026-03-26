@@ -709,14 +709,13 @@ class VideoEncoder:
         progress_callback: Optional[Callable[[FFmpegProgress], None]] = None,
         on_duration_error: Optional[Callable[[float, float], bool]] = None,
         keep_audio: bool = False,
+        chunked_render: bool = False,
     ) -> Path:
         """
         Concatenate intro + repeated loop to reach target duration.
 
         Strategy (all stream copy, no re-encoding, frame-exact duration):
           1. Primary: TS intermediate concat
-             - Remux MP4 → MPEG-TS (fixes timestamp continuity)
-             - Concat demuxer on TS files → MP4 with -vframes (frame-exact)
           2. Fallback: Two-pass MP4 concat
              - Raw concat with -c:v copy (has all frames)
              - Remux with -r FPS + -vframes (frame-exact, timestamp fix)
@@ -735,8 +734,106 @@ class VideoEncoder:
         remaining = max(0.0, total_seconds - intro_duration)
         loop_count = int(math.ceil(remaining / loop_duration)) if loop_duration > 0 else 0
 
+        import shutil
+        import uuid
+
         output = tmp_dir / "video_only.mp4"
+        ssd_output = Path.cwd() / "tmp" / "video_only.mp4"
         target_frames = int(total_seconds * self.fps)
+        
+        if chunked_render:
+            print("  [INFO] Deneysel Parçalı Render (Chunked RAM & VRAM) Modu Aktif")
+            output = ssd_output
+            try:
+                free_ram = shutil.disk_usage(tmp_dir).free
+            except Exception:
+                free_ram = 8 * 1024 * 1024 * 1024
+                
+            safe_ram = free_ram * 0.90
+            chunk_duration = int(safe_ram / (2 * 1024 * 1024)) # Assume max 2MB/s bitrate
+            chunk_duration = min(chunk_duration, 7200)
+            
+            print(f"  [INFO] Hesaplanan parca uzunlugu: {chunk_duration} saniye (Kalan RAM: {free_ram / (1024**3):.2f} GB)")
+            
+            if total_seconds > chunk_duration:
+                ssd_chunk_dir = Path.cwd() / "tmp" / "chunks" / str(uuid.uuid4())[:8]
+                ssd_chunk_dir.mkdir(parents=True, exist_ok=True)
+                print(f"  [INFO] Kumeler SSD'de birlestirilecek: {ssd_chunk_dir}")
+                
+                intro_ts = tmp_dir / "intro_concat.ts"
+                loop_ts = tmp_dir / "loop_concat.ts"
+                
+                if not intro_ts.exists():
+                    self._remux_to_ts(intro, intro_ts, keep_audio=keep_audio)
+                if not loop_ts.exists():
+                    self._remux_to_ts(loop, loop_ts, keep_audio=keep_audio)
+                    
+                chunk_files = []
+                remaining = float(total_seconds)
+                chunk_index = 0
+                
+                while remaining > 0:
+                    current_chunk_dur = min(chunk_duration, remaining)
+                    chunk_ts = ssd_chunk_dir / f"chunk_{chunk_index:03d}.ts"
+                    
+                    if chunk_index == 0:
+                        l_dur = current_chunk_dur - intro_duration
+                        l_count = int(math.ceil(l_dur / loop_duration)) if loop_duration > 0 and l_dur > 0 else 0
+                        looped_ts = tmp_dir / f"loop_streamed_{chunk_index}.ts"
+                        if l_count > 0:
+                            cmd_loop = ["ffmpeg", "-y", "-stream_loop", str(l_count - 1 if l_count > 0 else 0), "-i", str(loop_ts), "-c", "copy", str(looped_ts)]
+                            self.runner.run(cmd_loop, capture_progress=False)
+                        
+                        list_txt = tmp_dir / f"list_{chunk_index}.txt"
+                        if l_count > 0:
+                            write_concat_list([intro_ts, looped_ts], list_txt)
+                        else:
+                            write_concat_list([intro_ts], list_txt)
+                            
+                        cmd_concat = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_txt), "-c:v", "copy"]
+                        if keep_audio: cmd_concat.extend(["-c:a", "copy"])
+                        else: cmd_concat.append("-an")
+                        cmd_concat.extend(["-vframes", str(int(current_chunk_dur * self.fps)), str(chunk_ts)])
+                        self.runner.run(cmd_concat, capture_progress=False)
+                        
+                        if looped_ts.exists(): looped_ts.unlink()
+                        if list_txt.exists(): list_txt.unlink()
+                        
+                    else:
+                        l_count = int(math.ceil(current_chunk_dur / loop_duration)) if loop_duration > 0 else 0
+                        looped_ts = tmp_dir / f"loop_streamed_{chunk_index}.ts"
+                        cmd_loop = ["ffmpeg", "-y", "-stream_loop", str(l_count - 1 if l_count > 0 else 0), "-i", str(loop_ts), "-c", "copy", str(looped_ts)]
+                        self.runner.run(cmd_loop, capture_progress=False)
+                        
+                        list_txt = tmp_dir / f"list_{chunk_index}.txt"
+                        write_concat_list([looped_ts], list_txt)
+                        
+                        cmd_concat = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_txt), "-c:v", "copy"]
+                        if keep_audio: cmd_concat.extend(["-c:a", "copy"])
+                        else: cmd_concat.append("-an")
+                        cmd_concat.extend(["-vframes", str(int(current_chunk_dur * self.fps)), str(chunk_ts)])
+                        self.runner.run(cmd_concat, capture_progress=False)
+                        
+                        if looped_ts.exists(): looped_ts.unlink()
+                        if list_txt.exists(): list_txt.unlink()
+                        
+                    chunk_files.append(chunk_ts)
+                    remaining -= current_chunk_dur
+                    chunk_index += 1
+                    
+                print("  [INFO] Parcalar birlestiriliyor (SSD -> SSD)...")
+                final_list = ssd_chunk_dir / "final_list.txt"
+                write_concat_list(chunk_files, final_list)
+                
+                cmd_final = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(final_list), "-c", "copy", "-movflags", "+faststart", str(ssd_output)]
+                self.runner.run(cmd_final, capture_progress=False)
+                
+                shutil.rmtree(ssd_chunk_dir, ignore_errors=True)
+                
+                if ssd_output.exists():
+                    return ssd_output
+                else:
+                    raise RuntimeError("Chunked final output not created")
 
         # ── Strategy 1: TS intermediate concat (best for AV1/H264/H265) ──
         try:

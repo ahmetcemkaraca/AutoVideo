@@ -901,7 +901,7 @@ def run_batch() -> int:
 
             # Create output name
             out_name = f"final_{pair.name}_{codec_family}.mp4"
-            out_path = base / out_name
+            out_path = base / "renders" / out_name
 
             try:
                 # Setup encoder
@@ -1766,7 +1766,7 @@ def validate_audio_tracks(chosen_tracks: List[Path], run_log: Path, tmp_dir: Pat
             )
 
             if choice == 2:
-                print_warning("Iptal edildi. Bozuk muzik dosyalarini degistirin.")
+                print_warning("Iptal edildi. Bozuk muzik dosyalari degistirin.")
                 raise ValueError("Invalid audio tracks")
 
             print_success(f"{len(valid_tracks)} gecerli track ile devam ediliyor.")
@@ -1805,6 +1805,7 @@ def render_pipeline(
     video_bitrate: Optional[str] = None,
     global_music_db: float = 0.0,
     high_vram: bool = False,
+    chunked_render: bool = False,
 ) -> Tuple[Path, dict]:
     """
     Execute the render pipeline.
@@ -2008,7 +2009,7 @@ def render_pipeline(
                 # Concat
                 t0 = time.perf_counter()
                 video_only = encoder.concat_videos(
-                    intro_norm, loop_norm, total_seconds, tmp_dir, make_progress_callback(2)
+                    intro_norm, loop_norm, total_seconds, tmp_dir, make_progress_callback(2), chunked_render=chunked_render
                 )
                 concat_time = time.perf_counter() - t0
                 progress.complete_step(2)
@@ -2641,6 +2642,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         "out_path": None,
         "post_action": "keep",
         "high_vram": False, # Added for high VRAM optimization flag
+        "chunked_render": False,
     }
 
     # Step Functions
@@ -2672,13 +2674,21 @@ def run_interactive(ozel1_mode: bool = False) -> int:
                 "Standart (Secili)",
                 "Hizli RAM Optimizasyonu (ramtest)",
                 "Sadece RAM Disk (ramdisk)",
-                "Yüksek VRAM (high_vram: 8GB+ GPU)"
+                "Yüksek VRAM (high_vram: 8GB+ GPU)",
+                "Deneysel: RAM Limitli Parcali Render (Chunked)"
             ],
             1,
         )
-        modes = ["standard", "ramtest", "ramdisk", "high_vram"]
+        modes = ["standard", "ramtest", "ramdisk", "high_vram", "chunked"]
         selected_mode = modes[mode_idx - 1]
-        s["ram_mode"] = selected_mode
+        
+        if selected_mode == "chunked":
+            s["chunked_render"] = True
+            s["ram_mode"] = "ramdisk" # Fallback setup
+            selected_mode = "ramdisk"
+        else:
+            s["chunked_render"] = False
+            s["ram_mode"] = selected_mode
         
         from config import get_render_config, get_ramdisk_path
         render_cfg = get_render_config(selected_mode)
@@ -2990,6 +3000,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             audio_fade_out_sec=s.get("audio_fade_out_sec", 4.0),
             video_bitrate=s.get("video_bitrate"),
             global_music_db=s.get("global_music_db", 0.0),
+            chunked_render=s.get("chunked_render", False),
         )
 
         run_post_render_review_cli(
