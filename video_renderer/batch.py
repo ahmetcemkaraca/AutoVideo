@@ -108,7 +108,8 @@ class RenderJob:
             "upload_status": self.upload_status,
             "upload_file_id": self.upload_file_id,
             "skip_duplicate": self.skip_duplicate,
-            "force_render": self.force_render,\n            "keep_video_audio": self.keep_video_audio,
+            "force_render": self.force_render,
+            "keep_video_audio": self.keep_video_audio,
         }
 
     @classmethod
@@ -136,7 +137,8 @@ class RenderJob:
         job.upload_status = data.get("upload_status", "pending")
         job.upload_file_id = data.get("upload_file_id")
         job.skip_duplicate = data.get("skip_duplicate", True)
-        job.force_render = data.get("force_render", False)\n        job.keep_video_audio = data.get("keep_video_audio", False)
+        job.force_render = data.get("force_render", False)
+        job.keep_video_audio = data.get("keep_video_audio", False)
         return job
 
     def copy(self) -> "RenderJob":
