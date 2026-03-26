@@ -137,34 +137,41 @@ def discover_music_directories(base: Path) -> Dict[str, Path]:
     """
     Discover all music directories in the project root.
     Returns a dict of {dir_name: path} excluding those without music files.
-    
+
     Scans: base directory for folders containing audio files
     """
     music_dirs = {}
-    
+
     # Standard candidates
     candidates = [base / "music", base / "Music", base / "MUSIC"]
-    
+
     # Also scan all subdirectories of base for music files
     try:
         for item in sorted(base.iterdir()):
-            if item.is_dir() and item.name not in [".git", "__pycache__", "tmp", "archive", "venv", ".venv"]:
+            if item.is_dir() and item.name not in [
+                ".git",
+                "__pycache__",
+                "tmp",
+                "archive",
+                "venv",
+                ".venv",
+            ]:
                 candidates.append(item)
     except (OSError, PermissionError):
         pass
-    
+
     # Filter to only dirs with audio files
     for dir_path in candidates:
         try:
             has_audio = any(
-                f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS 
+                f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS
                 for f in dir_path.iterdir()
             )
             if has_audio:
                 music_dirs[dir_path.name] = dir_path
         except (OSError, PermissionError):
             pass
-    
+
     return music_dirs
 
 
@@ -174,32 +181,35 @@ def select_music_directory(base: Path) -> Path:
     Returns the selected music directory path.
     """
     music_dirs = discover_music_directories(base)
-    
+
     if not music_dirs:
         print_error("Müzik dosyası içeren klasör bulunamadı!")
         raise ValueError("No music directories found")
-    
+
     if len(music_dirs) == 1:
         selected_dir = list(music_dirs.values())[0]
         print_info(f"Müzik klasörü: {selected_dir.name}")
         return selected_dir
-    
+
     # Multiple dirs - ask user
     console.print()
-    print_info(f"{len(music_dirs)} müzik klasörü bulundu. Hangisini kullanmak istersiniz?")
+    print_info(
+        f"{len(music_dirs)} müzik klasörü bulundu. Hangisini kullanmak istersiniz?"
+    )
     console.print()
-    
+
     dir_names = list(music_dirs.keys())
     for i, name in enumerate(dir_names, 1):
         count_audio = sum(
-            1 for f in music_dirs[name].iterdir() 
+            1
+            for f in music_dirs[name].iterdir()
             if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS
         )
         console.print(f"  [{i}] {name} ({count_audio} dosya)")
-    
+
     selected_idx = ask_int("Klasör seçimi", 1, len(dir_names))
     selected_dir = music_dirs[dir_names[selected_idx - 1]]
-    
+
     print_success(f"Seçilen: {selected_dir.name}")
     return selected_dir
 
@@ -231,16 +241,27 @@ def discover_background_files(base: Path) -> List[Path]:
     Returns deduplicated list (by filename) of background files.
     """
     bg_files_map = {}  # name -> first path (for dedup)
-    
+
     # Scan all directories in base
     try:
         for item in sorted(base.iterdir()):
-            if not item.is_dir() or item.name in [".git", "__pycache__", "tmp", "archive", "venv", ".venv"]:
+            if not item.is_dir() or item.name in [
+                ".git",
+                "__pycache__",
+                "tmp",
+                "archive",
+                "venv",
+                ".venv",
+            ]:
                 continue
-            
+
             try:
                 for f in item.iterdir():
-                    if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS and is_background_file(f):
+                    if (
+                        f.is_file()
+                        and f.suffix.lower() in AUDIO_EXTENSIONS
+                        and is_background_file(f)
+                    ):
                         # Deduplicate by name, keeping first occurrence
                         if f.name not in bg_files_map:
                             bg_files_map[f.name] = f
@@ -248,7 +269,7 @@ def discover_background_files(base: Path) -> List[Path]:
                 pass
     except (OSError, PermissionError):
         pass
-    
+
     return sorted(bg_files_map.values())
 
 
@@ -300,8 +321,9 @@ def cleanup_processes_after_render() -> None:
     """
     try:
         import platform
+
         current_pid = os.getpid()
-        
+
         if platform.system() == "Windows":
             # Windows: use taskkill
             try:
@@ -309,17 +331,17 @@ def cleanup_processes_after_render() -> None:
                     ["taskkill", "/F", "/IM", "ffmpeg.exe"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    timeout=5
+                    timeout=5,
                 )
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
-            
+
             try:
                 subprocess.run(
                     ["taskkill", "/F", "/IM", "ffprobe.exe"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    timeout=5
+                    timeout=5,
                 )
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
@@ -330,28 +352,30 @@ def cleanup_processes_after_render() -> None:
                     ["pkill", "-9", "-f", "ffmpeg"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    timeout=5
+                    timeout=5,
                 )
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
-            
+
             try:
                 subprocess.run(
                     ["pkill", "-9", "-f", "ffprobe"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    timeout=5
+                    timeout=5,
                 )
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
-        
+
         time.sleep(0.5)  # Allow processes to be killed
-        
+
     except Exception as e:
         print(f"[WARN] Process cleanup hatası: {e}")
 
 
-def run_post_render_review_cli(out_path: Path, target_seconds: int, target_specs: dict) -> None:
+def run_post_render_review_cli(
+    out_path: Path, target_seconds: int, target_specs: dict
+) -> None:
     """Show post-render validation summary/detail before next action selection."""
     validator = PostRenderValidator()
     result = validator.validate_output(out_path, target_seconds, target_specs)
@@ -359,7 +383,9 @@ def run_post_render_review_cli(out_path: Path, target_seconds: int, target_specs
     def show_summary() -> None:
         console.print()
         console.print("[header]Render Sonrasi Kontrol (Ozet)[/]")
-        console.print(f"  Durum: {'[success]Uygun[/]' if result.valid else '[error]Sorunlu[/]'}")
+        console.print(
+            f"  Durum: {'[success]Uygun[/]' if result.valid else '[error]Sorunlu[/]'}"
+        )
         console.print(
             f"  Hata/Uyari/Bilgi: {len(result.errors)}/{len(result.warnings)}/{len(result.info)}"
         )
@@ -393,7 +419,9 @@ def run_post_render_review_cli(out_path: Path, target_seconds: int, target_specs
 
     show_summary()
     while True:
-        c = ask_choice("Kontrol secenegi", ["Devam et", "Detay goster", "Ozeti tekrar goster"], 1)
+        c = ask_choice(
+            "Kontrol secenegi", ["Devam et", "Detay goster", "Ozeti tekrar goster"], 1
+        )
         if c == 1:
             break
         if c == 2:
@@ -480,12 +508,17 @@ def run_resume() -> int:
     try:
         runner = FFmpegRunner(run_log)
 
-        steps = ["Intro encode", "Loop encode", "Video concat", "Audio isleme", "Final mux"]
+        steps = [
+            "Intro encode",
+            "Loop encode",
+            "Video concat",
+            "Audio isleme",
+            "Final mux",
+        ]
 
         console.print()
 
         with MultiStepProgress(steps) as progress:
-
             encoder = VideoEncoder(
                 runner=runner,
                 codec_config=codec_config,
@@ -497,7 +530,9 @@ def run_resume() -> int:
             def make_progress_callback(step_idx: int):
                 # Print step name, return None so FFmpeg shows raw terminal output
                 step_name = steps[step_idx] if step_idx < len(steps) else "?"
-                console.print(f"\n[bold cyan]▶ [{step_idx+1}/{len(steps)}] {step_name}[/bold cyan]")
+                console.print(
+                    f"\n[bold cyan]▶ [{step_idx + 1}/{len(steps)}] {step_name}[/bold cyan]"
+                )
                 return None
 
             # Step 1-3: Video processing
@@ -525,7 +560,11 @@ def run_resume() -> int:
                     progress.complete_step(0)
                 else:
                     encoder.normalize_video(
-                        intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, keep_audio=keep_video_audio
+                        intro_path,
+                        intro_norm,
+                        make_progress_callback(0),
+                        scale_algo=scale_algo,
+                        keep_audio=keep_video_audio,
                     )
                     progress.complete_step(0)
 
@@ -535,7 +574,11 @@ def run_resume() -> int:
                     progress.complete_step(1)
                 else:
                     encoder.normalize_video(
-                        loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, keep_audio=keep_video_audio
+                        loop_path,
+                        loop_norm,
+                        make_progress_callback(1),
+                        scale_algo=scale_algo,
+                        keep_audio=keep_video_audio,
                     )
                     progress.complete_step(1)
 
@@ -547,7 +590,12 @@ def run_resume() -> int:
                     progress.complete_step(2)
                 else:
                     video_only = encoder.concat_videos(
-                        intro_norm, loop_norm, total_seconds, tmp_dir, make_progress_callback(2)
+                        intro_norm,
+                        loop_norm,
+                        total_seconds,
+                        tmp_dir,
+                        make_progress_callback(2),
+                        keep_audio=keep_video_audio,
                     )
                     progress.complete_step(2)
 
@@ -573,14 +621,20 @@ def run_resume() -> int:
                 try:
                     if mode == "single" and single_video_path:
                         if single_video_path.exists():
-                            single_video_path.rename(archive_dir / single_video_path.name)
-                        print_success(f"Kaynak video arsivlendi: {archive_dir.as_posix()}")
+                            single_video_path.rename(
+                                archive_dir / single_video_path.name
+                            )
+                        print_success(
+                            f"Kaynak video arsivlendi: {archive_dir.as_posix()}"
+                        )
                     else:
                         if intro_path.exists():
                             intro_path.rename(archive_dir / intro_path.name)
                         if loop_path.exists():
                             loop_path.rename(archive_dir / loop_path.name)
-                        print_success(f"Kaynak intro/loop arsivlendi: {archive_dir.as_posix()}")
+                        print_success(
+                            f"Kaynak intro/loop arsivlendi: {archive_dir.as_posix()}"
+                        )
                 except Exception as e:
                     print_warning(f"Arsivleme hatasi: {e}")
 
@@ -634,7 +688,6 @@ def run_resume() -> int:
                     keep_video_audio=keep_video_audio,
                     apply_audio_fades=apply_audio_fades,
                     fade_in_sec=audio_fade_in_sec,
-
                     fade_out_sec=audio_fade_out_sec,
                 )
                 progress.complete_step(4)
@@ -703,7 +756,7 @@ def run_resume() -> int:
         print_info("Hatayi duzelttikten sonra --resume ile devam edebilirsiniz.")
         cleanup_processes_after_render()
         return 4
-    
+
     finally:
         # Ensure cleanup happens even in unexpected cases
         cleanup_processes_after_render()
@@ -727,9 +780,15 @@ def run_batch() -> int:
 
     try:
         print_header()
-        console.print("\n[bold cyan]═══════════════════════════════════════════════════════════[/]")
-        console.print("[bold cyan]                  SMART BATCH MODE                         [/]")
-        console.print("[bold cyan]═══════════════════════════════════════════════════════════[/]\n")
+        console.print(
+            "\n[bold cyan]═══════════════════════════════════════════════════════════[/]"
+        )
+        console.print(
+            "[bold cyan]                  SMART BATCH MODE                         [/]"
+        )
+        console.print(
+            "[bold cyan]═══════════════════════════════════════════════════════════[/]\n"
+        )
 
         # Scan for intro/loop pairs
         detector = SmartBatchDetector(base)
@@ -743,7 +802,6 @@ def run_batch() -> int:
         # Display detected pairs
         console.print(f"\n[success]✓ {len(pairs)} adet intro/loop çifti bulundu:[/]\n")
         # Confirmaton removed as requested
-
 
         # Check and select music directory
         try:
@@ -784,41 +842,44 @@ def run_batch() -> int:
         console.print()
         track_exts = (".mp3", ".wav", ".flac", ".ogg", ".m4a")
         # Filter: audio files that are NOT background files
-        tracks = sorted([f for f in music_dir.iterdir()
-                        if f.suffix.lower() in track_exts and not is_background_file(f)])
+        tracks = sorted(
+            [
+                f
+                for f in music_dir.iterdir()
+                if f.suffix.lower() in track_exts and not is_background_file(f)
+            ]
+        )
 
         if not tracks:
             print_error("music/ klasöründe müzik dosyası bulunamadı!")
             return 2
 
         console.print(f"[info]Müzik klasöründe {len(tracks)} track bulundu.[/]")
-        
+
         # MUSIC SELECTION
         music_mode = ask_choice(
-            "Muzik Secimi", 
+            "Muzik Secimi",
             [
-                "Rastgele (Her video farkli)", 
-                "Sirali (Dosya adi)", 
+                "Rastgele (Her video farkli)",
+                "Sirali (Dosya adi)",
                 "Manuel Secim",
-                "Muzik Yok"
-            ], 
-            2
+                "Muzik Yok",
+            ],
+            2,
         )
-        
+
         global_tracks = []
-        if music_mode == 2: # Sorted
+        if music_mode == 2:  # Sorted
             global_tracks = sorted(tracks)
-        elif music_mode == 3: # Manual
+        elif music_mode == 3:  # Manual
             # Fix: map indices back to tracks
             selected_indices = ask_multiple_choice(
-                "Muzikleri secin", 
-                [t.name for t in tracks],
-                min_count=1
+                "Muzikleri secin", [t.name for t in tracks], min_count=1
             )
-            global_tracks = [tracks[i-1] for i in selected_indices]
-        elif music_mode == 4: # None
+            global_tracks = [tracks[i - 1] for i in selected_indices]
+        elif music_mode == 4:  # None
             global_tracks = []
-        
+
         global_music_db = 0.0
         if music_mode != 4:
             db_s = ask_text("Müziklerin Ses Seviyesi (dB, örn: 0 veya -5)", "0")
@@ -829,8 +890,9 @@ def run_batch() -> int:
 
         # Source Audio Option
         # User wants source audio kept by default sometimes, ask preference
-        keep_source_audio = ask_confirm("Kaynak videonun orijinal sesi korunsun mu?", False)
-
+        keep_source_audio = ask_confirm(
+            "Kaynak videonun orijinal sesi korunsun mu?", False
+        )
 
         # Background audio (optional)
         console.print()
@@ -855,30 +917,35 @@ def run_batch() -> int:
         console.print(f"  [bold]Çift sayısı:[/] {len(pairs)}")
         console.print(f"  [bold]Codec:[/] {codec_family}")
         console.print(f"  [bold]Süre:[/] {dur_str} ({total_seconds} saniye)")
-        console.print(f"  [bold]Müzik Modu:[/] {['Rastgele', 'Sirali', 'Manuel', 'Yok'][music_mode-1]}")
+        console.print(
+            f"  [bold]Müzik Modu:[/] {['Rastgele', 'Sirali', 'Manuel', 'Yok'][music_mode - 1]}"
+        )
         console.print(f"  [bold]Arka plan:[/] {len(chosen_bgs)} dosya")
-        console.print(f"  [bold]Kaynak Ses:[/] {'Evet' if keep_source_audio else 'Hayir'}")
+        console.print(
+            f"  [bold]Kaynak Ses:[/] {'Evet' if keep_source_audio else 'Hayir'}"
+        )
         console.print()
 
         # Post Render Action
         post_action_idx = ask_choice(
             "Islem tamamlandiginda kaynak dosyalar ne olsun?",
             ["Hicbir sey yapma (Kalsin)", "Arsivle (archive/ klasorune tasi)", "Sil"],
-            2
+            2,
         )
         post_action_map = {1: "keep", 2: "archive", 3: "delete"}
         post_action = post_action_map[post_action_idx]
-        
+
         # Audio fade defaults
         audio_fade_in = 5.0
         audio_fade_out = 15.0
-        apply_fades = ask_confirm(f"Fade efekti uygulansin mi? (In: {audio_fade_in}s, Out: {audio_fade_out}s)", False)
-
+        apply_fades = ask_confirm(
+            f"Fade efekti uygulansin mi? (In: {audio_fade_in}s, Out: {audio_fade_out}s)",
+            False,
+        )
 
         if not ask_confirm("Batch render başlatılsın mı?", True):
-             # Just proceed, user complained about redundancy
-             pass 
-
+            # Just proceed, user complained about redundancy
+            pass
 
         # ═══════════════════════════════════════════════════════════════
         # Execute batch renders sequentially
@@ -907,10 +974,14 @@ def run_batch() -> int:
                 # Setup encoder
                 runner_video = FFmpegRunner(tmp_dir / "run_log_video.txt")
                 runner_audio = FFmpegRunner(tmp_dir / "run_log_audio.txt")
-                
+
                 audio_processor = AudioProcessor(runner_audio, tmp_dir)
                 encoder = VideoEncoder(
-                    runner=runner_video, codec_config=codec_config, width=1920, height=1080, fps=60
+                    runner=runner_video,
+                    codec_config=codec_config,
+                    width=1920,
+                    height=1080,
+                    fps=60,
                 )
 
                 intro_norm = tmp_dir / f"intro_norm_{codec_family}.mp4"
@@ -924,26 +995,36 @@ def run_batch() -> int:
 
                 def encode_video():
                     nonlocal video_only
-                    encoder.normalize_video(pair.intro, intro_norm, None, keep_audio=keep_source_audio)
-                    encoder.normalize_video(pair.loop, loop_norm, None, keep_audio=keep_source_audio)
+                    encoder.normalize_video(
+                        pair.intro, intro_norm, None, keep_audio=keep_source_audio
+                    )
+                    encoder.normalize_video(
+                        pair.loop, loop_norm, None, keep_audio=keep_source_audio
+                    )
                     video_only = encoder.concat_videos(
-                        intro_norm, loop_norm, total_seconds, tmp_dir, None, keep_audio=keep_source_audio
+                        intro_norm,
+                        loop_norm,
+                        total_seconds,
+                        tmp_dir,
+                        None,
+                        keep_audio=keep_source_audio,
                     )
                     return video_only
 
                 def process_audio():
                     nonlocal audio_full
-                    
+
                     # Determine tracks for this job
                     job_tracks = []
-                    if music_mode == 1: # Random
-                         # Shuffle local copy
-                         import random
-                         shuffled = list(tracks)
-                         random.shuffle(shuffled)
-                         job_tracks = shuffled
-                    else: # Sorted, Manual (Global), or None
-                         job_tracks = global_tracks
+                    if music_mode == 1:  # Random
+                        # Shuffle local copy
+                        import random
+
+                        shuffled = list(tracks)
+                        random.shuffle(shuffled)
+                        job_tracks = shuffled
+                    else:  # Sorted, Manual (Global), or None
+                        job_tracks = global_tracks
 
                     if not job_tracks:
                         # If no music, return None (muxer will handle just video audio if present)
@@ -952,31 +1033,36 @@ def run_batch() -> int:
                         pass
 
                     if job_tracks:
-                        music_loop = audio_processor.create_music_loop(job_tracks, total_seconds, global_music_db)
+                        music_loop = audio_processor.create_music_loop(
+                            job_tracks, total_seconds, global_music_db
+                        )
                         if chosen_bgs:
-                            bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                            bg_processed = audio_processor.process_backgrounds(
+                                chosen_bgs
+                            )
                             audio_full = audio_processor.mix_tracks(
                                 music_loop, bg_processed, total_seconds
                             )
                         else:
                             audio_full = music_loop
                     elif chosen_bgs:
-                         # Only BG
-                         # We need a silent base or just mix BGs? 
-                         # AudioProcessor.mix_tracks expects main_track. 
-                         # Let's create silent base if no music but BGs
-                         # For now assuming user picks music if they pick BG, or just use first BG as base?
-                         # Simplest: Just use first BG as base and mix others
-                         bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                         if bg_processed:
+                        # Only BG
+                        # We need a silent base or just mix BGs?
+                        # AudioProcessor.mix_tracks expects main_track.
+                        # Let's create silent base if no music but BGs
+                        # For now assuming user picks music if they pick BG, or just use first BG as base?
+                        # Simplest: Just use first BG as base and mix others
+                        bg_processed = audio_processor.process_backgrounds(chosen_bgs)
+                        if bg_processed:
                             audio_full = bg_processed[0]
                             if len(bg_processed) > 1:
-                                audio_full = audio_processor.mix_tracks(audio_full, bg_processed[1:], total_seconds)
+                                audio_full = audio_processor.mix_tracks(
+                                    audio_full, bg_processed[1:], total_seconds
+                                )
                     else:
                         audio_full = None
 
                     return audio_full
-
 
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     video_future = executor.submit(encode_video)
@@ -987,31 +1073,51 @@ def run_batch() -> int:
                 # Final mux
                 # If audio_full is None (no music/bg), mux_video_audio handles it (uses video audio if present)
                 if audio_full is None:
-                     # Create silence
-                     silence_path = tmp_dir / "silence.w64"
-                     subprocess.run([
-                         "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", 
-                         "-t", str(total_seconds), "-c:a", "pcm_s16le", "-f", "w64", str(silence_path)
-                     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                     audio_full = silence_path
+                    # Create silence
+                    silence_path = tmp_dir / "silence.w64"
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-f",
+                            "lavfi",
+                            "-i",
+                            "anullsrc=r=48000:cl=stereo",
+                            "-t",
+                            str(total_seconds),
+                            "-c:a",
+                            "pcm_s16le",
+                            "-f",
+                            "w64",
+                            str(silence_path),
+                        ],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    audio_full = silence_path
 
-                time.sleep(0.5) # Allow handles to close
+                time.sleep(0.5)  # Allow handles to close
                 mux_runner = FFmpegRunner(tmp_dir / "run_log_mux.txt")
                 mux_video_audio(
-                    mux_runner, video_only, audio_full, out_path, 
+                    mux_runner,
+                    video_only,
+                    audio_full,
+                    out_path,
                     keep_video_audio=keep_source_audio,
                     apply_audio_fades=apply_fades,
                     fade_in_sec=audio_fade_in,
-                    fade_out_sec=audio_fade_out
+                    fade_out_sec=audio_fade_out,
                 )
 
-                print_success(f"[{i}/{len(pairs)}] {pair.name} tamamlandı: {out_path.name}")
+                print_success(
+                    f"[{i}/{len(pairs)}] {pair.name} tamamlandı: {out_path.name}"
+                )
                 results.append((pair.name, True, out_path))
-            
+
                 # ════════════════════════════════════════════════════════════════════
                 # MOVED OUTSIDE EXECUTOR/TRY CONTEXT (DEDENTED) -> Actually keeping inside try for safety
                 # ════════════════════════════════════════════════════════════════════
-                
+
                 # Metadata / Archive logic
                 try:
                     meta = {
@@ -1021,47 +1127,65 @@ def run_batch() -> int:
                         "codec": codec_family,
                         "duration": total_seconds,
                         "music_mode": music_mode,
-                        "music_tracks": [t.name for t in (job_tracks if 'job_tracks' in locals() else [])],
+                        "music_tracks": [
+                            t.name
+                            for t in (job_tracks if "job_tracks" in locals() else [])
+                        ],
                         "keep_source_audio": keep_source_audio,
-                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                     }
-                    
+
                     if post_action == "archive":
-                        archive_dir = base / "archive" # Shared archive root
-                        job_archive = archive_dir / f"{time.strftime('%Y%m%d')}_{pair.name}"
+                        archive_dir = base / "archive"  # Shared archive root
+                        job_archive = (
+                            archive_dir / f"{time.strftime('%Y%m%d')}_{pair.name}"
+                        )
                         job_archive.mkdir(parents=True, exist_ok=True)
-                        
+
                         # Move sources
                         if pair.intro.exists():
-                            shutil.move(str(pair.intro), str(job_archive / pair.intro.name))
+                            shutil.move(
+                                str(pair.intro), str(job_archive / pair.intro.name)
+                            )
                         if pair.loop.exists():
-                            shutil.move(str(pair.loop), str(job_archive / pair.loop.name))
-                            
+                            shutil.move(
+                                str(pair.loop), str(job_archive / pair.loop.name)
+                            )
+
                         # Save meta
-                        (job_archive / "render_info.json").write_text(json.dumps(meta, indent=2))
+                        (job_archive / "render_info.json").write_text(
+                            json.dumps(meta, indent=2)
+                        )
                         print_success(f"  Arsivlendi: {job_archive.name}")
-                        
+
                     elif post_action == "delete":
-                        if pair.intro.exists(): pair.intro.unlink()
-                        if pair.loop.exists(): pair.loop.unlink()
+                        if pair.intro.exists():
+                            pair.intro.unlink()
+                        if pair.loop.exists():
+                            pair.loop.unlink()
                         print_success("  Kaynak dosyalar silindi.")
-                        
+
                     # Save meta to logs
                     log_archive = base / "archive" / "logs"
                     log_archive.mkdir(parents=True, exist_ok=True)
-                    (log_archive / f"meta_{out_path.stem}.json").write_text(json.dumps(meta, indent=2))
-                    
+                    (log_archive / f"meta_{out_path.stem}.json").write_text(
+                        json.dumps(meta, indent=2)
+                    )
+
                 except Exception as e:
                     print_warning(f"Islem sonrasi hata: {e}")
-                
+
                 # Final cleanup of tmp (audio/video segments)
                 for f in tmp_dir.glob("*"):
-                     if f.is_file() and f != out_path and f.suffix.lower() not in ['.txt', '.log']: # Keep logs
-                         try: f.unlink()
-                         except: pass
-
-
-
+                    if (
+                        f.is_file()
+                        and f != out_path
+                        and f.suffix.lower() not in [".txt", ".log"]
+                    ):  # Keep logs
+                        try:
+                            f.unlink()
+                        except:
+                            pass
 
             except Exception as e:
                 print_error(f"[{i}/{len(pairs)}] {pair.name} HATA: {e}")
@@ -1076,7 +1200,9 @@ def run_batch() -> int:
 
         success_count = sum(1 for _, ok, _ in results if ok)
         console.print(f"[bold]Başarılı:[/] {success_count}/{len(pairs)}")
-        console.print(f"[bold]Toplam süre:[/] {int(total_time // 60)}m {int(total_time % 60)}s")
+        console.print(
+            f"[bold]Toplam süre:[/] {int(total_time // 60)}m {int(total_time % 60)}s"
+        )
 
         for name, ok, path in results:
             if ok:
@@ -1115,7 +1241,9 @@ def select_render_mode(videos: List[Tuple[Path, VideoInfo]]) -> str:
     Returns:
         "intro_loop" for intro+loop mode, "single" for single video mode
     """
-    mode_idx = ask_choice("Render modu", ["Intro + Loop", "Tek Video (sesi degistir)"], 1)
+    mode_idx = ask_choice(
+        "Render modu", ["Intro + Loop", "Tek Video (sesi degistir)"], 1
+    )
     return "intro_loop" if mode_idx == 1 else "single"
 
 
@@ -1257,7 +1385,8 @@ def configure_render_settings(
                 ref_info = probe_video(single_video_path)
                 target_width, target_height = ref_info.width, ref_info.height
                 target_fps = (
-                    float(ref_info.fps.split("/")[0]) / float(ref_info.fps.split("/")[1])
+                    float(ref_info.fps.split("/")[0])
+                    / float(ref_info.fps.split("/")[1])
                     if "/" in ref_info.fps
                     else float(ref_info.fps)
                 )
@@ -1266,15 +1395,25 @@ def configure_render_settings(
                     f"Kaynak cozunurlugu kullanilacak: {target_width}x{target_height} @ {target_fps:.2f}fps"
                 )
             except Exception as e:
-                print_warning(f"Video analiz hatasi: {e}. Varsayilan 1080p60 kullaniliyor.")
+                print_warning(
+                    f"Video analiz hatasi: {e}. Varsayilan 1080p60 kullaniliyor."
+                )
 
         elif mode == "intro_loop" and intro_path and loop_path:
             try:
                 i_info = probe_video(intro_path)
                 l_info = probe_video(loop_path)
 
-                i_fps = float(i_info.fps.split("/")[0]) / float(i_info.fps.split("/")[1]) if "/" in i_info.fps else float(i_info.fps)
-                l_fps = float(l_info.fps.split("/")[0]) / float(l_info.fps.split("/")[1]) if "/" in l_info.fps else float(l_info.fps)
+                i_fps = (
+                    float(i_info.fps.split("/")[0]) / float(i_info.fps.split("/")[1])
+                    if "/" in i_info.fps
+                    else float(i_info.fps)
+                )
+                l_fps = (
+                    float(l_info.fps.split("/")[0]) / float(l_info.fps.split("/")[1])
+                    if "/" in l_info.fps
+                    else float(l_info.fps)
+                )
 
                 # Cozunurluk karsilastirmasi
                 if i_info.width == l_info.width and i_info.height == l_info.height:
@@ -1284,21 +1423,25 @@ def configure_render_settings(
                         f"Intro/Loop cozunurlugu eslesiyor: {target_width}x{target_height}. Resize yapilmadi."
                     )
                 else:
-                    print_info("Intro ve Loop cozunurlukleri farkli. 1080p standardi uygulaniyor.")
+                    print_info(
+                        "Intro ve Loop cozunurlukleri farkli. 1080p standardi uygulaniyor."
+                    )
 
                 # FPS karsilastirmasi
                 if abs(i_fps - l_fps) < 0.1:  # Neredeyse ayni ise (ornek 29.97 ve 30.0)
                     target_fps = i_fps
-                    print_success(f"Intro/Loop FPS eslesiyor: {target_fps:.2f}fps. Kaynak FPS kullanilacak.")
+                    print_success(
+                        f"Intro/Loop FPS eslesiyor: {target_fps:.2f}fps. Kaynak FPS kullanilacak."
+                    )
                 else:
                     fps_choice = ask_choice(
                         "Intro ve Loop FPS degerleri farkli. Hangisi kullanilsin?",
                         [
                             f"60 FPS (Varsayilan, Zorla)",
                             f"Intro FPS'i kullan ({i_fps:.2f})",
-                            f"Loop FPS'i kullan ({l_fps:.2f})"
+                            f"Loop FPS'i kullan ({l_fps:.2f})",
                         ],
-                        1
+                        1,
                     )
                     if fps_choice == 2:
                         target_fps = i_fps
@@ -1314,21 +1457,21 @@ def configure_render_settings(
             print_info("Varsayilan 1080p60 ayarlari uygulaniyor.")
 
         # Codec Detection (Native/Passthrough attempt)
-        detected_codec = "av1" # Default fallback
-        
+        detected_codec = "av1"  # Default fallback
+
         try:
             ref_path = single_video_path if mode == "single" else intro_path
             if ref_path and ref_path.exists():
                 info = probe_video(ref_path)
                 c_name = info.codec.lower()
-                
+
                 if "av1" in c_name:
                     detected_codec = "av1"
                 elif "hevc" in c_name or "h265" in c_name:
                     detected_codec = "h265"
                 elif "h264" in c_name or "avc" in c_name:
                     detected_codec = "h264"
-                
+
                 print_info(f"Kaynak codec: {c_name} -> Hedef: {detected_codec}")
         except Exception as e:
             print_warning(f"Codec tespit hatasi: {e}")
@@ -1405,7 +1548,8 @@ def configure_render_settings(
                 ref_path = single_video_path if mode == "single" else intro_path
                 ref_info = probe_video(ref_path)
                 target_fps = (
-                    float(ref_info.fps.split("/")[0]) / float(ref_info.fps.split("/")[1])
+                    float(ref_info.fps.split("/")[0])
+                    / float(ref_info.fps.split("/")[1])
                     if "/" in ref_info.fps
                     else float(ref_info.fps)
                 )
@@ -1431,12 +1575,18 @@ def configure_render_settings(
 
             if config_mode_idx == 4:  # Ozel
                 # Ask about editing the command/header?
-                if ask_confirm("Varsayilan FFmpeg parametrelerini duzenlemek ister misiniz?"):
-                    print_info("Not: Bu ozellik su anki surumde komut satirina yansitilacaktir.")
+                if ask_confirm(
+                    "Varsayilan FFmpeg parametrelerini duzenlemek ister misiniz?"
+                ):
+                    print_info(
+                        "Not: Bu ozellik su anki surumde komut satirina yansitilacaktir."
+                    )
                     codec_config.preset = ask_text(
                         f"Preset ({codec_config.preset})", codec_config.preset
                     )
-                    crf_val = ask_int(f"CRF/CQ ({codec_config.crf})", 0, 51, codec_config.crf)
+                    crf_val = ask_int(
+                        f"CRF/CQ ({codec_config.crf})", 0, 51, codec_config.crf
+                    )
                     codec_config.crf = crf_val
 
     # ──────────────────────────────────────────────────────────────
@@ -1444,52 +1594,54 @@ def configure_render_settings(
     # ──────────────────────────────────────────────────────────────
     console.print()
     video_bitrate = None
-    
+
     # Kendi yazabileyim veya kaynak
     # "Basit" modda istense de, genel olarak sormak mantikli mi?
     # Kullanici "CLI modda basit seceneklerde" dedi.
     # We'll ask if user wants to override bitrate.
-    
+
     use_custom_bitrate = ask_choice(
         "Video Bitrate (Kalite)",
         [
-            "Otomatik (Varsayilan/CRF)", 
+            "Otomatik (Varsayilan/CRF)",
             "Ozel Bitrate Gir (kbps/M)",
-            "Kaynak Video Bitrate'ini Kopyala (Deneysel)"
+            "Kaynak Video Bitrate'ini Kopyala (Deneysel)",
         ],
-        1
+        1,
     )
-    
+
     if use_custom_bitrate == 2:
         video_bitrate = ask_text("Bitrate (orn: 5M, 5000k)", "5M")
     elif use_custom_bitrate == 3:
         # Try to detect source setup
         ref_path = single_video_path if mode == "single" else intro_path
         if ref_path and ref_path.exists():
-             try:
-                 # We don't have bitrate in probe result easily here without parsing again or trusting info
-                 # Let's just ask user to confirm source bitrate or just pass a flag?
-                 # Encoder supports string bitrate.
-                 # If we return "auto", it uses deafult.
-                 # If we want source, we might need to extract it.
-                 # Let's try to extract it from detailed probe if possible, or just ask user to enter it for now 
-                 # as "Copy Source" is complex without data. 
-                 # Actually, `probe_video` calls `ffprobe`. 
-                 # Let's keep it simple: Ask user to enter value if they chose Custom.
-                 # For "Source", maybe just print the source bitrate and ask them to type it?
-                 # Or better, logic:
-                 info = probe_video(ref_path)
-                 if info.bitrate and info.bitrate.isdigit():
-                     src_kbps = int(info.bitrate) // 1000
-                     print_info(f"Kaynak Bitrate: ~{src_kbps}k")
-                     video_bitrate = str(src_kbps) + "k"
-                 else:
-                     print_warning("Kaynak bitrate algilanamadi.")
-                     video_bitrate = ask_text("Bitrate girin", "5M")
-             except:
-                 video_bitrate = ask_text("Bitrate girin", "5M")
+            try:
+                # We don't have bitrate in probe result easily here without parsing again or trusting info
+                # Let's just ask user to confirm source bitrate or just pass a flag?
+                # Encoder supports string bitrate.
+                # If we return "auto", it uses deafult.
+                # If we want source, we might need to extract it.
+                # Let's try to extract it from detailed probe if possible, or just ask user to enter it for now
+                # as "Copy Source" is complex without data.
+                # Actually, `probe_video` calls `ffprobe`.
+                # Let's keep it simple: Ask user to enter value if they chose Custom.
+                # For "Source", maybe just print the source bitrate and ask them to type it?
+                # Or better, logic:
+                info = probe_video(ref_path)
+                if info.bitrate and info.bitrate.isdigit():
+                    src_kbps = int(info.bitrate) // 1000
+                    print_info(f"Kaynak Bitrate: ~{src_kbps}k")
+                    video_bitrate = str(src_kbps) + "k"
+                else:
+                    print_warning("Kaynak bitrate algilanamadi.")
+                    video_bitrate = ask_text("Bitrate girin", "5M")
+            except:
+                video_bitrate = ask_text("Bitrate girin", "5M")
 
-    print_info(f"Ayarlar: {target_width}x{target_height} @ {target_fps} fps | {scale_algo} | Bitrate: {video_bitrate or 'Auto'}")
+    print_info(
+        f"Ayarlar: {target_width}x{target_height} @ {target_fps} fps | {scale_algo} | Bitrate: {video_bitrate or 'Auto'}"
+    )
 
     return (
         codec_family,
@@ -1499,7 +1651,7 @@ def configure_render_settings(
         target_fps,
         scale_algo,
         audio_bitrate,
-        video_bitrate
+        video_bitrate,
     )
 
 
@@ -1519,7 +1671,11 @@ def check_video_compatibility(
 
     temp_runner = FFmpegRunner()
     temp_encoder = VideoEncoder(
-        temp_runner, codec_config, width=target_width, height=target_height, fps=target_fps
+        temp_runner,
+        codec_config,
+        width=target_width,
+        height=target_height,
+        fps=target_fps,
     )
 
     if mode == "single":
@@ -1641,7 +1797,9 @@ def select_duration_and_audio(
         available_for_bg = tracks
 
         indices = ask_multiple_choice(
-            "BG olarak kullanilacak track(lar)", [p.name for p in available_for_bg], min_count=1
+            "BG olarak kullanilacak track(lar)",
+            [p.name for p in available_for_bg],
+            min_count=1,
         )
 
         console.print()
@@ -1673,7 +1831,8 @@ def standardize_audio_files(
     """
     console.print()
     if not ask_confirm(
-        "Muzik dosyalarini otomatik normalize edip arsivlemek ister misiniz?", default=True
+        "Muzik dosyalarini otomatik normalize edip arsivlemek ister misiniz?",
+        default=True,
     ):
         return chosen_tracks, chosen_bgs
 
@@ -1693,7 +1852,9 @@ def standardize_audio_files(
     # Update BGs if they are separate files
     bg_files = [b[0] for b in chosen_bgs if b[0] not in to_std]
     if bg_files:
-        new_bgs = audio_processor.standardize_tracks(bg_files, archive_dir, std_progress)
+        new_bgs = audio_processor.standardize_tracks(
+            bg_files, archive_dir, std_progress
+        )
 
         # Re-map chosen_bgs
         updated_bgs = []
@@ -1714,7 +1875,9 @@ def configure_drive_upload() -> Tuple[bool, str]:
     drive_enabled = False
     drive_folder_id = ""
 
-    if ask_confirm("Render bitince videoyu Google Drive'a yedeklemek ister misiniz?", default=False):
+    if ask_confirm(
+        "Render bitince videoyu Google Drive'a yedeklemek ister misiniz?", default=False
+    ):
         drive_enabled = True
         drive_folder_id = ask_text("Drive Klasor ID (Bos = Root)", "")
 
@@ -1723,8 +1886,12 @@ def configure_drive_upload() -> Tuple[bool, str]:
 
             uploader = DriveUploader()
             if not uploader.authenticate():
-                print_warning("Drive girisi yapilamadi! Tarayicida dogrulama gerekebilir.")
-                print_info("Lutfen cikan linki takip edin veya credentials.json'i kontrol edin.")
+                print_warning(
+                    "Drive girisi yapilamadi! Tarayicida dogrulama gerekebilir."
+                )
+                print_info(
+                    "Lutfen cikan linki takip edin veya credentials.json'i kontrol edin."
+                )
         except ImportError:
             print_error("Drive modulu yuklenemedi!")
             drive_enabled = False
@@ -1732,7 +1899,9 @@ def configure_drive_upload() -> Tuple[bool, str]:
     return drive_enabled, drive_folder_id
 
 
-def validate_audio_tracks(chosen_tracks: List[Path], run_log: Path, tmp_dir: Path) -> List[Path]:
+def validate_audio_tracks(
+    chosen_tracks: List[Path], run_log: Path, tmp_dir: Path
+) -> List[Path]:
     """Validate audio tracks and return valid ones."""
     console.print()
     print_info("Muzik dosyalari dogrulaniyor...")
@@ -1749,7 +1918,9 @@ def validate_audio_tracks(chosen_tracks: List[Path], run_log: Path, tmp_dir: Pat
     console.print()
 
     if invalid_tracks:
-        print_error(f"Bozuk muzik dosyalari tespit edildi ({len(invalid_tracks)} adet):")
+        print_error(
+            f"Bozuk muzik dosyalari tespit edildi ({len(invalid_tracks)} adet):"
+        )
         for track, error in invalid_tracks:
             console.print(f"  [error]✗[/] {track.name}: {error}")
 
@@ -1823,6 +1994,7 @@ def render_pipeline(
     # NVENC readiness check if hardware encoder is selected
     if "nvenc" in codec_config.encoder.lower():
         from config import check_nvenc_readiness
+
         nvenc_status = check_nvenc_readiness()
         if nvenc_status["ready"]:
             gpu_name = nvenc_status["gpu_name"]
@@ -1834,13 +2006,16 @@ def render_pipeline(
                 print_warning(f"  - {issue}")
             # Fallback to software encoder
             from config import get_best_encoder as _get_best_sw
+
             sw_family = codec_config.codec_family
             # Force software by clearing nvenc from available list
             from config import clear_encoder_cache
+
             clear_encoder_cache()
             # Get software fallback
             sw_codec_map = {"av1": "av1", "h264": "h264", "h265": "h265"}
             from .config import CODECS as _SW_CODECS
+
             sw_key = sw_codec_map.get(sw_family, "h264")
             if sw_key in _SW_CODECS:
                 codec_config = _SW_CODECS[sw_key]
@@ -1850,24 +2025,34 @@ def render_pipeline(
     audio_processor = AudioProcessor(runner, tmp_dir)
 
     class DummyProgress:
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def update(self, *args, **kwargs): pass
-        def complete_step(self, *args, **kwargs): pass
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def update(self, *args, **kwargs):
+            pass
+
+        def complete_step(self, *args, **kwargs):
+            pass
 
     # ── Resume helper: find existing intermediate files ──
     def _find_existing(pattern: str) -> Optional[Path]:
         """Find an existing intermediate file matching glob pattern in tmp_dir."""
-        matches = sorted(tmp_dir.glob(pattern), key=lambda p: p.stat().st_size, reverse=True)
+        matches = sorted(
+            tmp_dir.glob(pattern), key=lambda p: p.stat().st_size, reverse=True
+        )
         for m in matches:
             if m.stat().st_size > 1000:
                 return m
         return None
 
-    progress_ctx = MultiStepProgress(steps) if not suppress_progress else DummyProgress()
-    
-    with progress_ctx as progress:
+    progress_ctx = (
+        MultiStepProgress(steps) if not suppress_progress else DummyProgress()
+    )
 
+    with progress_ctx as progress:
         encoder = VideoEncoder(
             runner=runner,
             codec_config=codec_config,
@@ -1879,12 +2064,16 @@ def render_pipeline(
 
         intro_norm = tmp_dir / f"intro_norm_{codec_config.codec_family}.mp4"
         loop_norm = tmp_dir / f"loop_norm_{codec_config.codec_family}.mp4"
-        video_only_single = tmp_dir / f"video_only_single_{codec_config.codec_family}.mp4"
+        video_only_single = (
+            tmp_dir / f"video_only_single_{codec_config.codec_family}.mp4"
+        )
 
         def make_progress_callback(step_idx: int):
             # Print step name, return None so FFmpeg shows raw terminal output
             step_name = steps[step_idx] if step_idx < len(steps) else "?"
-            console.print(f"\n[bold cyan]▶ [{step_idx+1}/{len(steps)}] {step_name}[/bold cyan]")
+            console.print(
+                f"\n[bold cyan]▶ [{step_idx + 1}/{len(steps)}] {step_name}[/bold cyan]"
+            )
             return None
 
         def apply_audio_extras(base_audio: Path) -> Path:
@@ -1899,7 +2088,9 @@ def render_pipeline(
                     total_seconds,
                 )
                 if effects_track and effects_track.exists():
-                    audio_out = audio_processor.mix_tracks(audio_out, [effects_track], total_seconds)
+                    audio_out = audio_processor.mix_tracks(
+                        audio_out, [effects_track], total_seconds
+                    )
 
             return audio_out
 
@@ -1909,7 +2100,9 @@ def render_pipeline(
             existing_single = _find_existing(f"video_only_single_*.mp4")
             if existing_single:
                 video_only = existing_single
-                console.print(f"[bold green]  [RESUME] {existing_single.name} mevcut ({existing_single.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                console.print(
+                    f"[bold green]  [RESUME] {existing_single.name} mevcut ({existing_single.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]"
+                )
                 step_times["Intro encode"] = 0
                 step_times["Loop encode"] = 0
                 step_times["Video concat"] = 0
@@ -1934,10 +2127,14 @@ def render_pipeline(
                 progress.complete_step(2)
 
             # Resume: check if audio already exists
-            existing_audio = _find_existing("audio_mixed.*") or _find_existing("music_loop.*")
+            existing_audio = _find_existing("audio_mixed.*") or _find_existing(
+                "music_loop.*"
+            )
             if existing_audio:
                 audio_full = existing_audio
-                console.print(f"[bold green]  [RESUME] {existing_audio.name} mevcut ({existing_audio.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                console.print(
+                    f"[bold green]  [RESUME] {existing_audio.name} mevcut ({existing_audio.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]"
+                )
                 step_times["Audio isleme"] = 0
                 progress.complete_step(3)
             else:
@@ -1948,7 +2145,9 @@ def render_pipeline(
 
                 if chosen_bgs:
                     bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                    audio_full = audio_processor.mix_tracks(music_loop, bg_processed, total_seconds)
+                    audio_full = audio_processor.mix_tracks(
+                        music_loop, bg_processed, total_seconds
+                    )
                 else:
                     audio_full = music_loop
 
@@ -1966,7 +2165,9 @@ def render_pipeline(
             # Resume: check for existing video_only.mp4
             existing_video = _find_existing("video_only.mp4")
             # Resume: check for existing audio (try most-processed first)
-            existing_audio = _find_existing("audio_mixed.*") or _find_existing("music_loop.*")
+            existing_audio = _find_existing("audio_mixed.*") or _find_existing(
+                "music_loop.*"
+            )
 
             def encode_video_branch():
                 """Encode intro, loop, then concat."""
@@ -1974,7 +2175,9 @@ def render_pipeline(
 
                 if existing_video:
                     video_only = existing_video
-                    console.print(f"[bold green]  [RESUME] video_only.mp4 mevcut ({existing_video.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                    console.print(
+                        f"[bold green]  [RESUME] video_only.mp4 mevcut ({existing_video.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]"
+                    )
                     progress.complete_step(0)
                     progress.complete_step(1)
                     progress.complete_step(2)
@@ -1982,26 +2185,40 @@ def render_pipeline(
 
                 # Resume: check intro_norm
                 if intro_norm.exists() and intro_norm.stat().st_size > 1000:
-                    console.print(f"[bold green]  [RESUME] {intro_norm.name} mevcut, atlaniyor[/bold green]")
+                    console.print(
+                        f"[bold green]  [RESUME] {intro_norm.name} mevcut, atlaniyor[/bold green]"
+                    )
                     intro_time = 0
                     progress.complete_step(0)
                 else:
                     t0 = time.perf_counter()
                     encoder.normalize_video(
-                        intro_path, intro_norm, make_progress_callback(0), scale_algo=scale_algo, bitrate=video_bitrate, keep_audio=keep_video_audio
+                        intro_path,
+                        intro_norm,
+                        make_progress_callback(0),
+                        scale_algo=scale_algo,
+                        bitrate=video_bitrate,
+                        keep_audio=keep_video_audio,
                     )
                     intro_time = time.perf_counter() - t0
                     progress.complete_step(0)
 
                 # Resume: check loop_norm
                 if loop_norm.exists() and loop_norm.stat().st_size > 1000:
-                    console.print(f"[bold green]  [RESUME] {loop_norm.name} mevcut, atlaniyor[/bold green]")
+                    console.print(
+                        f"[bold green]  [RESUME] {loop_norm.name} mevcut, atlaniyor[/bold green]"
+                    )
                     loop_time = 0
                     progress.complete_step(1)
                 else:
                     t0 = time.perf_counter()
                     encoder.normalize_video(
-                        loop_path, loop_norm, make_progress_callback(1), scale_algo=scale_algo, bitrate=video_bitrate, keep_audio=keep_video_audio
+                        loop_path,
+                        loop_norm,
+                        make_progress_callback(1),
+                        scale_algo=scale_algo,
+                        bitrate=video_bitrate,
+                        keep_audio=keep_video_audio,
                     )
                     loop_time = time.perf_counter() - t0
                     progress.complete_step(1)
@@ -2009,7 +2226,13 @@ def render_pipeline(
                 # Concat
                 t0 = time.perf_counter()
                 video_only = encoder.concat_videos(
-                    intro_norm, loop_norm, total_seconds, tmp_dir, make_progress_callback(2), chunked_render=chunked_render
+                    intro_norm,
+                    loop_norm,
+                    total_seconds,
+                    tmp_dir,
+                    make_progress_callback(2),
+                    keep_audio=keep_video_audio,
+                    chunked_render=chunked_render,
                 )
                 concat_time = time.perf_counter() - t0
                 progress.complete_step(2)
@@ -2022,7 +2245,9 @@ def render_pipeline(
 
                 if existing_audio:
                     audio_full = existing_audio
-                    console.print(f"[bold green]  [RESUME] {existing_audio.name} mevcut ({existing_audio.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]")
+                    console.print(
+                        f"[bold green]  [RESUME] {existing_audio.name} mevcut ({existing_audio.stat().st_size / 1024 / 1024:.0f}MB), atlaniyor[/bold green]"
+                    )
                     return 0
 
                 t0 = time.perf_counter()
@@ -2032,7 +2257,9 @@ def render_pipeline(
 
                 if chosen_bgs:
                     bg_processed = audio_processor.process_backgrounds(chosen_bgs)
-                    audio_full = audio_processor.mix_tracks(music_loop, bg_processed, total_seconds)
+                    audio_full = audio_processor.mix_tracks(
+                        music_loop, bg_processed, total_seconds
+                    )
                 else:
                     audio_full = music_loop
 
@@ -2078,43 +2305,48 @@ def render_pipeline(
     print("[Render Sonrasi Kontrol]")
     try:
         from video_renderer.validator import PostRenderValidator
-        
+
         validator = PostRenderValidator()
         result = validator.validate_output(
             out_path,
             target_duration=total_seconds,
             target_specs={
-                "codec": "h264" if "h264" in codec_config.encoder.lower() else 
-                         ("h265" if "hevc" in codec_config.encoder.lower() else "av1"),
+                "codec": "h264"
+                if "h264" in codec_config.encoder.lower()
+                else ("h265" if "hevc" in codec_config.encoder.lower() else "av1"),
                 "width": target_width,
                 "height": target_height,
                 "fps": target_fps,
                 "has_audio": True,
-            }
+            },
         )
-        
+
         if not result.valid and result.errors:
             # Check for duration errors specifically
             duration_errors = [e for e in result.errors if e.field == "duration"]
             if duration_errors:
                 error = duration_errors[0]
                 actual_duration = result.duration_seconds
-                percent_diff = abs(actual_duration - total_seconds) / total_seconds * 100
-                
+                percent_diff = (
+                    abs(actual_duration - total_seconds) / total_seconds * 100
+                )
+
                 print(f"⚠ Duration Error: {error.message}")
-                print(f"  Expected: {total_seconds}s, Got: {actual_duration:.1f}s ({percent_diff:.1f}% off)")
+                print(
+                    f"  Expected: {total_seconds}s, Got: {actual_duration:.1f}s ({percent_diff:.1f}% off)"
+                )
                 print()
-                
+
                 # Offer emergency fix (frame-exact stream copy trim)
                 fix_choice = ask_choice(
                     "Acil Durum Çözümü",
                     [
                         "1. Video'yu frame-exact trim et (hızlı, stream copy)",
-                        "2. Olduğu gibi kalsın (skip)"
+                        "2. Olduğu gibi kalsın (skip)",
                     ],
-                    default=1
+                    default=1,
                 )
-                
+
                 if fix_choice == 1:
                     print()
                     print("[Emergency Fix: Frame-Exact Trim]")
@@ -2124,11 +2356,19 @@ def render_pipeline(
                         print("  [ERROR] Fix failed, keeping original")
         else:
             # Duration OK
-            print(f"  ✓ Duration: {result.duration_seconds:.1f}s (hedef {total_seconds}s)")
+            print(
+                f"  ✓ Duration: {result.duration_seconds:.1f}s (hedef {total_seconds}s)"
+            )
             print(f"  ✓ Codec: {result.video_info.get('codec', '?')}")
-            print(f"  ✓ Resolution: {result.video_info.get('width')}x{result.video_info.get('height')}")
-            print(f"  ✓ Audio: Mevcut" if result.video_info.get('has_audio') else "  ⚠ Audio: Yok")
-    
+            print(
+                f"  ✓ Resolution: {result.video_info.get('width')}x{result.video_info.get('height')}"
+            )
+            print(
+                f"  ✓ Audio: Mevcut"
+                if result.video_info.get("has_audio")
+                else "  ⚠ Audio: Yok"
+            )
+
     except Exception as e:
         print(f"  [WARN] Post-render validation skipped: {e}")
 
@@ -2153,52 +2393,65 @@ def render_pipeline(
 def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> bool:
     """
     Emergency post-render duration fix using frame-exact trim.
-    
+
     Fixes videos where duration is wrong due to broken timestamps.
     Uses -vframes to bypass timestamp issues entirely.
-    
+
     Strategy: Try stream copy first with -r + -fps_mode (MP4), then MKV fallback.
-    
+
     This is FAST (stream copy, ~2-3 min for 8h video) and lossless.
-    
+
     Args:
         video_path: Path to video file to fix
         target_seconds: Target duration in seconds
         fps: Frame rate (default 60)
-    
+
     Returns:
         True if successful, False otherwise
     """
     import subprocess
     from pathlib import Path
     from video_renderer.ffmpeg import get_duration
-    
+
     if not video_path.exists():
         print(f"  [ERROR] Video not found: {video_path}")
         return False
-    
+
     target_frames = int(target_seconds * fps)
     tmp_fixed = video_path.parent / f"{video_path.stem}_fixed_tmp{video_path.suffix}"
-    
+
     try:
         # Strategy 1: Stream copy with -r flag to reset FPS + -fps_mode CFR
         print(f"  [Stream Copy Fix] -r {fps} -fps_mode cfr -vframes {target_frames}")
         cmd = [
-            "ffmpeg", "-y",
-            "-r", str(fps),
-            "-i", str(video_path),
-            "-c:v", "copy", "-c:a", "copy",
-            "-fps_mode", "cfr",
-            "-vframes", str(target_frames),
+            "ffmpeg",
+            "-y",
+            "-r",
+            str(fps),
+            "-i",
+            str(video_path),
+            "-c:v",
+            "copy",
+            "-c:a",
+            "copy",
+            "-fps_mode",
+            "cfr",
+            "-vframes",
+            str(target_frames),
             str(tmp_fixed),
         ]
-        subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL, 
-                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
+        subprocess.run(
+            cmd,
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
         # Verify fixed video
         fixed_duration = get_duration(tmp_fixed)
         tolerance = max(2.0, target_seconds * 0.02)
-        
+
         if fixed_duration > 10 and abs(fixed_duration - target_seconds) <= tolerance:
             print(f"  [OK] Stream copy fix succeeded: {fixed_duration:.1f}s")
             video_path.unlink()
@@ -2207,19 +2460,29 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
             return True
         else:
             # Duration still wrong, try MKV fallback
-            print(f"  [WARN] MP4 stream copy still wrong ({fixed_duration:.1f}s), trying MKV...")
+            print(
+                f"  [WARN] MP4 stream copy still wrong ({fixed_duration:.1f}s), trying MKV..."
+            )
             tmp_fixed.unlink()
-            
+
             tmp_mkv = video_path.parent / f"{video_path.stem}_fixed_tmp.mkv"
             cmd_mkv = cmd.copy()
             cmd_mkv[cmd_mkv.index(str(tmp_fixed))] = str(tmp_mkv)
-            
+
             try:
-                subprocess.run(cmd_mkv, check=True, stdin=subprocess.DEVNULL,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
+                subprocess.run(
+                    cmd_mkv,
+                    check=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
                 fixed_duration = get_duration(tmp_mkv)
-                if fixed_duration > 10 and abs(fixed_duration - target_seconds) <= tolerance:
+                if (
+                    fixed_duration > 10
+                    and abs(fixed_duration - target_seconds) <= tolerance
+                ):
                     print(f"  [OK] MKV fix succeeded: {fixed_duration:.1f}s")
                     video_path.unlink()
                     new_mkv_path = video_path.parent / (video_path.stem + ".mkv")
@@ -2235,17 +2498,16 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
                 if tmp_mkv.exists():
                     tmp_mkv.unlink()
                 return False
-            
+
     except Exception as e:
         print(f"  [ERROR] Duration fix failed: {e}")
         if tmp_fixed.exists():
             tmp_fixed.unlink()
         return False
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Render Pipeline (Main)
-# ═══════════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # Render Pipeline (Main)
+    # ═══════════════════════════════════════════════════════════════════════════════
     """
     Run Batch Wizard (State Machine Implementation).
     Supports Back Navigation.
@@ -2258,17 +2520,18 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
     music_dir = base / "music"
     tmp_dir = base / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Clean tmp
     for f in tmp_dir.glob("batch_job_*"):
-        if f.is_dir(): shutil.rmtree(f, ignore_errors=True)
-    
+        if f.is_dir():
+            shutil.rmtree(f, ignore_errors=True)
+
     state = {
         "base": base,
         "music_dir": music_dir,
         "tmp_dir": tmp_dir,
         "pairs": [],
-        "settings_mode": 1, # 1=Native, 2=Uniform
+        "settings_mode": 1,  # 1=Native, 2=Uniform
         "global_config": None,
         "total_seconds": 0,
         "dur_str": "",
@@ -2277,14 +2540,15 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
         "all_tracks": [],
         "all_bgs": [],
         "bg_strategy": 1,
-        "fixed_bg": None
+        "fixed_bg": None,
     }
 
     def step_init(s):
         print_header()
         print_info("Batch Modu Baslatiliyor...")
-        if not check_ffmpeg_install(): return 2
-        
+        if not check_ffmpeg_install():
+            return 2
+
         # Check music logic...
         all_tracks, all_bgs = list_audio_files(s["music_dir"])
         if not all_tracks:
@@ -2299,210 +2563,256 @@ def fix_video_duration(video_path: Path, target_seconds: int, fps: int = 60) -> 
         if not pairs:
             print_error("Hicbir uygun video cifti (intro+loop) bulunamadi.")
             return 2
-        
+
         s["pairs"] = pairs
-        
+
         # Display Pairs
         table = Table(title="Tespit Edilen Isler", box=box.ROUNDED)
         table.add_column("#", style="dim")
         table.add_column("Is Adi", style="bold yellow")
         table.add_column("Intro", style="cyan")
         table.add_column("Loop", style="blue")
-        
+
         for i, p in enumerate(pairs, 1):
             table.add_row(str(i), p.name, p.intro.name, p.loop.name)
         console.print(table)
-        
-        if not ask_confirm("Bu isler dogru mu?", True): # Might enable Back here?
-             return 1
+
+        if not ask_confirm("Bu isler dogru mu?", True):  # Might enable Back here?
+            return 1
         return 0
 
     def step_settings_mode(s):
         console.print()
         s["settings_mode"] = ask_choice(
-            "Ayarlar Modu", 
-            ["Otomatik / Native (Her video kendi codec/cozunurlugunu korur)", "Tek Tip (Tum videolari ayni formata cevir)"],
-            1
-        ) # Raises BN
+            "Ayarlar Modu",
+            [
+                "Otomatik / Native (Her video kendi codec/cozunurlugunu korur)",
+                "Tek Tip (Tum videolari ayni formata cevir)",
+            ],
+            1,
+        )  # Raises BN
         return 0
 
     def step_global_config(s):
         if s["settings_mode"] == 2:
-            s["global_config"] = configure_render_settings("intro_loop", None, None, None) # Raises BN inside likely?
+            s["global_config"] = configure_render_settings(
+                "intro_loop", None, None, None
+            )  # Raises BN inside likely?
         else:
             s["global_config"] = None
         return 0
 
     def step_duration(s):
         console.print()
-        s["total_seconds"] = ask_duration_components(default_hours=8) # Raises BN
+        s["total_seconds"] = ask_duration_components(default_hours=8)  # Raises BN
         s["dur_str"] = format_duration(s["total_seconds"])
         return 0
 
     def step_concurrency(s):
         console.print()
-        s["max_workers"] = ask_choice("Ayni anda kac video islensin?", ["1 (Sirali)", "2 (Es zamanli)", "3 (Es zamanli)"], 3) # Raises BN
+        s["max_workers"] = ask_choice(
+            "Ayni anda kac video islensin?",
+            ["1 (Sirali)", "2 (Es zamanli)", "3 (Es zamanli)"],
+            3,
+        )  # Raises BN
         return 0
 
     def step_audio_strategy(s):
         # New Step: Define how audio is handled for all jobs
         console.print()
         print_info("Ses Ayarlari (Toplu)")
-        
+
         # BG Strategy
-        bg_strat = ask_choice("Arkaplan sesi (BG) nasil olsun?", 
-            ["Rastgele (Her videoya farkli)", "Hicbirinde olmasin", "Hepsinde ayni (Sec...)"], 1) # BN
-        
+        bg_strat = ask_choice(
+            "Arkaplan sesi (BG) nasil olsun?",
+            [
+                "Rastgele (Her videoya farkli)",
+                "Hicbirinde olmasin",
+                "Hepsinde ayni (Sec...)",
+            ],
+            1,
+        )  # BN
+
         s["bg_strategy"] = bg_strat
         if bg_strat == 3:
             # Select one BG
             print_audio_table(s["all_bgs"], "BG Listesi")
-            idx = ask_int("BG Numarasi", 1, len(s["all_bgs"]), allow_back=True) # BN
-            s["fixed_bg"] = s["all_bgs"][idx-1]
-        
+            idx = ask_int("BG Numarasi", 1, len(s["all_bgs"]), allow_back=True)  # BN
+            s["fixed_bg"] = s["all_bgs"][idx - 1]
+
         return 0
 
     def step_generate_jobs(s):
         print_info("Isler hazirlaniyor...")
         s["jobs"] = []
-        
+
         # Shuffle tracks once
         pool = list(s["all_tracks"])
         random.shuffle(pool)
-        
+
         for i, pair in enumerate(s["pairs"], 1):
             # 1. Config (Native or Global)
             if s["settings_mode"] == 1:
-                 # Native detection
-                 try:
+                # Native detection
+                try:
                     info = probe_video(pair.intro)
                     c_name = info.codec.lower()
-                    if "av1" in c_name: c_fam = "av1"
-                    elif "hevc" in c_name or "h265" in c_name: c_fam = "h265"
-                    else: c_fam = "h264"
+                    if "av1" in c_name:
+                        c_fam = "av1"
+                    elif "hevc" in c_name or "h265" in c_name:
+                        c_fam = "h265"
+                    else:
+                        c_fam = "h264"
                     c_conf = get_best_encoder(c_fam)
                     t_w, t_h = info.width, info.height
                     try:
-                        if "/" in info.fps: num,den=info.fps.split("/"); t_fps=float(num)/float(den)
-                        else: t_fps=float(info.fps)
-                    except: t_fps=30.0
+                        if "/" in info.fps:
+                            num, den = info.fps.split("/")
+                            t_fps = float(num) / float(den)
+                        else:
+                            t_fps = float(info.fps)
+                    except:
+                        t_fps = 30.0
                     j_conf = (c_fam, c_conf, t_w, t_h, t_fps, "lanczos", "192k")
-                 except:
+                except:
                     c_conf = get_best_encoder("h264")
                     j_conf = ("h264", c_conf, 1920, 1080, 30.0, "lanczos", "192k")
             else:
-                 j_conf = s["global_config"]
+                j_conf = s["global_config"]
 
             # 2. Tracks
             req_sec = s["total_seconds"]
             job_tracks = []
             current_dur = 0
-            
+
             while current_dur < req_sec + 60:
-                if not pool: 
-                    pool = list(s["all_tracks"]); random.shuffle(pool)
+                if not pool:
+                    pool = list(s["all_tracks"])
+                    random.shuffle(pool)
                 t = pool.pop(0)
-                try: d = get_duration(t)
-                except: d=180
+                try:
+                    d = get_duration(t)
+                except:
+                    d = 180
                 job_tracks.append(t)
                 current_dur += d
-            
+
             # 3. BG
             job_bgs = []
             strat = s.get("bg_strategy", 1)
-            if strat == 2: pass # None
-            elif strat == 3: # Fixed
+            if strat == 2:
+                pass  # None
+            elif strat == 3:  # Fixed
                 job_bgs.append((s["fixed_bg"], -15.0))
-            else: # Random
+            else:  # Random
                 if s["all_bgs"]:
-                     bg = random.choice(s["all_bgs"])
-                     job_bgs.append((bg, -15.0))
-            
+                    bg = random.choice(s["all_bgs"])
+                    job_bgs.append((bg, -15.0))
+
             # Out path
             out_name = f"{pair.name}_render_{i}.mp4"
             out_path = s["base"] / "renders" / out_name
-            
-            s["jobs"].append({
-                "id": i,
-                "pair": pair,
-                "config": j_conf,
-                "tracks": job_tracks,
-                "bgs": job_bgs,
-                "out": out_path
-            })
-        
+
+            s["jobs"].append(
+                {
+                    "id": i,
+                    "pair": pair,
+                    "config": j_conf,
+                    "tracks": job_tracks,
+                    "bgs": job_bgs,
+                    "out": out_path,
+                }
+            )
+
         console.print(f"\n[green]{len(s['jobs'])} adet is hazirlandi.[/]")
         return 0
 
     def step_confirm_start(s):
-        c = ask_choice(f"{len(s['jobs'])} is baslatilsin mi?", ["Evet", "Hayir (Cikis)"], 1) # BN
-        if c == 2: return 1
+        c = ask_choice(
+            f"{len(s['jobs'])} is baslatilsin mi?", ["Evet", "Hayir (Cikis)"], 1
+        )  # BN
+        if c == 2:
+            return 1
         return 0
 
     def step_execute_batch(s):
         # Run Threads
         print_info(f"Islem basliyor... (Concurrency: {s['max_workers']})")
-        
+
         def process_job_wrapper(job):
             jid = job["id"]
             pair = job["pair"]
             (c_fam, c_conf, t_w, t_h, t_fps, s_algo, a_bit) = job["config"]
-            
+
             job_tmp = s["tmp_dir"] / f"batch_job_{jid}"
             job_tmp.mkdir(exist_ok=True)
             job_log = job_tmp / "run.log"
-            
+
             try:
                 render_pipeline(
-                    "intro_loop", pair.intro, pair.loop, None,
-                    c_conf, t_w, t_h, t_fps, s_algo, a_bit,
-                    s["total_seconds"], job["tracks"], job["bgs"], job["out"],
-                    job_log, job_tmp, suppress_progress=True
+                    "intro_loop",
+                    pair.intro,
+                    pair.loop,
+                    None,
+                    c_conf,
+                    t_w,
+                    t_h,
+                    t_fps,
+                    s_algo,
+                    a_bit,
+                    s["total_seconds"],
+                    job["tracks"],
+                    job["bgs"],
+                    job["out"],
+                    job_log,
+                    job_tmp,
+                    suppress_progress=True,
                 )
                 print_success(f"[Job {jid}] Tamamlandi.")
             except Exception as e:
                 print_error(f"Job {jid} failed: {e}")
-                
+
         with ThreadPoolExecutor(max_workers=s["max_workers"]) as executor:
             futures = [executor.submit(process_job_wrapper, j) for j in s["jobs"]]
             for f in as_completed(futures):
                 pass
-                
+
         print_success("Batch tamamlandi.")
         return 0
 
     steps = [
         step_init,
         step_settings_mode,
-        step_global_config, # skipped if native
+        step_global_config,  # skipped if native
         step_duration,
         step_concurrency,
         step_audio_strategy,
         step_generate_jobs,
         step_confirm_start,
-        step_execute_batch
+        step_execute_batch,
     ]
-    
+
     curr = 0
     while 0 <= curr < len(steps):
         fn = steps[curr]
         try:
             res = fn(state)
-            if res == 2: return 2
-            if res == 1: return 0
+            if res == 2:
+                return 2
+            if res == 1:
+                return 0
             curr += 1
         except BackNavigation:
             if curr > 0:
                 curr -= 1
                 # Logic to skip backward over optional steps
-                if curr == 2 and state["settings_mode"] == 1: 
-                    curr = 1 # Skip global config backwards
+                if curr == 2 and state["settings_mode"] == 1:
+                    curr = 1  # Skip global config backwards
             else:
-                if ask_confirm("Cikilsin mi?", False): return 0
+                if ask_confirm("Cikilsin mi?", False):
+                    return 0
 
     return 0
-
-
 
 
 def handle_post_render_actions(
@@ -2527,7 +2837,7 @@ def handle_post_render_actions(
     console.print("=" * 60)
     console.print(f"[bold]Dosya:[/] {out_path.name}")
     console.print(
-        f"[bold]Video Suresi:[/] {final_duration:.1f} saniye ({final_duration/3600:.2f} saat)"
+        f"[bold]Video Suresi:[/] {final_duration:.1f} saniye ({final_duration / 3600:.2f} saat)"
     )
     console.print()
     console.print("[bold yellow]ADIM SURELERI:[/]")
@@ -2603,7 +2913,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
     run_log = tmp_dir / "run_log.txt"
     err_log = tmp_dir / "error_log.txt"
     session_json = base / "tmp" / "last_session.json"
-    
+
     # State Data
     state = {
         "base": base,
@@ -2641,7 +2951,7 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         "drive_folder_id": "",
         "out_path": None,
         "post_action": "keep",
-        "high_vram": False, # Added for high VRAM optimization flag
+        "high_vram": False,  # Added for high VRAM optimization flag
         "chunked_render": False,
     }
 
@@ -2649,14 +2959,15 @@ def run_interactive(ozel1_mode: bool = False) -> int:
     def step_check_env(s):
         print_header()
         print_working_directory(s["base"])
-        if not check_ffmpeg_install(): return 2
-        
+        if not check_ffmpeg_install():
+            return 2
+
         # Check and select music directory
         try:
             s["music_dir"] = select_music_directory(s["base"])
         except ValueError:
             return 2
-            
+
         # List videos
         videos = list_video_files(s["base"])
         if not videos:
@@ -2675,29 +2986,31 @@ def run_interactive(ozel1_mode: bool = False) -> int:
                 "Hizli RAM Optimizasyonu (ramtest)",
                 "Sadece RAM Disk (ramdisk)",
                 "Yüksek VRAM (high_vram: 8GB+ GPU)",
-                "Deneysel: RAM Limitli Parcali Render (Chunked)"
+                "Deneysel: RAM Limitli Parcali Render (Chunked)",
             ],
             1,
         )
         modes = ["standard", "ramtest", "ramdisk", "high_vram", "chunked"]
         selected_mode = modes[mode_idx - 1]
-        
+
         if selected_mode == "chunked":
             s["chunked_render"] = True
-            s["ram_mode"] = "ramdisk" # Fallback setup
+            s["ram_mode"] = "ramdisk"  # Fallback setup
             selected_mode = "ramdisk"
         else:
             s["chunked_render"] = False
             s["ram_mode"] = selected_mode
-        
+
         from config import get_render_config, get_ramdisk_path
+
         render_cfg = get_render_config(selected_mode)
-        
+
         # Update tmp_dir if ramdisk is used
         if render_cfg.use_ramdisk:
             ramdisk = get_ramdisk_path()
             if ramdisk:
                 import uuid, time, os
+
                 run_id = s["run_id"]
                 new_tmp = ramdisk / "runs" / run_id
                 new_tmp.mkdir(parents=True, exist_ok=True)
@@ -2705,8 +3018,10 @@ def run_interactive(ozel1_mode: bool = False) -> int:
                 s["run_log"] = new_tmp / "run_log.txt"
                 print_info(f"RAM Disk aktif edildi: {new_tmp}")
             else:
-                print_warning("RAM Disk desteklenmiyor veya yer yok, disk kullanilacak.")
-        
+                print_warning(
+                    "RAM Disk desteklenmiyor veya yer yok, disk kullanilacak."
+                )
+
         # Apply High VRAM settings
         if render_cfg.high_vram:
             s["high_vram"] = True
@@ -2716,9 +3031,11 @@ def run_interactive(ozel1_mode: bool = False) -> int:
 
     def step_select_mode(s):
         try:
-            s["mode"] = select_render_mode(s["videos"]) # Has no back logic inside, modify if need
+            s["mode"] = select_render_mode(
+                s["videos"]
+            )  # Has no back logic inside, modify if need
         except BackNavigation:
-            raise # Propagate
+            raise  # Propagate
         return 0
 
     def step_select_videos(s):
@@ -2744,8 +3061,14 @@ def run_interactive(ozel1_mode: bool = False) -> int:
 
     def step_check_compat(s):
         check_video_compatibility(
-            s["mode"], s["intro_path"], s["loop_path"], s["single_video_path"],
-            s["codec_config"], s["target_width"], s["target_height"], s["target_fps"]
+            s["mode"],
+            s["intro_path"],
+            s["loop_path"],
+            s["single_video_path"],
+            s["codec_config"],
+            s["target_width"],
+            s["target_height"],
+            s["target_fps"],
         )
         # Just confirmation/info, auto proceed usually
         return 0
@@ -2758,37 +3081,42 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             dur_str = format_duration(total)
             print_info(f"Tek video suresi kullanilacak: {dur_str}")
         else:
-            total = ask_duration_components(default_hours=8) # Raises BN
+            total = ask_duration_components(default_hours=8)  # Raises BN
             dur_str = format_duration(total)
-        
+
         s["total_seconds"] = total
         s["dur_str"] = dur_str
 
         # Audio
         all_tracks, all_bgs = list_audio_files(s["music_dir"])
-        if not all_tracks: raise ValueError("No music")
-        
+        if not all_tracks:
+            raise ValueError("No music")
+
         console.print()
         print_audio_table(all_tracks, "Muzik Track'leri")
-        
+
         # Track Selection
-        tm = ask_choice("Track secimi", ["Hepsi", "Belirli track'ler"], 1) # Raises BN
+        tm = ask_choice("Track secimi", ["Hepsi", "Belirli track'ler"], 1)  # Raises BN
         if tm == 1:
             chosen = all_tracks
         else:
-            indices = ask_multiple_choice("Track sec", [p.name for p in all_tracks]) # Raises BN
-            chosen = [all_tracks[i-1] for i in indices]
-        
+            indices = ask_multiple_choice(
+                "Track sec", [p.name for p in all_tracks]
+            )  # Raises BN
+            chosen = [all_tracks[i - 1] for i in indices]
+
         # Order Selection
         if len(chosen) > 1:
-            order_choice = ask_choice("Muzik calma sirasi", ["Karisik (Shuffle)", "Sirali (Secim Sirasi)"], 1)
+            order_choice = ask_choice(
+                "Muzik calma sirasi", ["Karisik (Shuffle)", "Sirali (Secim Sirasi)"], 1
+            )
             if order_choice == 1:
                 random.shuffle(chosen)
         else:
             # Single track, no shuffle needed
             pass
         s["chosen_tracks"] = chosen
-        
+
         s["global_music_db"] = 0.0
         if chosen:
             db_s = ask_text("Müziklerin Ses Seviyesi (dB, örn: 0 veya -5)", "0")
@@ -2796,40 +3124,54 @@ def run_interactive(ozel1_mode: bool = False) -> int:
                 s["global_music_db"] = float(db_s)
             except ValueError:
                 s["global_music_db"] = 0.0
-        
+
         # BG Selection
         chosen_bgs = []
-        bg_opts = ["BG kullanma"] + ([f"Mevcut BG ({len(all_bgs)})"] if all_bgs else []) + ["Track listesinden"]
-        bg_mode = ask_choice("Background secimi", bg_opts, 1) # Raises BN
-        
-        if bg_mode == 1: pass
+        bg_opts = (
+            ["BG kullanma"]
+            + ([f"Mevcut BG ({len(all_bgs)})"] if all_bgs else [])
+            + ["Track listesinden"]
+        )
+        bg_mode = ask_choice("Background secimi", bg_opts, 1)  # Raises BN
+
+        if bg_mode == 1:
+            pass
         elif bg_mode == 2 and all_bgs:
             # Existing BGs
             print_audio_table(all_bgs, "BG Sesler")
-            sm = ask_choice("BG secimi", ["Hepsi", "Belirli BG'ler"], 1) # Raises BN
-            if sm == 1: sels = all_bgs
+            sm = ask_choice("BG secimi", ["Hepsi", "Belirli BG'ler"], 1)  # Raises BN
+            if sm == 1:
+                sels = all_bgs
             else:
-                idxs = ask_multiple_choice("BG sec", [p.name for p in all_bgs]) # Raises BN
-                sels = [all_bgs[i-1] for i in idxs]
-            
+                idxs = ask_multiple_choice(
+                    "BG sec", [p.name for p in all_bgs]
+                )  # Raises BN
+                sels = [all_bgs[i - 1] for i in idxs]
+
             for bg in sels:
                 def_db = parse_background_gain_db(bg)
-                db_s = ask_text(f"  {bg.name} dB", str(def_db)) # Raises BN
-                try: db = float(db_s)
-                except: db = def_db
+                db_s = ask_text(f"  {bg.name} dB", str(def_db))  # Raises BN
+                try:
+                    db = float(db_s)
+                except:
+                    db = def_db
                 chosen_bgs.append((bg, db))
-                
+
         else:
             # Track as BG
             print_audio_table(all_tracks, "Trackler (BG)")
-            idxs = ask_multiple_choice("BG olacak trackler", [p.name for p in all_tracks], min_count=1) # Raises BN
+            idxs = ask_multiple_choice(
+                "BG olacak trackler", [p.name for p in all_tracks], min_count=1
+            )  # Raises BN
             for idx in idxs:
-                tr = all_tracks[idx-1]
-                db_s = ask_text(f"  {tr.name} dB", "-8") # Raises BN
-                try: db = float(db_s)
-                except: db = -8.0
+                tr = all_tracks[idx - 1]
+                db_s = ask_text(f"  {tr.name} dB", "-8")  # Raises BN
+                try:
+                    db = float(db_s)
+                except:
+                    db = -8.0
                 chosen_bgs.append((tr, db))
-                
+
         s["chosen_bgs"] = chosen_bgs
 
         # Intro/Loop video sesi: varsayilan "degistirme" (koru)
@@ -2862,7 +3204,9 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         if s.get("ozel1_mode"):
             s["timed_effects"] = []
             if ask_confirm("OZEL1 aktif: Zamanli efekt sesleri eklensin mi?", True):
-                effect_pool = sorted({*all_tracks, *all_bgs}, key=lambda p: p.name.lower())
+                effect_pool = sorted(
+                    {*all_tracks, *all_bgs}, key=lambda p: p.name.lower()
+                )
                 if effect_pool:
                     print_audio_table(effect_pool, "OZEL1 Efekt Havuzu")
                     selected = ask_multiple_choice(
@@ -2873,7 +3217,9 @@ def run_interactive(ozel1_mode: bool = False) -> int:
                     for idx in selected:
                         sfx = effect_pool[idx - 1]
                         start_after = ask_int(f"{sfx.name} ilk calma (sn)", 0, 86400)
-                        interval_sec = ask_int(f"{sfx.name} tekrar araligi (sn)", 1, 86400, 20)
+                        interval_sec = ask_int(
+                            f"{sfx.name} tekrar araligi (sn)", 1, 86400, 20
+                        )
                         max_plays = ask_int(
                             f"{sfx.name} maksimum tekrar (0=sinirsiz)",
                             0,
@@ -2911,44 +3257,61 @@ def run_interactive(ozel1_mode: bool = False) -> int:
         return 0
 
     def step_std_audio(s):
-        # Allow back before expensive operation? 
-        # Actually this step modifies files. 
+        # Allow back before expensive operation?
+        # Actually this step modifies files.
         # If user goes back after this, files are already changed.
         # But we can ask confirmation or just do it.
         # Let's skip user interaction for standardization here or make it skippable
         s["chosen_tracks"], s["chosen_bgs"] = standardize_audio_files(
-            s["chosen_tracks"], s["chosen_bgs"], s["music_dir"], s["run_log"], s["tmp_dir"]
+            s["chosen_tracks"],
+            s["chosen_bgs"],
+            s["music_dir"],
+            s["run_log"],
+            s["tmp_dir"],
         )
         return 0
 
     def step_drive(s):
-        en, fid = configure_drive_upload() # Raises BN
+        en, fid = configure_drive_upload()  # Raises BN
         s["drive_enabled"] = en
         s["drive_folder_id"] = fid
         return 0
 
     def step_post(s):
         # Output filename
-        s["out_path"] = get_output_filename(s["mode"], s["single_video_path"], s["codec_family"], s["dur_str"])
-        
+        s["out_path"] = get_output_filename(
+            s["mode"], s["single_video_path"], s["codec_family"], s["dur_str"]
+        )
+
         console.print()
-        idx = ask_choice("Is bittikten sonra kaynak?", ["Kalsin", "Arsivle", "Sil"], 1) # Raises BN
-        s["post_action"] = ["keep", "archive", "delete"][idx-1]
+        idx = ask_choice(
+            "Is bittikten sonra kaynak?", ["Kalsin", "Arsivle", "Sil"], 1
+        )  # Raises BN
+        s["post_action"] = ["keep", "archive", "delete"][idx - 1]
         return 0
 
     def step_summary(s):
         print_summary(
-            s["intro_path"], s["loop_path"], s["codec_family"], s["dur_str"],
-            s["chosen_tracks"], s["chosen_bgs"], s["out_path"], s["post_action"], s["single_video_path"]
+            s["intro_path"],
+            s["loop_path"],
+            s["codec_family"],
+            s["dur_str"],
+            s["chosen_tracks"],
+            s["chosen_bgs"],
+            s["out_path"],
+            s["post_action"],
+            s["single_video_path"],
         )
         # Auto proceed to final check
-        pass 
+        pass
         return 0
 
     def step_execute(s):
         # Verification
-        s["chosen_tracks"] = validate_audio_tracks(s["chosen_tracks"], s["run_log"], s["tmp_dir"])
-        
+        s["chosen_tracks"] = validate_audio_tracks(
+            s["chosen_tracks"], s["run_log"], s["tmp_dir"]
+        )
+
         # Save Session
         sess = {
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -2957,7 +3320,9 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             "mode": s["mode"],
             "intro": s["intro_path"].as_posix() if s["intro_path"] else None,
             "loop": s["loop_path"].as_posix() if s["loop_path"] else None,
-            "video": s["single_video_path"].as_posix() if s["single_video_path"] else None,
+            "video": s["single_video_path"].as_posix()
+            if s["single_video_path"]
+            else None,
             "codec": s["codec_family"],
             "encoder": s["codec_config"].encoder if s["codec_config"] else "",
             "duration": s["dur_str"],
@@ -2985,14 +3350,25 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             },
         }
         session_json.write_text(json.dumps(sess))
-        
+
         # Render
         s["out_path"], times = render_pipeline(
-            s["mode"], s["intro_path"], s["loop_path"], s["single_video_path"],
-            s["codec_config"], s["target_width"], s["target_height"], s["target_fps"],
-            s["scale_algo"], s["audio_bitrate"], s["total_seconds"],
-            s["chosen_tracks"], s["chosen_bgs"], s["out_path"],
-            s["run_log"], s["tmp_dir"],
+            s["mode"],
+            s["intro_path"],
+            s["loop_path"],
+            s["single_video_path"],
+            s["codec_config"],
+            s["target_width"],
+            s["target_height"],
+            s["target_fps"],
+            s["scale_algo"],
+            s["audio_bitrate"],
+            s["total_seconds"],
+            s["chosen_tracks"],
+            s["chosen_bgs"],
+            s["out_path"],
+            s["run_log"],
+            s["tmp_dir"],
             timed_effects=s.get("timed_effects", []),
             keep_video_audio=(s.get("video_audio_mode", "keep") == "keep"),
             apply_audio_fades=s.get("apply_audio_fades", True),
@@ -3014,35 +3390,44 @@ def run_interactive(ozel1_mode: bool = False) -> int:
                 "has_audio": True,
             },
         )
-        
+
         # Post Actions
         handle_post_render_actions(
-            s["out_path"], s["mode"], s["intro_path"], s["loop_path"], s["single_video_path"],
-            s["post_action"], s["drive_enabled"], s["drive_folder_id"], s["base"], times
+            s["out_path"],
+            s["mode"],
+            s["intro_path"],
+            s["loop_path"],
+            s["single_video_path"],
+            s["post_action"],
+            s["drive_enabled"],
+            s["drive_folder_id"],
+            s["base"],
+            times,
         )
         return 0
 
     # Step Check logic to handle Confirm separately
     def step_final_confirm(s):
         # We replace standard Confirm with a Choice to allow Back
-        c = ask_choice("Baslatilsin mi?", ["Evet", "Hayir (Cikis)"], 1) # Raises BN
-        if c == 2: return 1 # Exit
+        c = ask_choice("Baslatilsin mi?", ["Evet", "Hayir (Cikis)"], 1)  # Raises BN
+        if c == 2:
+            return 1  # Exit
         return 0
 
     steps = [
-        step_check_env,     # 0
-        step_select_ram_mode, # 1
-        step_select_mode,   # 2
-        step_select_videos, # 3
-        step_config,        # 4
+        step_check_env,  # 0
+        step_select_ram_mode,  # 1
+        step_select_mode,  # 2
+        step_select_videos,  # 3
+        step_config,  # 4
         step_check_compat,  # 5
-        step_duration_audio,# 6
-        step_std_audio,     # 7
-        step_drive,         # 8
-        step_post,          # 9
-        step_summary,       # 10
-        step_final_confirm, # 11
-        step_execute        # 12
+        step_duration_audio,  # 6
+        step_std_audio,  # 7
+        step_drive,  # 8
+        step_post,  # 9
+        step_summary,  # 10
+        step_final_confirm,  # 11
+        step_execute,  # 12
     ]
 
     curr = 0
@@ -3051,22 +3436,25 @@ def run_interactive(ozel1_mode: bool = False) -> int:
             fn = steps[curr]
             try:
                 res = fn(state)
-                if res == 2: return 2 # Critical Error
-                if res == 1: return 0 # User Exit
+                if res == 2:
+                    return 2  # Critical Error
+                if res == 1:
+                    return 0  # User Exit
                 curr += 1
             except BackNavigation:
                 if curr > 0:
                     curr -= 1
-                    # Skip some steps backwards? 
+                    # Skip some steps backwards?
                     # e.g. going back from duration(5) -> compat(4) -> config(3).
                     # Compat(4) is auto info, so we might want to skip it backwards to 3?
-                    if curr == 6: curr = 5 # Back from std_audio -> duration?
-                    if curr == 4: curr = 3 # Back from Compat -> Config
+                    if curr == 6:
+                        curr = 5  # Back from std_audio -> duration?
+                    if curr == 4:
+                        curr = 3  # Back from Compat -> Config
                 else:
                     if ask_confirm("Sihirbazdan cikilsin mi?", default=False):
                         return 0
         return 0
-
 
     except KeyboardInterrupt:
         console.print()
@@ -3112,18 +3500,25 @@ Ornekler:
     )
 
     parser.add_argument(
-        "--list-hw", action="store_true", help="Kullanilabilir hardware encoder'lari listele"
+        "--list-hw",
+        action="store_true",
+        help="Kullanilabilir hardware encoder'lari listele",
     )
 
     parser.add_argument(
-        "--resume", "-r", action="store_true", help="Son session'dan kaldigi yerden devam et"
+        "--resume",
+        "-r",
+        action="store_true",
+        help="Son session'dan kaldigi yerden devam et",
     )
 
     parser.add_argument(
         "--no-loop", action="store_true", help="Hata durumunda donguye girmeden cik"
     )
 
-    parser.add_argument("--tui", action="store_true", help="Yeni Textual TUI arayuzunu kullan")
+    parser.add_argument(
+        "--tui", action="store_true", help="Yeni Textual TUI arayuzunu kullan"
+    )
 
     parser.add_argument(
         "--ozel1",
@@ -3155,10 +3550,14 @@ Ornekler:
         help="RAM-optimizasyon modu (Ramtest) - tmpfs ve yüksek VRAM optimize",
     )
     mode_group.add_argument(
-        "--ramdisk", action="store_true", help="RAM Disk modu - Sadece RAM disk kullanimi"
+        "--ramdisk",
+        action="store_true",
+        help="RAM Disk modu - Sadece RAM disk kullanimi",
     )
     mode_group.add_argument(
-        "--high-vram", action="store_true", help="High VRAM modu - Yüksek GPU bellek optimizasyonu"
+        "--high-vram",
+        action="store_true",
+        help="High VRAM modu - Yüksek GPU bellek optimizasyonu",
     )
 
     args = parser.parse_args()
@@ -3185,7 +3584,9 @@ Ornekler:
         print(mode_info)
         from config import RamTestConfig, get_ramdisk_path
 
-        ramtest_cfg = RamTestConfig(enabled=True, use_ramdisk=(mode in ["ramtest", "ramdisk"]))
+        ramtest_cfg = RamTestConfig(
+            enabled=True, use_ramdisk=(mode in ["ramtest", "ramdisk"])
+        )
         print(f"  - RAM Disk: {ramtest_cfg.use_ramdisk}")
         print(f"  - High VRAM: {ramtest_cfg.high_vram}")
         if ramtest_cfg.use_ramdisk:
@@ -3232,7 +3633,9 @@ Ornekler:
                 try:
                     session = json.loads(session_json.read_text(encoding="utf-8"))
                     console.print()
-                    print_info(f"Onceki session bulundu: {session.get('ts', 'unknown')}")
+                    print_info(
+                        f"Onceki session bulundu: {session.get('ts', 'unknown')}"
+                    )
                     print_info(f"Hedef: {Path(session.get('out', '')).name}")
 
                     choice = ask_choice(
@@ -3284,7 +3687,9 @@ Ornekler:
                 # Success
                 console.print()
                 next_choice = ask_choice(
-                    "Render tamamlandi! Ne yapmak istersiniz?", ["Yeni render baslat", "Cikis"], 1
+                    "Render tamamlandi! Ne yapmak istersiniz?",
+                    ["Yeni render baslat", "Cikis"],
+                    1,
                 )
                 if next_choice == 2:
                     session_json.unlink(missing_ok=True)
