@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from .logging import LogLevel
+from .video_logging import LogLevel
 from .error_reporting import ErrorReportingMode, ErrorReportConfig
 
 # ═══════════════════════════════════════════════════════════════════════════════
